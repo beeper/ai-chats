@@ -258,6 +258,11 @@ Why this still violates the goal:
   `session_store.go`, while `resolveHeartbeatRoute(...)` owns route selection
   end-to-end; the remaining debt is mostly which callers still speak in
   store-agent/session primitives instead of one higher-level session API
+- session tool entrypoints no longer bounce through local
+  `resolveSessionPortal(...)`, `resolveSessionPortalByLabel(...)`,
+  `resolveSessionLabel(...)`, `resolveSessionDisplayName(...)`, and
+  `lastMessageTimestamp(...)` helpers; that routing/display logic now lives
+  directly where history/send behavior is decided
 - last-routed-room lookup now also lives in `session_store.go`; remaining
   fragmentation is not consumer-side DB querying, but how different features
   choose and touch sessions

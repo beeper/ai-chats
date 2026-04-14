@@ -276,6 +276,13 @@ enters `dispatchCompletionInternal(...)` instead of calling
 share the same launch boundary even though the surrounding pipeline is still
 not fully unified.
 
+Recent progress also removed the local session-tool helper layer:
+`executeSessionsList(...)`, `executeSessionsHistory(...)`, and
+`executeSessionsSend(...)` now own their session lookup/display logic directly
+instead of routing through `resolveSessionPortal(...)`,
+`resolveSessionPortalByLabel(...)`, `resolveSessionLabel(...)`,
+`resolveSessionDisplayName(...)`, and `lastMessageTimestamp(...)`.
+
 Recent progress also removed the single-callsite internal prompt turn upsert
 wrapper and the local prompt projection helpers around block filtering, image
 payload lookup, and tool-argument normalization: canonical prompt projection

@@ -84,8 +84,9 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 
 		updatedAt := int64(0)
 		if activeMinutes > 0 || messageLimit > 0 {
-			if last := oc.lastMessageTimestamp(ctx, candidate); last > 0 {
-				updatedAt = last
+			messages, err := oc.getAIHistoryMessages(ctx, candidate, 1)
+			if err == nil && len(messages) > 0 {
+				updatedAt = messages[len(messages)-1].Timestamp.UnixMilli()
 			}
 			if activeMinutes > 0 {
 				cutoff := time.Now().Add(-time.Duration(activeMinutes) * time.Minute).UnixMilli()
@@ -101,10 +102,22 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 			"kind":       kind,
 			"channel":    "matrix",
 		}
-		if label := resolveSessionLabel(candidate, meta); label != "" {
+		label := ""
+		if strings.TrimSpace(candidate.Name) != "" {
+			label = strings.TrimSpace(candidate.Name)
+		} else if meta != nil && strings.TrimSpace(meta.Slug) != "" {
+			label = strings.TrimSpace(meta.Slug)
+		}
+		if label != "" {
 			entry["label"] = label
 		}
-		if displayName := resolveSessionDisplayName(candidate, meta); displayName != "" {
+		displayName := ""
+		if strings.TrimSpace(candidate.Name) != "" {
+			displayName = strings.TrimSpace(candidate.Name)
+		} else if meta != nil {
+			displayName = strings.TrimSpace(meta.Slug)
+		}
+		if displayName != "" {
 			entry["displayName"] = displayName
 		}
 		if updatedAt > 0 {
@@ -262,9 +275,45 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		}), nil
 	}
 
-	resolvedPortal, displayKey, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
-	if resolveErr != nil {
-		return tools.JSONErrorResult(resolveErr.Error()), nil
+	trimmedSessionKey := strings.TrimSpace(sessionKey)
+	if trimmedSessionKey == "" {
+		return tools.JSONErrorResult("sessionKey is required"), nil
+	}
+	var resolvedPortal *bridgev2.Portal
+	displayKey := ""
+	switch {
+	case trimmedSessionKey == "main":
+		if portal == nil || portal.MXID == "" {
+			return tools.JSONErrorResult("main session not available"), nil
+		}
+		resolvedPortal = portal
+		displayKey = "main"
+	case strings.HasPrefix(trimmedSessionKey, "!"):
+		if found := oc.portalByRoomID(ctx, id.RoomID(trimmedSessionKey)); found != nil {
+			resolvedPortal = found
+			displayKey = found.MXID.String()
+		}
+	default:
+		portals, err := oc.listAllChatPortals(ctx)
+		if err != nil {
+			return tools.JSONErrorResult(err.Error()), nil
+		}
+		for _, candidate := range portals {
+			if candidate == nil {
+				continue
+			}
+			if candidate.MXID.String() == trimmedSessionKey || string(candidate.PortalKey.ID) == trimmedSessionKey {
+				resolvedPortal = candidate
+				displayKey = candidate.MXID.String()
+				if displayKey == "" {
+					displayKey = trimmedSessionKey
+				}
+				break
+			}
+		}
+	}
+	if resolvedPortal == nil {
+		return tools.JSONErrorResult(fmt.Sprintf("session not found: %s (use the sessionKey from sessions_list)", trimmedSessionKey)), nil
 	}
 
 	messages, err := oc.getAIHistoryMessages(ctx, resolvedPortal, limit)
@@ -335,18 +384,87 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	var targetPortal *bridgev2.Portal
 	var displayKey string
 	if sessionKey != "" {
-		target, display, resolveErr := oc.resolveSessionPortal(ctx, portal, sessionKey)
-		if resolveErr != nil {
-			return tools.JSONErrorResult(resolveErr.Error()), nil
+		trimmedSessionKey := strings.TrimSpace(sessionKey)
+		if trimmedSessionKey == "" {
+			return tools.JSONErrorResult("sessionKey is required"), nil
 		}
-		targetPortal = target
-		displayKey = display
+		switch {
+		case trimmedSessionKey == "main":
+			if portal == nil || portal.MXID == "" {
+				return tools.JSONErrorResult("main session not available"), nil
+			}
+			targetPortal = portal
+			displayKey = "main"
+		case strings.HasPrefix(trimmedSessionKey, "!"):
+			if found := oc.portalByRoomID(ctx, id.RoomID(trimmedSessionKey)); found != nil {
+				targetPortal = found
+				displayKey = found.MXID.String()
+			}
+		default:
+			portals, err := oc.listAllChatPortals(ctx)
+			if err != nil {
+				return tools.JSONErrorResult(err.Error()), nil
+			}
+			for _, candidate := range portals {
+				if candidate == nil {
+					continue
+				}
+				if candidate.MXID.String() == trimmedSessionKey || string(candidate.PortalKey.ID) == trimmedSessionKey {
+					targetPortal = candidate
+					displayKey = candidate.MXID.String()
+					if displayKey == "" {
+						displayKey = trimmedSessionKey
+					}
+					break
+				}
+			}
+		}
+		if targetPortal == nil {
+			return tools.JSONErrorResult(fmt.Sprintf("session not found: %s (use the sessionKey from sessions_list)", trimmedSessionKey)), nil
+		}
 	} else {
 		if strings.TrimSpace(label) == "" {
 			return tools.JSONErrorResult("sessionKey or label is required"), nil
 		}
-		target, display, resolveErr := oc.resolveSessionPortalByLabel(ctx, label, agentID)
-		if resolveErr != nil {
+		trimmed := strings.TrimSpace(label)
+		needle := strings.ToLower(trimmed)
+		filterAgent := normalizeAgentID(agentID)
+		portals, err := oc.listAllChatPortals(ctx)
+		if err != nil {
+			return tools.JSONErrorResult(err.Error()), nil
+		}
+		matches := make([]*bridgev2.Portal, 0, 4)
+		for _, candidate := range portals {
+			if candidate == nil {
+				continue
+			}
+			meta := portalMeta(candidate)
+			if shouldExcludeModelVisiblePortal(meta) {
+				continue
+			}
+			if filterAgent != "" {
+				agent := normalizeAgentID(resolveAgentID(meta))
+				if agent != filterAgent {
+					continue
+				}
+			}
+			labelVal := ""
+			if strings.TrimSpace(candidate.Name) != "" {
+				labelVal = strings.ToLower(strings.TrimSpace(candidate.Name))
+			} else if meta != nil && strings.TrimSpace(meta.Slug) != "" {
+				labelVal = strings.ToLower(strings.TrimSpace(meta.Slug))
+			}
+			displayVal := ""
+			if strings.TrimSpace(candidate.Name) != "" {
+				displayVal = strings.ToLower(strings.TrimSpace(candidate.Name))
+			} else if meta != nil {
+				displayVal = strings.ToLower(strings.TrimSpace(meta.Slug))
+			}
+			if labelVal == needle || displayVal == needle {
+				matches = append(matches, candidate)
+			}
+		}
+		if len(matches) != 1 {
 			var desktopInstance string
 			var chatID string
 			var desktopKey string
@@ -381,8 +499,11 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 			}
 			return tools.JSONResult(result), nil
 		}
-		targetPortal = target
-		displayKey = display
+		targetPortal = matches[0]
+		displayKey = targetPortal.MXID.String()
+		if displayKey == "" {
+			displayKey = string(targetPortal.PortalKey.ID)
+		}
 	}
 
 	if targetPortal == nil {
@@ -464,118 +585,4 @@ func isForbiddenSessionSendError(errText string) bool {
 		strings.Contains(text, "not allowed") ||
 		strings.Contains(text, "permission denied") ||
 		strings.Contains(text, "restricted")
-}
-
-func resolveSessionLabel(portal *bridgev2.Portal, meta *PortalMetadata) string {
-	if portal != nil && strings.TrimSpace(portal.Name) != "" {
-		return strings.TrimSpace(portal.Name)
-	}
-	if meta != nil {
-		if strings.TrimSpace(meta.Slug) != "" {
-			return strings.TrimSpace(meta.Slug)
-		}
-	}
-	return ""
-}
-
-func resolveSessionDisplayName(portal *bridgev2.Portal, meta *PortalMetadata) string {
-	if portal != nil && strings.TrimSpace(portal.Name) != "" {
-		return strings.TrimSpace(portal.Name)
-	}
-	if meta != nil {
-		return strings.TrimSpace(meta.Slug)
-	}
-	return ""
-}
-
-func (oc *AIClient) resolveSessionPortal(ctx context.Context, portal *bridgev2.Portal, sessionKey string) (*bridgev2.Portal, string, error) {
-	trimmed := strings.TrimSpace(sessionKey)
-	if trimmed == "" {
-		return nil, "", errors.New("sessionKey is required")
-	}
-	if trimmed == "main" {
-		if portal == nil || portal.MXID == "" {
-			return nil, "", errors.New("main session not available")
-		}
-		return portal, "main", nil
-	}
-	if strings.HasPrefix(trimmed, "!") {
-		if found := oc.portalByRoomID(ctx, id.RoomID(trimmed)); found != nil {
-			return found, found.MXID.String(), nil
-		}
-	}
-	portals, err := oc.listAllChatPortals(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	for _, candidate := range portals {
-		if candidate == nil {
-			continue
-		}
-		if candidate.MXID.String() == trimmed || string(candidate.PortalKey.ID) == trimmed {
-			key := candidate.MXID.String()
-			if key == "" {
-				key = trimmed
-			}
-			return candidate, key, nil
-		}
-	}
-	return nil, "", fmt.Errorf("session not found: %s (use the sessionKey from sessions_list)", trimmed)
-}
-
-func (oc *AIClient) resolveSessionPortalByLabel(ctx context.Context, label string, agentID string) (*bridgev2.Portal, string, error) {
-	trimmed := strings.TrimSpace(label)
-	if trimmed == "" {
-		return nil, "", errors.New("label is required")
-	}
-	needle := strings.ToLower(trimmed)
-	filterAgent := normalizeAgentID(agentID)
-
-	portals, err := oc.listAllChatPortals(ctx)
-	if err != nil {
-		return nil, "", err
-	}
-	matches := make([]*bridgev2.Portal, 0, 4)
-	for _, candidate := range portals {
-		if candidate == nil {
-			continue
-		}
-		meta := portalMeta(candidate)
-		if shouldExcludeModelVisiblePortal(meta) {
-			continue
-		}
-		if filterAgent != "" {
-			agent := normalizeAgentID(resolveAgentID(meta))
-			if agent != filterAgent {
-				continue
-			}
-		}
-		labelVal := strings.ToLower(resolveSessionLabel(candidate, meta))
-		displayVal := strings.ToLower(resolveSessionDisplayName(candidate, meta))
-		if labelVal == needle || displayVal == needle {
-			matches = append(matches, candidate)
-		}
-	}
-	if len(matches) == 1 {
-		key := matches[0].MXID.String()
-		if key == "" {
-			key = string(matches[0].PortalKey.ID)
-		}
-		return matches[0], key, nil
-	}
-	if len(matches) > 1 {
-		return nil, "", fmt.Errorf("label '%s' matched multiple sessions; use the sessionKey from sessions_list", trimmed)
-	}
-	return nil, "", fmt.Errorf("no session found for label '%s' (use the sessionKey from sessions_list)", trimmed)
-}
-
-func (oc *AIClient) lastMessageTimestamp(ctx context.Context, portal *bridgev2.Portal) int64 {
-	if portal == nil {
-		return 0
-	}
-	messages, err := oc.getAIHistoryMessages(ctx, portal, 1)
-	if err != nil || len(messages) == 0 {
-		return 0
-	}
-	return messages[len(messages)-1].Timestamp.UnixMilli()
 }
