@@ -154,7 +154,43 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
 	conv := newConversation(ctx, portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
-	return convertRoomFeatures(conv.currentRoomFeatures(ctx))
+	features := conv.currentRoomFeatures(ctx)
+	if features == nil {
+		features = defaultSDKFeatureConfig()
+	}
+	maxText := features.MaxTextLength
+	if maxText == 0 {
+		maxText = DefaultAgentMaxTextLength
+	}
+	capID := features.CustomCapabilityID
+	if capID == "" {
+		capID = "com.beeper.agentremote.sdk"
+	}
+	roomFeatures := &event.RoomFeatures{
+		ID:                  capID,
+		MaxTextLength:       maxText,
+		Reply:               capLevel(features.SupportsReply),
+		Edit:                capLevel(features.SupportsEdit),
+		Delete:              capLevel(features.SupportsDelete),
+		Reaction:            capLevel(features.SupportsReactions),
+		ReadReceipts:        features.SupportsReadReceipts,
+		TypingNotifications: features.SupportsTyping,
+		DeleteChat:          features.SupportsDeleteChat,
+		File:                make(event.FileFeatureMap),
+	}
+	if features.SupportsImages {
+		roomFeatures.File[event.MsgImage] = &event.FileFeatures{}
+	}
+	if features.SupportsAudio {
+		roomFeatures.File[event.MsgAudio] = &event.FileFeatures{}
+	}
+	if features.SupportsVideo {
+		roomFeatures.File[event.MsgVideo] = &event.FileFeatures{}
+	}
+	if features.SupportsFiles {
+		roomFeatures.File[event.MsgFile] = &event.FileFeatures{}
+	}
+	return roomFeatures
 }
 
 // HandleMatrixMessage dispatches incoming messages to the OnMessage callback.
@@ -170,7 +206,36 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 			runCtx = context.Background()
 		}
 	}
-	sdkMsg := convertMatrixMessage(msg)
+	content, ok := msg.Event.Content.Parsed.(*event.MessageEventContent)
+	sdkMsg := &Message{
+		ID:        msg.Event.ID.String(),
+		Timestamp: time.UnixMilli(msg.Event.Timestamp),
+	}
+	if ok {
+		sdkMsg.Text = content.Body
+		sdkMsg.HTML = content.FormattedBody
+		switch content.MsgType {
+		case event.MsgImage:
+			sdkMsg.MsgType = MessageImage
+		case event.MsgAudio:
+			sdkMsg.MsgType = MessageAudio
+		case event.MsgVideo:
+			sdkMsg.MsgType = MessageVideo
+		case event.MsgFile:
+			sdkMsg.MsgType = MessageFile
+		default:
+			sdkMsg.MsgType = MessageText
+		}
+		if content.URL != "" {
+			sdkMsg.MediaURL = string(content.URL)
+		}
+		if content.Info != nil {
+			sdkMsg.MediaType = content.Info.MimeType
+		}
+		if content.RelatesTo != nil && content.RelatesTo.InReplyTo != nil {
+			sdkMsg.ReplyTo = content.RelatesTo.InReplyTo.EventID.String()
+		}
+	}
 	conv := newConversation(runCtx, msg.Portal, c.userLogin, bridgev2.EventSender{}, c.conversationRuntimeState())
 	session := c.getSession()
 	var source *SourceRef
@@ -204,46 +269,4 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 		turn.EndWithError(fmt.Sprintf("Request failed: %v", err))
 	}()
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
-}
-
-func convertMatrixMessage(msg *bridgev2.MatrixMessage) *Message {
-	content, ok := msg.Event.Content.Parsed.(*event.MessageEventContent)
-	if !ok {
-		return &Message{
-			ID:        msg.Event.ID.String(),
-			Timestamp: time.UnixMilli(msg.Event.Timestamp),
-		}
-	}
-
-	m := &Message{
-		ID:        msg.Event.ID.String(),
-		Text:      content.Body,
-		HTML:      content.FormattedBody,
-		Timestamp: time.UnixMilli(msg.Event.Timestamp),
-	}
-
-	switch content.MsgType {
-	case event.MsgImage:
-		m.MsgType = MessageImage
-	case event.MsgAudio:
-		m.MsgType = MessageAudio
-	case event.MsgVideo:
-		m.MsgType = MessageVideo
-	case event.MsgFile:
-		m.MsgType = MessageFile
-	default:
-		m.MsgType = MessageText
-	}
-
-	if content.URL != "" {
-		m.MediaURL = string(content.URL)
-	}
-	if content.Info != nil {
-		m.MediaType = content.Info.MimeType
-	}
-	if content.RelatesTo != nil && content.RelatesTo.InReplyTo != nil {
-		m.ReplyTo = content.RelatesTo.InReplyTo.EventID.String()
-	}
-
-	return m
 }
