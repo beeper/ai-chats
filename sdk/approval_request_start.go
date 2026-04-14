@@ -1,0 +1,82 @@
+package sdk
+
+import (
+	"context"
+	"time"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/id"
+)
+
+type ApprovalPromptContext struct {
+	TurnID            string
+	ReplyToEventID    id.EventID
+	ThreadRootEventID id.EventID
+}
+
+type StartApprovalRequestParams[D any] struct {
+	Portal             *bridgev2.Portal
+	OwnerMXID          id.UserID
+	SendPrompt         bool
+	Request            ApprovalRequest
+	NewID              func() string
+	DefaultTTL         time.Duration
+	DefaultAllowAlways bool
+	PromptContext      ApprovalPromptContext
+	EmitRequest        func(context.Context, string, string)
+	Data               D
+}
+
+type StartedApprovalRequest[D any] struct {
+	ApprovalID   string
+	TTL          time.Duration
+	Presentation ApprovalPromptPresentation
+	Pending      *Pending[D]
+	Created      bool
+	PromptSent   bool
+}
+
+func (f *ApprovalFlow[D]) StartApprovalRequest(ctx context.Context, params StartApprovalRequestParams[D]) StartedApprovalRequest[D] {
+	if f == nil {
+		return StartedApprovalRequest[D]{}
+	}
+	approvalID, ttl, presentation := ResolveApprovalRequest(
+		params.Request,
+		params.NewID,
+		params.DefaultTTL,
+		params.DefaultAllowAlways,
+	)
+	started := StartedApprovalRequest[D]{
+		ApprovalID:   approvalID,
+		TTL:          ttl,
+		Presentation: presentation,
+	}
+	pending, created := f.Register(approvalID, ttl, params.Data)
+	started.Pending = pending
+	started.Created = created
+	if !created {
+		return started
+	}
+	if params.EmitRequest != nil {
+		params.EmitRequest(ctx, approvalID, params.Request.ToolCallID)
+	}
+	if !params.SendPrompt || params.Portal == nil || params.Portal.MXID == "" || params.OwnerMXID == "" {
+		return started
+	}
+	f.SendPrompt(ctx, params.Portal, SendPromptParams{
+		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
+			ApprovalID:        approvalID,
+			ToolCallID:        params.Request.ToolCallID,
+			ToolName:          params.Request.ToolName,
+			TurnID:            params.PromptContext.TurnID,
+			Presentation:      presentation,
+			ReplyToEventID:    params.PromptContext.ReplyToEventID,
+			ThreadRootEventID: params.PromptContext.ThreadRootEventID,
+			ExpiresAt:         time.Now().Add(ttl),
+		},
+		RoomID:    params.Portal.MXID,
+		OwnerMXID: params.OwnerMXID,
+	})
+	started.PromptSent = true
+	return started
+}

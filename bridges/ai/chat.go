@@ -527,24 +527,6 @@ func (oc *AIClient) resolveChatGhost(ctx context.Context, userID networkid.UserI
 	return ghost, nil
 }
 
-func (oc *AIClient) maybeCreateResolvedChat(
-	ctx context.Context,
-	createChat bool,
-	kind string,
-	id string,
-	create func(context.Context) (*bridgev2.CreateChatResponse, error),
-) (*bridgev2.CreateChatResponse, error) {
-	if !createChat || create == nil {
-		return nil, nil
-	}
-	oc.loggerForContext(ctx).Info().Str(kind, id).Msg("Creating new chat")
-	chatResp, err := create(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create chat: %w", err)
-	}
-	return chatResp, nil
-}
-
 // ResolveIdentifier resolves an agent ID to a ghost and optionally creates a chat.
 func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	target, err := oc.resolveChatTargetFromIdentifier(ctx, identifier)
@@ -598,11 +580,17 @@ func (oc *AIClient) resolveAgentIdentifier(ctx context.Context, agent *agents.Ag
 		responder = nil
 	}
 
-	chatResp, err := oc.maybeCreateResolvedChat(ctx, createChat, "agent", agent.ID, func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
-		return oc.createAgentChatWithModel(ctx, agent, modelID, explicitModel)
-	})
-	if err != nil {
-		return nil, err
+	var chatResp *bridgev2.CreateChatResponse
+	if createChat {
+		oc.loggerForContext(ctx).Info().Str("agent", agent.ID).Msg("Creating new chat")
+		chatResp, err = oc.createChat(ctx, chatCreateParams{
+			ModelID:            modelID,
+			Agent:              agent,
+			ApplyModelOverride: explicitModel,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create chat: %w", err)
+		}
 	}
 
 	return &bridgev2.ResolveIdentifierResponse{
@@ -625,11 +613,13 @@ func (oc *AIClient) resolveModelIdentifier(ctx context.Context, modelID string, 
 	// Ensure ghost display name is set before returning
 	oc.ensureGhostDisplayName(ctx, modelID)
 
-	chatResp, err := oc.maybeCreateResolvedChat(ctx, createChat, "model", modelID, func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
-		return oc.createNewChat(ctx, modelID)
-	})
-	if err != nil {
-		return nil, err
+	var chatResp *bridgev2.CreateChatResponse
+	if createChat {
+		oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
+		chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create chat: %w", err)
+		}
 	}
 
 	responder, err := oc.ResolveResponderForModel(ctx, modelID)
@@ -666,47 +656,46 @@ func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserL
 	}
 }
 
-func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.AgentDefinition, modelID string, applyModelOverride bool) (*bridgev2.CreateChatResponse, error) {
-	if !oc.agentsEnabledForLogin() {
-		return nil, agentChatsDisabledError()
-	}
-	if modelID == "" {
-		modelID = oc.agentDefaultModel(agent)
-	}
-
-	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID: modelID,
-		Title:   fmt.Sprintf("Chat with %s", agentName),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	oc.configureAgentChatPortal(ctx, portal, chatInfo, agent, modelID, applyModelOverride, "agent config")
-
-	return &bridgev2.CreateChatResponse{
-		PortalKey: portal.PortalKey,
-		Portal:    portal,
-		// Return the full ChatInfo so bridgev2 can apply ExtraUpdates (initial room state,
-		// welcome notice, etc.) when creating the Matrix room via provisioning (CreateDM).
-		PortalInfo: chatInfo,
-	}, nil
+type chatCreateParams struct {
+	ModelID            string
+	Agent              *agents.AgentDefinition
+	ApplyModelOverride bool
+	Title              string
+	PortalKey          *networkid.PortalKey
 }
 
-// createNewChat creates a new portal for a specific model
-func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev2.CreateChatResponse, error) {
-	portal, chatInfo, err := oc.initPortalForChat(ctx, PortalInitOpts{
-		ModelID: modelID,
-	})
+func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*bridgev2.CreateChatResponse, error) {
+	modelID := strings.TrimSpace(params.ModelID)
+	initOpts := PortalInitOpts{
+		ModelID:   modelID,
+		Title:     strings.TrimSpace(params.Title),
+		PortalKey: params.PortalKey,
+	}
+	if params.Agent != nil {
+		if !oc.agentsEnabledForLogin() {
+			return nil, agentChatsDisabledError()
+		}
+		if modelID == "" {
+			modelID = oc.agentDefaultModel(params.Agent)
+			initOpts.ModelID = modelID
+		}
+		if initOpts.Title == "" {
+			initOpts.Title = fmt.Sprintf("Chat with %s", oc.resolveAgentDisplayName(ctx, params.Agent))
+		}
+	}
+
+	portal, chatInfo, err := oc.initPortalForChat(ctx, initOpts)
 	if err != nil {
 		return nil, err
+	}
+	if params.Agent != nil {
+		oc.configureAgentChatPortal(ctx, portal, chatInfo, params.Agent, modelID, params.ApplyModelOverride, "agent config")
 	}
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
-		PortalInfo: chatInfo,
 		Portal:     portal,
+		PortalInfo: chatInfo,
 	}, nil
 }
 
@@ -967,12 +956,13 @@ func (oc *AIClient) createAndOpenResolvedChat(ctx context.Context, portal *bridg
 	switch {
 	case target.agent != nil:
 		agentName := oc.resolveAgentDisplayName(ctx, target.agent)
-		oc.createAndOpenChat(ctx, portal, agentName, func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
-			return oc.createAgentChatWithModel(ctx, target.agent, target.modelID, false)
+		oc.createAndOpenChat(ctx, portal, agentName, chatCreateParams{
+			ModelID: target.modelID,
+			Agent:   target.agent,
 		})
 	case target.modelID != "":
-		oc.createAndOpenChat(ctx, portal, modelContactName(target.modelID, oc.findModelInfo(target.modelID)), func(ctx context.Context) (*bridgev2.CreateChatResponse, error) {
-			return oc.createNewChat(ctx, target.modelID)
+		oc.createAndOpenChat(ctx, portal, modelContactName(target.modelID, oc.findModelInfo(target.modelID)), chatCreateParams{
+			ModelID: target.modelID,
 		})
 	default:
 		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: no target resolved")
@@ -983,15 +973,15 @@ func (oc *AIClient) createAndOpenChat(
 	ctx context.Context,
 	sourcePortal *bridgev2.Portal,
 	label string,
-	create func(context.Context) (*bridgev2.CreateChatResponse, error),
+	params chatCreateParams,
 ) {
-	chatResp, err := create(ctx)
+	chatResp, err := oc.createChat(ctx, params)
 	if err != nil {
 		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the chat: "+err.Error())
 		return
 	}
 
-	newPortal, err := oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{})
+	newPortal, err := oc.prepareCreatedChatPortal(ctx, chatResp, "", nil, portalRoomMaterializeOptions{})
 	if err != nil {
 		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the room: "+err.Error())
 		return
@@ -1004,38 +994,27 @@ func (oc *AIClient) createAndOpenChat(
 	))
 }
 
-func (oc *AIClient) materializeCreatedChatPortal(
+func (oc *AIClient) prepareCreatedChatPortal(
 	ctx context.Context,
 	chatResp *bridgev2.CreateChatResponse,
+	saveReason string,
+	mutate func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo),
 	opts portalRoomMaterializeOptions,
 ) (*bridgev2.Portal, error) {
-	portal, err := oc.resolveCreatedChatPortal(ctx, chatResp)
-	if err != nil {
-		return nil, err
+	if chatResp == nil || chatResp.Portal == nil {
+		return nil, fmt.Errorf("missing created portal")
+	}
+	portal := chatResp.Portal
+	if mutate != nil {
+		mutate(portal, chatResp.PortalInfo)
+	}
+	if saveReason != "" {
+		if err := oc.savePortal(ctx, portal, saveReason); err != nil {
+			return nil, err
+		}
 	}
 	if err := oc.materializePortalRoom(ctx, portal, chatResp.PortalInfo, opts); err != nil {
 		return nil, err
-	}
-	return portal, nil
-}
-
-func (oc *AIClient) resolveCreatedChatPortal(
-	ctx context.Context,
-	chatResp *bridgev2.CreateChatResponse,
-) (*bridgev2.Portal, error) {
-	if chatResp == nil {
-		return nil, fmt.Errorf("missing chat response")
-	}
-	portal := chatResp.Portal
-	if portal == nil {
-		var err error
-		portal, err = oc.UserLogin.Bridge.GetPortalByKey(ctx, chatResp.PortalKey)
-		if err != nil {
-			return nil, err
-		}
-		if portal == nil {
-			return nil, fmt.Errorf("missing created portal")
-		}
 	}
 	return portal, nil
 }
@@ -1240,20 +1219,18 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 		modelID = oc.effectiveModel(nil)
 	}
 
-	initOpts := PortalInitOpts{
-		ModelID: modelID,
-		Title:   "New AI Chat",
-	}
-	initOpts.PortalKey = &defaultPortalKey
-	portal, chatInfo, err := oc.initPortalForChat(ctx, initOpts)
+	chatResp, err := oc.createChat(ctx, chatCreateParams{
+		ModelID:   modelID,
+		Agent:     beeperAgent,
+		Title:     "New AI Chat",
+		PortalKey: &defaultPortalKey,
+	})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create default portal")
 		return err
 	}
 
-	oc.configureAgentChatPortal(ctx, portal, chatInfo, beeperAgent, modelID, false, "default chat agent config")
-
-	err = oc.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{})
+	portal, err = oc.prepareCreatedChatPortal(ctx, chatResp, "", nil, portalRoomMaterializeOptions{})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 		return err

@@ -347,23 +347,23 @@ func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalRespon
 	if h == nil || h.client == nil {
 		return sdk.ToolApprovalResponse{}, nil
 	}
-	resolution, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
-	decision := resolution.Decision
-	if !ok && decision.Reason == "" {
-		decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
-	}
-	approved := approvalAllowed(decision)
-	if h.turn != nil {
-		h.turn.Approvals().Respond(h.turn.Context(), h.approvalID, h.toolCallID, approved, decision.Reason)
-		if !approved {
-			h.turn.Writer().Tools().Denied(h.turn.Context(), h.toolCallID)
+	return sdk.WaitToolApprovalHandle(ctx, sdk.WaitToolApprovalHandleParams{
+		Turn:             h.turn,
+		ApprovalID:       h.approvalID,
+		ToolCallID:       h.toolCallID,
+		DenyToolOnReject: true,
+	}, func(ctx context.Context) (sdk.ToolApprovalResponse, error) {
+		resolution, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
+		decision := resolution.Decision
+		if !ok && decision.Reason == "" {
+			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
 		}
-	}
-	return sdk.ToolApprovalResponse{
-		Approved: approved,
-		Always:   resolution.Always,
-		Reason:   decision.Reason,
-	}, nil
+		return sdk.ToolApprovalResponse{
+			Approved: approvalAllowed(decision),
+			Always:   resolution.Always,
+			Reason:   decision.Reason,
+		}, nil
+	})
 }
 
 func newAITurnApprovalHandle(client *AIClient, turn *sdk.Turn, approvalID, toolCallID string) *aiTurnApprovalHandle {
@@ -415,34 +415,52 @@ func (oc *AIClient) startTurnApproval(
 	if oc == nil {
 		return handle, false
 	}
-	if _, created := oc.registerToolApproval(params); !created {
-		return handle, false
+	ownerMXID := id.UserID("")
+	if oc.UserLogin != nil {
+		ownerMXID = oc.UserLogin.UserMXID
 	}
-	if turn != nil {
-		turn.Approvals().EmitRequest(turn.Context(), params.ApprovalID, params.ToolCallID)
+	turnID, replyTo, threadRoot := resolveApprovalPromptContext(state, turn, params.TurnID)
+	started := oc.approvalFlow.StartApprovalRequest(ctx, sdk.StartApprovalRequestParams[*pendingToolApprovalData]{
+		Portal:             portal,
+		OwnerMXID:          ownerMXID,
+		SendPrompt:         sendPrompt,
+		Request:            sdk.ApprovalRequest{ApprovalID: params.ApprovalID, ToolCallID: params.ToolCallID, ToolName: params.ToolName, TTL: params.TTL, Presentation: &params.Presentation},
+		DefaultTTL:         params.TTL,
+		DefaultAllowAlways: true,
+		PromptContext: sdk.ApprovalPromptContext{
+			TurnID:            turnID,
+			ReplyToEventID:    replyTo,
+			ThreadRootEventID: threadRoot,
+		},
+		EmitRequest: func(ctx context.Context, approvalID, toolCallID string) {
+			if turn != nil {
+				turn.Approvals().EmitRequest(ctx, approvalID, toolCallID)
+			}
+		},
+		Data: &pendingToolApprovalData{
+			ApprovalID:   strings.TrimSpace(params.ApprovalID),
+			RoomID:       params.RoomID,
+			TurnID:       params.TurnID,
+			ToolCallID:   strings.TrimSpace(params.ToolCallID),
+			ToolName:     strings.TrimSpace(params.ToolName),
+			ToolKind:     params.ToolKind,
+			RuleToolName: strings.TrimSpace(params.RuleToolName),
+			ServerLabel:  strings.TrimSpace(params.ServerLabel),
+			Action:       strings.TrimSpace(params.Action),
+			Presentation: params.Presentation,
+			RequestedAt:  time.Now(),
+		},
+	})
+	if !started.Created {
+		return handle, false
 	}
 	if !sendPrompt {
 		return handle, true
 	}
-	if portal == nil || portal.MXID == "" || oc.UserLogin == nil || oc.UserLogin.UserMXID == "" || oc.approvalFlow == nil {
+	if !started.PromptSent {
 		_ = oc.resolveToolApproval(params.ApprovalID, false, sdk.ApprovalReasonDeliveryError)
 		return handle, true
 	}
-	turnID, replyTo, threadRoot := resolveApprovalPromptContext(state, turn, params.TurnID)
-	oc.approvalFlow.SendPrompt(ctx, portal, sdk.SendPromptParams{
-		ApprovalPromptMessageParams: sdk.ApprovalPromptMessageParams{
-			ApprovalID:        params.ApprovalID,
-			ToolCallID:        params.ToolCallID,
-			ToolName:          params.ToolName,
-			TurnID:            turnID,
-			Presentation:      params.Presentation,
-			ReplyToEventID:    replyTo,
-			ThreadRootEventID: threadRoot,
-			ExpiresAt:         time.Now().Add(params.TTL),
-		},
-		RoomID:    portal.MXID,
-		OwnerMXID: oc.UserLogin.UserMXID,
-	})
 	return handle, true
 }
 
@@ -517,15 +535,39 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 
 	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Msg("tool approval wait started")
 
-	decision, ok := oc.approvalFlow.Wait(ctx, approvalID)
+	decision, d, ok := oc.approvalFlow.WaitAndFinalizeApproval(ctx, approvalID, sdk.WaitApprovalParams[*pendingToolApprovalData]{
+		BuildNoDecision: func(reason string, _ *pendingToolApprovalData) *sdk.ApprovalDecisionPayload {
+			if reason != sdk.ApprovalReasonTimeout {
+				return nil
+			}
+			return &sdk.ApprovalDecisionPayload{
+				ApprovalID: approvalID,
+				Reason:     reason,
+			}
+		},
+		OnResolved: func(ctx context.Context, decision sdk.ApprovalDecisionPayload, pending *pendingToolApprovalData) {
+			resolution := toolApprovalResolution{
+				Decision: airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: decision.Reason},
+				Always:   decision.Always,
+			}
+			if decision.Approved {
+				resolution.Decision.State = airuntime.ToolApprovalApproved
+			}
+			oc.Log().Debug().Str("approval_id", approvalID).Str("tool", pending.ToolName).Str("state", string(resolution.Decision.State)).Msg("tool approval decision received")
+			if approvalAllowed(resolution.Decision) && resolution.Always {
+				if err := oc.persistAlwaysAllow(ctx, pending); err != nil {
+					oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
+				}
+			}
+		},
+	})
 	if !ok {
 		reason := sdk.ApprovalWaitReason(ctx)
 		state := airuntime.ToolApprovalDenied
+		if decision.Reason != "" {
+			reason = decision.Reason
+		}
 		if reason == sdk.ApprovalReasonTimeout {
-			oc.approvalFlow.FinishResolved(approvalID, sdk.ApprovalDecisionPayload{
-				ApprovalID: approvalID,
-				Reason:     reason,
-			})
 			state = airuntime.ToolApprovalTimedOut
 		}
 		resolution := toolApprovalResolution{
@@ -544,14 +586,6 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 		Decision: airuntime.ToolApprovalDecision{State: state, Reason: decision.Reason},
 		Always:   decision.Always,
 	}
-
-	oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("state", string(resolution.Decision.State)).Msg("tool approval decision received")
-	if approvalAllowed(resolution.Decision) && resolution.Always {
-		if err := oc.persistAlwaysAllow(ctx, d); err != nil {
-			oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
-		}
-	}
-	oc.approvalFlow.FinishResolved(approvalID, decision)
 	return resolution, d, true
 }
 

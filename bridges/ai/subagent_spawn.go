@@ -274,7 +274,11 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
-	chatResp, err := oc.createAgentChatWithModel(ctx, targetAgent, resolvedModel, modelApplied)
+	chatResp, err := oc.createChat(ctx, chatCreateParams{
+		ModelID:            resolvedModel,
+		Agent:              targetAgent,
+		ApplyModelOverride: modelApplied,
+	})
 	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",
@@ -289,32 +293,20 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	roomName := resolveSubagentRoomName(label, task)
-	childPortal, err := oc.resolveCreatedChatPortal(ctx, chatResp)
-	if err != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}), nil
-	}
-	childMeta := portalMeta(childPortal)
-	childMeta.SubagentParentRoomID = portal.MXID.String()
-	if reasoningEffort != "" {
-		childMeta.RuntimeReasoning = reasoningEffort
-	}
-	if roomName != "" {
-		if chatResp.PortalInfo != nil {
-			chatResp.PortalInfo.Name = &roomName
+	childPortal, err := oc.prepareCreatedChatPortal(ctx, chatResp, "subagent room setup", func(childPortal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
+		childMeta := portalMeta(childPortal)
+		childMeta.SubagentParentRoomID = portal.MXID.String()
+		if reasoningEffort != "" {
+			childMeta.RuntimeReasoning = reasoningEffort
 		}
-		childPortal.Name = roomName
-		childPortal.NameSet = true
-	}
-	if err := oc.savePortal(ctx, childPortal, "subagent room setup"); err != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}), nil
-	}
-	childPortal, err = oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{
+		if roomName != "" {
+			if chatInfo != nil {
+				chatInfo.Name = &roomName
+			}
+			childPortal.Name = roomName
+			childPortal.NameSet = true
+		}
+	}, portalRoomMaterializeOptions{
 		CleanupOnCreateError: "failed to create subagent Matrix room",
 	})
 	if err != nil {
@@ -323,6 +315,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  err.Error(),
 		}), nil
 	}
+	childMeta := portalMeta(childPortal)
 
 	eventID := sdk.NewEventID("subagent")
 	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)

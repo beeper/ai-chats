@@ -70,28 +70,33 @@ func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, err
 	if h == nil || h.turn == nil || h.turn.conv == nil || h.turn.turnCtx == nil {
 		return ToolApprovalResponse{}, nil
 	}
-	runtime := h.turn.conv.runtime
-	if runtime == nil || runtime.approvalFlowValue() == nil {
-		return ToolApprovalResponse{}, nil
-	}
-	approvalFlow := runtime.approvalFlowValue()
-	decision, ok := approvalFlow.Wait(ctx, h.approvalID)
-	if !ok {
-		reason := ApprovalWaitReason(ctx)
-		h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, false, reason)
-		approvalFlow.FinishResolved(h.approvalID, ApprovalDecisionPayload{
-			ApprovalID: h.approvalID,
-			Reason:     reason,
+	return WaitToolApprovalHandle(ctx, WaitToolApprovalHandleParams{
+		Turn:       h.turn,
+		ApprovalID: h.approvalID,
+		ToolCallID: h.toolCallID,
+	}, func(ctx context.Context) (ToolApprovalResponse, error) {
+		runtime := h.turn.conv.runtime
+		if runtime == nil || runtime.approvalFlowValue() == nil {
+			return ToolApprovalResponse{}, nil
+		}
+		approvalFlow := runtime.approvalFlowValue()
+		decision, _, ok := approvalFlow.WaitAndFinalizeApproval(ctx, h.approvalID, WaitApprovalParams[*pendingSDKApprovalData]{
+			BuildNoDecision: func(reason string, _ *pendingSDKApprovalData) *ApprovalDecisionPayload {
+				return &ApprovalDecisionPayload{
+					ApprovalID: h.approvalID,
+					Reason:     reason,
+				}
+			},
 		})
-		return ToolApprovalResponse{Reason: reason}, nil
-	}
-	h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, decision.Approved, decision.Reason)
-	approvalFlow.FinishResolved(h.approvalID, decision)
-	return ToolApprovalResponse{
-		Approved: decision.Approved,
-		Always:   decision.Always,
-		Reason:   decision.Reason,
-	}, nil
+		if !ok {
+			return ToolApprovalResponse{Reason: decision.Reason}, nil
+		}
+		return ToolApprovalResponse{
+			Approved: decision.Approved,
+			Always:   decision.Always,
+			Reason:   decision.Reason,
+		}, nil
+	})
 }
 
 // Turn is the central abstraction for an AI response turn.
@@ -443,31 +448,30 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
 	approvalFlow := t.conv.runtime.approvalFlowValue()
-	approvalID, ttl, presentation := ResolveApprovalRequest(req, func() string {
-		return "sdk-" + uuid.NewString()
-	}, DefaultApprovalExpiry, true)
-	_, _ = approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
-		RoomID:     t.conv.portal.MXID,
-		TurnID:     t.turnID,
-		ToolCallID: req.ToolCallID,
-		ToolName:   req.ToolName,
-	})
-	t.Approvals().EmitRequest(t.turnCtx, approvalID, req.ToolCallID)
-	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, SendPromptParams{
-		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
-			ApprovalID:        approvalID,
-			ToolCallID:        req.ToolCallID,
-			ToolName:          req.ToolName,
+	started := approvalFlow.StartApprovalRequest(t.turnCtx, StartApprovalRequestParams[*pendingSDKApprovalData]{
+		Portal:             t.conv.portal,
+		OwnerMXID:          t.conv.login.UserMXID,
+		SendPrompt:         true,
+		Request:            req,
+		NewID:              func() string { return "sdk-" + uuid.NewString() },
+		DefaultTTL:         DefaultApprovalExpiry,
+		DefaultAllowAlways: true,
+		PromptContext: ApprovalPromptContext{
 			TurnID:            t.turnID,
-			Presentation:      presentation,
 			ReplyToEventID:    t.InitialEventID(),
 			ThreadRootEventID: t.ThreadRoot(),
-			ExpiresAt:         time.Now().Add(ttl),
 		},
-		RoomID:    t.conv.portal.MXID,
-		OwnerMXID: t.conv.login.UserMXID,
+		EmitRequest: func(ctx context.Context, approvalID, toolCallID string) {
+			t.Approvals().EmitRequest(ctx, approvalID, toolCallID)
+		},
+		Data: &pendingSDKApprovalData{
+			RoomID:     t.conv.portal.MXID,
+			TurnID:     t.turnID,
+			ToolCallID: req.ToolCallID,
+			ToolName:   req.ToolName,
+		},
 	})
-	return &sdkApprovalHandle{approvalID: approvalID, toolCallID: req.ToolCallID, turn: t}
+	return &sdkApprovalHandle{approvalID: started.ApprovalID, toolCallID: req.ToolCallID, turn: t}
 }
 
 // SetReplyTo sets the m.in_reply_to relation for this turn's message.

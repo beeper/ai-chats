@@ -513,27 +513,20 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("agent '%s' not found: %w", room.AgentID, err)
 	}
 
-	// Create the portal via createAgentChatWithModel
-	resp, err := b.client.createAgentChatWithModel(ctx, agent, "", false)
+	resp, err := b.client.createChat(ctx, chatCreateParams{Agent: agent})
 	if err != nil {
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
 
-	portal, err := b.client.resolveCreatedChatPortal(ctx, resp)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve room portal: %w", err)
-	}
-	if room.Name != "" {
+	portal, err := b.client.prepareCreatedChatPortal(ctx, resp, "room creation", func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
+		if room.Name == "" {
+			return
+		}
 		b.client.applyPortalRoomName(ctx, portal, room.Name)
-		if resp.PortalInfo != nil {
-			resp.PortalInfo.Name = &room.Name
+		if chatInfo != nil {
+			chatInfo.Name = &room.Name
 		}
-		if err := b.client.savePortal(ctx, portal, "room creation"); err != nil {
-			return "", err
-		}
-	}
-
-	portal, err = b.client.materializeCreatedChatPortal(ctx, resp, portalRoomMaterializeOptions{
+	}, portalRoomMaterializeOptions{
 		CleanupOnCreateError: "failed to create Matrix room",
 	})
 	if err != nil {

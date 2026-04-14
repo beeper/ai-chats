@@ -34,7 +34,6 @@ type codexApprovalContext struct {
 	turnID            string
 	replyToEventID    id.EventID
 	threadRootEventID id.EventID
-	expiresAt         time.Time
 	emitVia           *sdk.Turn
 }
 
@@ -56,30 +55,29 @@ func (h *codexSDKApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalResp
 	if h == nil || h.client == nil {
 		return sdk.ToolApprovalResponse{}, nil
 	}
-	decision, ok := h.client.waitToolApproval(ctx, h.approvalID)
-	reason := strings.TrimSpace(decision.Reason)
-	if reason == "" {
-		reason = sdk.ApprovalWaitReason(ctx)
-	}
-	approved := ok && decision.Approved
-	if h.turn != nil {
-		h.turn.Approvals().Respond(h.turn.Context(), h.approvalID, h.toolCallID, approved, reason)
-		if !approved {
-			h.turn.Writer().Tools().Denied(h.turn.Context(), h.toolCallID)
+	return sdk.WaitToolApprovalHandle(ctx, sdk.WaitToolApprovalHandleParams{
+		Turn:             h.turn,
+		ApprovalID:       h.approvalID,
+		ToolCallID:       h.toolCallID,
+		DenyToolOnReject: true,
+	}, func(ctx context.Context) (sdk.ToolApprovalResponse, error) {
+		decision, ok := h.client.waitToolApproval(ctx, h.approvalID)
+		reason := strings.TrimSpace(decision.Reason)
+		if reason == "" {
+			reason = sdk.ApprovalWaitReason(ctx)
 		}
-	}
-	return sdk.ToolApprovalResponse{
-		Approved: approved,
-		Always:   decision.Always,
-		Reason:   reason,
-	}, nil
+		return sdk.ToolApprovalResponse{
+			Approved: ok && decision.Approved,
+			Always:   decision.Always,
+			Reason:   reason,
+		}, nil
+	})
 }
 
 func resolveCodexApprovalContext(
 	ctx context.Context,
 	state *streamingState,
 	turn *sdk.Turn,
-	ttl time.Duration,
 ) *codexApprovalContext {
 	if turn != nil {
 		return &codexApprovalContext{
@@ -87,7 +85,6 @@ func resolveCodexApprovalContext(
 			turnID:            turn.ID(),
 			replyToEventID:    turn.InitialEventID(),
 			threadRootEventID: turn.ThreadRoot(),
-			expiresAt:         time.Now().Add(ttl),
 			emitVia:           turn,
 		}
 	}
@@ -98,44 +95,8 @@ func resolveCodexApprovalContext(
 		ctx:            ctx,
 		turnID:         state.currentTurnID(),
 		replyToEventID: state.currentReplyTargetEventID(),
-		expiresAt:      sdk.ComputeApprovalExpiry(int(ttl / time.Second)),
 		emitVia:        state.turn,
 	}
-}
-
-func (cc *CodexClient) sendSDKApprovalPrompt(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	turn *sdk.Turn,
-	approvalID string,
-	ttl time.Duration,
-	presentation sdk.ApprovalPromptPresentation,
-	toolCallID string,
-	toolName string,
-) {
-	if cc == nil || cc.approvalFlow == nil || cc.UserLogin == nil || portal == nil {
-		return
-	}
-	approvalCtx := resolveCodexApprovalContext(ctx, state, turn, ttl)
-	if approvalCtx == nil {
-		return
-	}
-	params := sdk.ApprovalPromptMessageParams{
-		ApprovalID:        approvalID,
-		ToolCallID:        toolCallID,
-		ToolName:          toolName,
-		Presentation:      presentation,
-		TurnID:            approvalCtx.turnID,
-		ReplyToEventID:    approvalCtx.replyToEventID,
-		ThreadRootEventID: approvalCtx.threadRootEventID,
-		ExpiresAt:         approvalCtx.expiresAt,
-	}
-	cc.approvalFlow.SendPrompt(approvalCtx.ctx, portal, sdk.SendPromptParams{
-		ApprovalPromptMessageParams: params,
-		RoomID:                      portal.MXID,
-		OwnerMXID:                   cc.UserLogin.UserMXID,
-	})
 }
 
 func (cc *CodexClient) requestSDKApproval(
@@ -148,15 +109,47 @@ func (cc *CodexClient) requestSDKApproval(
 	if cc == nil || portal == nil {
 		return &codexSDKApprovalHandle{toolCallID: req.ToolCallID}
 	}
-	approvalID, ttl, presentation := sdk.ResolveApprovalRequest(req, func() string {
-		return fmt.Sprintf("codex-%d", time.Now().UnixNano())
-	}, sdk.DefaultApprovalExpiry, false)
-	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
-	cc.registerToolApproval(portal.MXID, approvalID, req.ToolCallID, req.ToolName, presentation, ttl)
-	if approvalCtx := resolveCodexApprovalContext(ctx, state, turn, ttl); approvalCtx != nil && approvalCtx.emitVia != nil {
-		approvalCtx.emitVia.Approvals().EmitRequest(approvalCtx.ctx, approvalID, req.ToolCallID)
+	approvalCtx := resolveCodexApprovalContext(ctx, state, turn)
+	var promptCtx sdk.ApprovalPromptContext
+	if approvalCtx != nil {
+		promptCtx = sdk.ApprovalPromptContext{
+			TurnID:            approvalCtx.turnID,
+			ReplyToEventID:    approvalCtx.replyToEventID,
+			ThreadRootEventID: approvalCtx.threadRootEventID,
+		}
 	}
-	cc.sendSDKApprovalPrompt(ctx, portal, state, turn, approvalID, ttl, presentation, req.ToolCallID, req.ToolName)
+	started := cc.approvalFlow.StartApprovalRequest(ctx, sdk.StartApprovalRequestParams[*pendingToolApprovalDataCodex]{
+		Portal:             portal,
+		OwnerMXID:          cc.UserLogin.UserMXID,
+		SendPrompt:         true,
+		Request:            req,
+		NewID:              func() string { return fmt.Sprintf("codex-%d", time.Now().UnixNano()) },
+		DefaultTTL:         sdk.DefaultApprovalExpiry,
+		DefaultAllowAlways: false,
+		PromptContext:      promptCtx,
+		EmitRequest: func(ctx context.Context, approvalID, toolCallID string) {
+			if approvalCtx != nil && approvalCtx.emitVia != nil {
+				approvalCtx.emitVia.Approvals().EmitRequest(ctx, approvalID, toolCallID)
+			}
+		},
+		Data: &pendingToolApprovalDataCodex{
+			ApprovalID:   strings.TrimSpace(req.ApprovalID),
+			RoomID:       portal.MXID,
+			ToolCallID:   strings.TrimSpace(req.ToolCallID),
+			ToolName:     strings.TrimSpace(req.ToolName),
+			Presentation: sdk.ApprovalPromptPresentation{},
+		},
+	})
+	approvalID := started.ApprovalID
+	presentation := started.Presentation
+	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
+	if started.Pending != nil && started.Pending.Data != nil {
+		started.Pending.Data.ApprovalID = approvalID
+		started.Pending.Data.RoomID = portal.MXID
+		started.Pending.Data.ToolCallID = strings.TrimSpace(req.ToolCallID)
+		started.Pending.Data.ToolName = strings.TrimSpace(req.ToolName)
+		started.Pending.Data.Presentation = presentation
+	}
 	return &codexSDKApprovalHandle{
 		client:     cc,
 		turn:       turn,
@@ -183,15 +176,13 @@ func (cc *CodexClient) registerToolApproval(
 
 func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (sdk.ApprovalDecisionPayload, bool) {
 	approvalID = strings.TrimSpace(approvalID)
-	decision, ok := cc.approvalFlow.Wait(ctx, approvalID)
-	if !ok {
-		decision = sdk.ApprovalDecisionPayload{
-			ApprovalID: approvalID,
-			Reason:     sdk.ApprovalWaitReason(ctx),
-		}
-		cc.approvalFlow.FinishResolved(approvalID, decision)
-		return decision, false
-	}
-	cc.approvalFlow.FinishResolved(approvalID, decision)
-	return decision, true
+	decision, _, ok := cc.approvalFlow.WaitAndFinalizeApproval(ctx, approvalID, sdk.WaitApprovalParams[*pendingToolApprovalDataCodex]{
+		BuildNoDecision: func(reason string, _ *pendingToolApprovalDataCodex) *sdk.ApprovalDecisionPayload {
+			return &sdk.ApprovalDecisionPayload{
+				ApprovalID: approvalID,
+				Reason:     reason,
+			}
+		},
+	})
+	return decision, ok
 }
