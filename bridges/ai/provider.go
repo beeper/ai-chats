@@ -1,22 +1,5 @@
 package ai
 
-import "context"
-
-// AIProvider defines a common interface for OpenAI-compatible AI providers
-type AIProvider interface {
-	// Name returns the provider name (e.g., "openai", "openrouter")
-	Name() string
-
-	// GenerateStream generates a streaming response
-	GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error)
-
-	// Generate generates a non-streaming response
-	Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error)
-
-	// ListModels returns available models for this provider
-	ListModels(ctx context.Context) ([]ModelInfo, error)
-}
-
 // GenerateParams contains parameters for generation requests
 type GenerateParams struct {
 	Model               string

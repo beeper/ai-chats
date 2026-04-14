@@ -31,7 +31,7 @@ type LoadUserLoginConfig[C bridgev2.NetworkAPI] struct {
 	AfterLoad func(client C)
 }
 
-// LoadUserLogin loads or creates a typed client using LoadOrCreateTypedClient.
+// LoadUserLogin loads or creates a typed client using the shared client cache.
 // On failure it installs a BrokenLoginClient and returns nil so the bridge can
 // keep the login visible while marking it unusable.
 func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUserLoginConfig[C]) error {
@@ -56,11 +56,39 @@ func LoadUserLogin[C bridgev2.NetworkAPI](login *bridgev2.UserLogin, cfg LoadUse
 		clients = *cfg.ClientsRef
 	}
 
-	client, err := LoadOrCreateTypedClient(
-		cfg.Mu, clients, login, cfg.Update,
-		func() (C, error) { return cfg.Create(login) },
+	if login == nil {
+		return fmt.Errorf("login is nil")
+	}
+	clientAPI, err := LoadOrCreateClient(
+		cfg.Mu,
+		clients,
+		login.ID,
+		func(existingAPI bridgev2.NetworkAPI) bool {
+			existing, ok := existingAPI.(C)
+			if !ok {
+				return false
+			}
+			if cfg.Update != nil {
+				cfg.Update(existing, login)
+			}
+			login.Client = existing
+			return true
+		},
+		func() (bridgev2.NetworkAPI, error) {
+			client, err := cfg.Create(login)
+			if err != nil {
+				return nil, err
+			}
+			login.Client = client
+			return client, nil
+		},
 	)
 	if err != nil {
+		login.Client = makeBroken(login, fmt.Sprintf("Couldn't initialize %s for this login.", cfg.BridgeName))
+		return nil
+	}
+	client, ok := clientAPI.(C)
+	if !ok {
 		login.Client = makeBroken(login, fmt.Sprintf("Couldn't initialize %s for this login.", cfg.BridgeName))
 		return nil
 	}

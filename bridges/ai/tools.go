@@ -1124,8 +1124,8 @@ func executeTTS(ctx context.Context, args map[string]any) (string, error) {
 
 		// Preflight: if we're not on macOS and the OpenAI TTS endpoint isn't supported, fail fast.
 		supportsOpenAITTS := false
-		if provider, ok := btc.Client.provider.(*OpenAIProvider); ok {
-			_, supportsOpenAITTS = resolveOpenAITTSBaseURL(btc, provider.baseURL)
+		if btc.Client.provider != nil {
+			_, supportsOpenAITTS = resolveOpenAITTSBaseURL(btc, btc.Client.provider.baseURL)
 		}
 		if !supportsOpenAITTS && !isTTSMacOSAvailable() {
 			return "", errors.New("TTS not available: requires Beeper/OpenAI provider or macOS")
@@ -1183,8 +1183,8 @@ func generateTTSBase64(
 ) (string, error) {
 	// Try provider-based TTS first (Beeper/OpenAI).
 	if btc != nil && btc.Client != nil {
-		if provider, ok := btc.Client.provider.(*OpenAIProvider); ok {
-			ttsBaseURL, supportsOpenAITTS := resolveOpenAITTSBaseURL(btc, provider.baseURL)
+		if btc.Client.provider != nil {
+			ttsBaseURL, supportsOpenAITTS := resolveOpenAITTSBaseURL(btc, btc.Client.provider.baseURL)
 			if supportsOpenAITTS {
 				// Pick voice/model for OpenAI TTS.
 				openAIVoice := strings.ToLower(strings.TrimSpace(voice))

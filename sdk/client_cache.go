@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"sync"
 
@@ -48,52 +47,6 @@ func LoadOrCreateClient(
 	}
 	clients[loginID] = client
 	return client, nil
-}
-
-// LoadOrCreateTypedClient wraps LoadOrCreateClient with typed reuse/create callbacks.
-func LoadOrCreateTypedClient[T bridgev2.NetworkAPI](
-	mu *sync.Mutex,
-	clients map[networkid.UserLoginID]bridgev2.NetworkAPI,
-	login *bridgev2.UserLogin,
-	reuse func(T, *bridgev2.UserLogin),
-	create func() (T, error),
-) (T, error) {
-	var zero T
-	if login == nil {
-		return zero, fmt.Errorf("login is nil")
-	}
-	client, err := LoadOrCreateClient(
-		mu,
-		clients,
-		login.ID,
-		func(existingAPI bridgev2.NetworkAPI) bool {
-			existing, ok := existingAPI.(T)
-			if !ok {
-				return false
-			}
-			if reuse != nil {
-				reuse(existing, login)
-			}
-			login.Client = existing
-			return true
-		},
-		func() (bridgev2.NetworkAPI, error) {
-			client, err := create()
-			if err != nil {
-				return nil, err
-			}
-			login.Client = client
-			return client, nil
-		},
-	)
-	if err != nil {
-		return zero, err
-	}
-	typed, ok := client.(T)
-	if !ok {
-		return zero, fmt.Errorf("unexpected client type %T", client)
-	}
-	return typed, nil
 }
 
 // RemoveClientFromCache removes a client from the cache by login ID.

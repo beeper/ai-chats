@@ -14,7 +14,7 @@ import (
 func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionStoreAgentID(agentID)
+	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	portal := &bridgev2.Portal{
@@ -43,7 +43,7 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionStoreAgentID(agentID)
+	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 3_000); err != nil {
@@ -65,7 +65,7 @@ func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionStoreAgentID(agentID)
+	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
@@ -84,7 +84,7 @@ func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T)
 func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionStoreAgentID(agentID)
+	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
 
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
@@ -126,7 +126,7 @@ func TestLastRouteUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
 	if channel != "matrix" || target != "!chat:example.com" {
 		t.Fatalf("expected global last route lookup to return room session, got channel=%q target=%q", channel, target)
 	}
-	if got := client.resolveSessionStoreAgentID(agentID); got != sessionScopeGlobal {
+	if got := client.resolveSessionRouting(agentID).StoreAgentID; got != sessionScopeGlobal {
 		t.Fatalf("expected global session store owner %q, got %q", sessionScopeGlobal, got)
 	}
 }

@@ -231,7 +231,7 @@ func (oc *AIClient) getSessionUpdatedAt(ctx context.Context, agentID, sessionKey
 	if oc == nil || sessionKey == "" {
 		return 0
 	}
-	storeAgentID := oc.resolveSessionStoreAgentID(agentID)
+	storeAgentID := oc.resolveSessionRouting(agentID).StoreAgentID
 	if updatedAt, ok := oc.loadSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok {
 		return updatedAt
 	}

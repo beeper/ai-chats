@@ -110,7 +110,3 @@ func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID str
 		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
 	}
 }
-
-func (oc *AIClient) resolveSessionStoreAgentID(agentID string) string {
-	return oc.resolveSessionRouting(agentID).StoreAgentID
-}

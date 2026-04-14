@@ -268,8 +268,7 @@ type AIClient struct {
 	apiKey    string
 	log       zerolog.Logger
 
-	// Provider abstraction layer - all providers use OpenAI SDK
-	provider AIProvider
+	provider *OpenAIProvider
 
 	chatLock      sync.Mutex
 	bootstrapOnce sync.Once // Ensures bootstrap only runs once per client instance

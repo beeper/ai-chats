@@ -101,17 +101,13 @@ func (oc *AIClient) isTTSConfigured() (bool, string) {
 	if oc == nil || oc.provider == nil {
 		return false, "TTS not available"
 	}
-	provider, ok := oc.provider.(*OpenAIProvider)
-	if !ok {
-		return false, "TTS not available: requires OpenAI/Beeper provider or macOS"
-	}
 	// apiKey is the credential used by callOpenAITTS.
 	if strings.TrimSpace(oc.apiKey) == "" {
 		return false, "TTS not configured: missing API key"
 	}
 	// Use the same base URL capability heuristic as execution.
 	btc := &BridgeToolContext{Client: oc}
-	_, supports := resolveOpenAITTSBaseURL(btc, provider.baseURL)
+	_, supports := resolveOpenAITTSBaseURL(btc, oc.provider.baseURL)
 	if !supports {
 		return false, "TTS not available for this provider"
 	}
