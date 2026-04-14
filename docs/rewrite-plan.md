@@ -257,6 +257,8 @@ Deliverable:
 - one session timestamp owner
 - one session lookup path for heartbeat, status, and tools
 - no re-derived store-agent identity at consumers
+- high-level readers call session lookups by `agentID`; raw store IDs stay
+  internal to the session subsystem
 
 Why third:
 

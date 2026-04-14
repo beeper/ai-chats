@@ -100,7 +100,7 @@ func (oc *AIClient) restoreHeartbeatUpdatedAt(storeAgentID string, sessionKey st
 	if sessionKey == "" {
 		return
 	}
-	currentUpdatedAt, ok := oc.loadSessionUpdatedAt(context.Background(), storeAgentID, sessionKey)
+	currentUpdatedAt, ok := oc.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, sessionKey)
 	if !ok {
 		return
 	}

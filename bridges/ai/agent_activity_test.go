@@ -28,14 +28,14 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	updatedAt, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String())
+	updatedAt, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String())
 	if !ok {
 		t.Fatalf("expected room session entry to be written")
 	}
 	if updatedAt <= 0 {
 		t.Fatalf("expected room session entry to have an updated timestamp")
 	}
-	if _, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, mainKey); ok {
+	if _, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey); ok {
 		t.Fatalf("expected main session row not to be created for route mirroring")
 	}
 }
@@ -98,7 +98,7 @@ func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	if _, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String()); ok {
+	if _, ok := client.loadStoredSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String()); ok {
 		t.Fatalf("expected internal rooms not to write route state")
 	}
 }

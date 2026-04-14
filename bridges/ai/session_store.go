@@ -88,7 +88,7 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
 	routing := oc.resolveSessionRouting(agentID)
 	lookup := func(key string) (int64, bool) {
-		return oc.loadSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
+		return oc.loadStoredSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
 	}
 	if routing.Scope == sessionScopeGlobal {
 		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: routing.MainKey}
@@ -139,7 +139,11 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 	return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
 }
 
-func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
+func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, agentID string, sessionKey string) (int64, bool) {
+	return oc.loadStoredSessionUpdatedAt(ctx, oc.resolveSessionRouting(agentID).StoreAgentID, sessionKey)
+}
+
+func (oc *AIClient) loadStoredSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return 0, false
 	}
@@ -210,7 +214,7 @@ func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID str
 	defer lock.Unlock()
 
 	updatedAt := time.Now().UnixMilli()
-	if existingUpdatedAt, ok := oc.loadSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
+	if existingUpdatedAt, ok := oc.loadStoredSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
 		updatedAt = existingUpdatedAt
 	}
 	if minUpdatedAt > updatedAt {

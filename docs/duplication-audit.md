@@ -190,8 +190,11 @@ Files:
 
 Why this still violates the goal:
 
+- status/session readers now enter through `session_store.go`; the remaining
+  fragmentation is in write-side ownership, heartbeat selection, and route
+  resolution
 - canonical key rules, store routing, heartbeat selection, timestamp touching,
-  and UI/session lookup still live in separate places
+  still live in separate places
 - there is not one obvious entrypoint for “resolve the session”
 
 Desired owner:
