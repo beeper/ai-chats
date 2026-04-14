@@ -469,30 +469,6 @@ func (oc *AIClient) requestTurnApproval(
 	return handle
 }
 
-func (oc *AIClient) registerToolApproval(params ToolApprovalParams) (*sdk.Pending[*pendingToolApprovalData], bool) {
-	if oc == nil || oc.approvalFlow == nil {
-		return nil, false
-	}
-	data := &pendingToolApprovalData{
-		ApprovalID:   strings.TrimSpace(params.ApprovalID),
-		RoomID:       params.RoomID,
-		TurnID:       params.TurnID,
-		ToolCallID:   strings.TrimSpace(params.ToolCallID),
-		ToolName:     strings.TrimSpace(params.ToolName),
-		ToolKind:     params.ToolKind,
-		RuleToolName: strings.TrimSpace(params.RuleToolName),
-		ServerLabel:  strings.TrimSpace(params.ServerLabel),
-		Action:       strings.TrimSpace(params.Action),
-		Presentation: params.Presentation,
-		RequestedAt:  time.Now(),
-	}
-	p, created := oc.approvalFlow.Register(params.ApprovalID, params.TTL, data)
-	if created {
-		oc.log.Debug().Str("approval_id", params.ApprovalID).Str("tool", params.ToolName).Dur("ttl", params.TTL).Msg("tool approval registered")
-	}
-	return p, created
-}
-
 func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason string) error {
 	if oc == nil || oc.approvalFlow == nil {
 		return fmt.Errorf("approval flow unavailable")

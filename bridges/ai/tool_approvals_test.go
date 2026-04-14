@@ -33,6 +33,27 @@ func newTestAIClient(owner id.UserID) *AIClient {
 	return oc
 }
 
+func testRegisterToolApproval(t *testing.T, oc *AIClient, params ToolApprovalParams) (*sdk.Pending[*pendingToolApprovalData], bool) {
+	t.Helper()
+	if oc == nil || oc.approvalFlow == nil {
+		return nil, false
+	}
+	data := &pendingToolApprovalData{
+		ApprovalID:   params.ApprovalID,
+		RoomID:       params.RoomID,
+		TurnID:       params.TurnID,
+		ToolCallID:   params.ToolCallID,
+		ToolName:     params.ToolName,
+		ToolKind:     params.ToolKind,
+		RuleToolName: params.RuleToolName,
+		ServerLabel:  params.ServerLabel,
+		Action:       params.Action,
+		Presentation: params.Presentation,
+		RequestedAt:  time.Now(),
+	}
+	return oc.approvalFlow.Register(params.ApprovalID, params.TTL, data)
+}
+
 func TestToolApprovals_Resolve(t *testing.T) {
 	owner := id.UserID("@owner:example.com")
 	roomID := id.RoomID("!room:example.com")
@@ -40,7 +61,7 @@ func TestToolApprovals_Resolve(t *testing.T) {
 	oc := newTestAIClient(owner)
 
 	approvalID := "approval-1"
-	oc.registerToolApproval(ToolApprovalParams{
+	testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -74,7 +95,7 @@ func TestToolApprovals_RejectNonOwner(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(ToolApprovalParams{
+	testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -104,7 +125,7 @@ func TestToolApprovals_RejectCrossRoom(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(ToolApprovalParams{
+	testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -133,7 +154,7 @@ func TestToolApprovals_TimeoutAutoDeny(t *testing.T) {
 
 	oc := newTestAIClient(owner)
 	approvalID := "approval-1"
-	oc.registerToolApproval(ToolApprovalParams{
+	testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID:   approvalID,
 		RoomID:       roomID,
 		TurnID:       "turn-1",
@@ -155,7 +176,7 @@ func TestToolApprovals_TimeoutAutoDeny(t *testing.T) {
 func TestToolApprovals_WaitResolvedWithoutUserLogin(t *testing.T) {
 	oc := newTestAIClient(id.UserID("@owner:example.com"))
 	approvalID := "approval-without-login"
-	if _, created := oc.registerToolApproval(ToolApprovalParams{
+	if _, created := testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID: approvalID,
 		ToolCallID: "call-1",
 		ToolName:   "message",
@@ -183,7 +204,7 @@ func TestToolApprovals_WaitResolvedWithoutUserLogin(t *testing.T) {
 func TestToolApprovals_CancelDoesNotFinishResolved(t *testing.T) {
 	oc := newTestAIClient(id.UserID("@owner:example.com"))
 	approvalID := "approval-cancelled"
-	if _, created := oc.registerToolApproval(ToolApprovalParams{
+	if _, created := testRegisterToolApproval(t, oc, ToolApprovalParams{
 		ApprovalID: approvalID,
 		ToolCallID: "call-1",
 		ToolName:   "message",
