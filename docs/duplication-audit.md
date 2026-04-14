@@ -95,6 +95,14 @@ Recent cleanup kept pushing in that direction:
 
 - SDK provider identity normalization now uses the single normalization
   primitive directly instead of another config wrapper
+- SDK client session access no longer routes through `getSession()` /
+  `setSession()`: the handful of real callers now read/write `sessionMu`
+  directly, and `Turn.Writer()` no longer bounces through a one-callsite
+  `turnPortal(...)` accessor
+- Queue rejection and run launch no longer bounce through local wrappers:
+  `sendQueueRejectedStatus(...)` and `dispatchCompletionInternal(...)` are
+  gone, so queue-stop / queue-overflow rejection and queued / heartbeat run
+  launch now happen directly at the real callsites
 
 ## Highest-Value Remaining Problems
 

@@ -19,20 +19,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
-func (oc *AIClient) dispatchCompletionInternal(
-	ctx context.Context,
-	sourceEvent *event.Event,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	promptContext PromptContext,
-) {
-	runCtx, cancel := oc.withAgentLoopInactivityTimeout(ctx)
-	defer cancel()
-
-	// Always use streaming responses
-	oc.runAgentLoopWithRetry(runCtx, sourceEvent, portal, meta, promptContext)
-}
-
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
 	if bridgeState, shouldMarkLoggedOut, ok := bridgeStateForError(err); ok {
 		if shouldMarkLoggedOut {

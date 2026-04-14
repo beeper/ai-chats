@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -94,26 +93,6 @@ func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Eve
 	return events
 }
 
-func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, extras []*event.Event, reason string) {
-	if portal == nil || portal.Bridge == nil {
-		return
-	}
-	message := strings.TrimSpace(reason)
-	if message == "" {
-		message = "Couldn't queue the message. Try again."
-	}
-	err := fmt.Errorf("%s", message)
-	msgStatus := bridgev2.WrapErrorInStatus(err).
-		WithStatus(event.MessageStatusRetriable).
-		WithErrorReason(event.MessageStatusGenericError).
-		WithMessage(message).
-		WithIsCertain(true).
-		WithSendNotice(false)
-	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
-	}
-}
-
 func (oc *AIClient) dispatchPromptRun(
 	ctx context.Context,
 	roomID id.RoomID,
@@ -152,7 +131,9 @@ func (oc *AIClient) dispatchPromptRun(
 			oc.releaseRoom(roomID)
 			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
 		}()
-		oc.dispatchCompletionInternal(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
+		completionCtx, cancel := oc.withAgentLoopInactivityTimeout(runCtx)
+		defer cancel()
+		oc.runAgentLoopWithRetry(completionCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
 	}(metaSnapshot)
 }
 
@@ -237,7 +218,19 @@ func (oc *AIClient) dispatchOrQueueCore(
 	}
 	enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
 	if !enqueued {
-		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
+		if portal != nil && portal.Bridge != nil {
+			message := "Couldn't queue the message. Try again."
+			err := fmt.Errorf("%s", message)
+			msgStatus := bridgev2.WrapErrorInStatus(err).
+				WithStatus(event.MessageStatusRetriable).
+				WithErrorReason(event.MessageStatusGenericError).
+				WithMessage(message).
+				WithIsCertain(true).
+				WithSendNotice(false)
+			for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
+				bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
+			}
+		}
 		return false
 	}
 	for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {

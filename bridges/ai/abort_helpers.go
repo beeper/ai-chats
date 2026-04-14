@@ -8,7 +8,10 @@ import (
 	"unicode/utf8"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 type stopPlanKind string
@@ -138,7 +141,20 @@ func (oc *AIClient) resolveUserStopPlan(req userStopRequest) userStopPlan {
 func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendingQueueItem) int {
 	for _, item := range items {
 		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-		oc.sendQueueRejectedStatus(ctx, item.pending.Portal, item.pending.Event, item.pending.StatusEvents, "Stopped.")
+		if item.pending.Portal == nil || item.pending.Portal.Bridge == nil {
+			continue
+		}
+		message := "Stopped."
+		err := fmt.Errorf("%s", message)
+		msgStatus := bridgev2.WrapErrorInStatus(err).
+			WithStatus(event.MessageStatusRetriable).
+			WithErrorReason(event.MessageStatusGenericError).
+			WithMessage(message).
+			WithIsCertain(true).
+			WithSendNotice(false)
+		for _, statusEvt := range queueStatusEvents(item.pending.Event, item.pending.StatusEvents) {
+			bridgeutil.SendMessageStatus(ctx, item.pending.Portal, statusEvt, msgStatus)
+		}
 	}
 	return len(items)
 }

@@ -77,18 +77,6 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetApprovalHandler() ApprovalReaction
 	return c.approvalFlow
 }
 
-func (c *sdkClient[SessionT, ConfigDataT]) getSession() SessionT {
-	c.sessionMu.RLock()
-	defer c.sessionMu.RUnlock()
-	return c.session
-}
-
-func (c *sdkClient[SessionT, ConfigDataT]) setSession(s SessionT) {
-	c.sessionMu.Lock()
-	c.session = s
-	c.sessionMu.Unlock()
-}
-
 // Connect implements bridgev2.NetworkAPI.
 func (c *sdkClient[SessionT, ConfigDataT]) Connect(ctx context.Context) {
 	if c.cfg != nil && c.cfg.OnConnect != nil {
@@ -104,7 +92,9 @@ func (c *sdkClient[SessionT, ConfigDataT]) Connect(ctx context.Context) {
 			})
 			return
 		}
-		c.setSession(session)
+		c.sessionMu.Lock()
+		c.session = session
+		c.sessionMu.Unlock()
 	}
 	c.SetLoggedIn(true)
 	c.userLogin.BridgeState.Send(status.BridgeState{StateEvent: status.StateConnected})
@@ -117,10 +107,15 @@ func (c *sdkClient[SessionT, ConfigDataT]) Disconnect() {
 	}
 	c.CloseAllSessions()
 	if c.cfg != nil && c.cfg.OnDisconnect != nil {
-		c.cfg.OnDisconnect(c.getSession())
+		c.sessionMu.RLock()
+		session := c.session
+		c.sessionMu.RUnlock()
+		c.cfg.OnDisconnect(session)
 	}
 	var zero SessionT
-	c.setSession(zero)
+	c.sessionMu.Lock()
+	c.session = zero
+	c.sessionMu.Unlock()
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) LogoutRemote(ctx context.Context) {
@@ -136,7 +131,10 @@ func (c *sdkClient[SessionT, ConfigDataT]) IsThisUser(_ context.Context, userID 
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	if c.cfg != nil && c.cfg.GetChatInfo != nil {
-		return c.cfg.GetChatInfo(NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+		c.sessionMu.RLock()
+		session := c.session
+		c.sessionMu.RUnlock()
+		return c.cfg.GetChatInfo(NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, session, NewConversationOptions{
 			ApprovalFlow: c.approvalFlow,
 			StateStore:   c.conversationState,
 		}))
@@ -152,7 +150,10 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetUserInfo(_ context.Context, ghost 
 }
 
 func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	conv := NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+	c.sessionMu.RLock()
+	session := c.session
+	c.sessionMu.RUnlock()
+	conv := NewConversation(ctx, c.userLogin, portal, bridgev2.EventSender{}, c.cfg, session, NewConversationOptions{
 		ApprovalFlow: c.approvalFlow,
 		StateStore:   c.conversationState,
 	})
@@ -238,11 +239,13 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 			sdkMsg.ReplyTo = content.RelatesTo.InReplyTo.EventID.String()
 		}
 	}
-	conv := NewConversation(runCtx, c.userLogin, msg.Portal, bridgev2.EventSender{}, c.cfg, c.getSession(), NewConversationOptions{
+	c.sessionMu.RLock()
+	session := c.session
+	c.sessionMu.RUnlock()
+	conv := NewConversation(runCtx, c.userLogin, msg.Portal, bridgev2.EventSender{}, c.cfg, session, NewConversationOptions{
 		ApprovalFlow: c.approvalFlow,
 		StateStore:   c.conversationState,
 	})
-	session := c.getSession()
 	var source *SourceRef
 	if msg.Event != nil {
 		source = UserMessageSource(msg.Event.ID.String())

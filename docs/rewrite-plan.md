@@ -258,6 +258,13 @@ Recent progress also removed the generic `effectiveToolConfig[T]` wrapper:
 `effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now read their
 tool config, login-derived overrides, and env/default merge directly.
 
+Recent progress also deleted another batch of historical wrappers:
+`sdk/client.go` no longer hides plain session state behind `getSession()` /
+`setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,
+and `bridges/ai` no longer launches queued/heartbeat runs or queue rejection
+statuses through `dispatchCompletionInternal(...)` /
+`sendQueueRejectedStatus(...)`.
+
 Recent progress also removed the one-callsite
 `resolveOpenRouterMediaConfig(...)` wrapper: `generateWithOpenRouter(...)` now
 owns its auth/header/base-URL/pdf-engine shaping directly, and tests assert
