@@ -176,23 +176,6 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 	}
 }
 
-func (oc *AIClient) sendPendingStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, message string) {
-	status := bridgev2.MessageStatus{
-		Status:    event.MessageStatusPending,
-		Message:   message,
-		IsCertain: true,
-	}
-	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
-}
-
-func (oc *AIClient) sendSuccessStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event) {
-	status := bridgev2.MessageStatus{
-		Status:    event.MessageStatusSuccess,
-		IsCertain: true,
-	}
-	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
-}
-
 const autoGreetingDelay = 5 * time.Second
 
 func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Portal) bool {

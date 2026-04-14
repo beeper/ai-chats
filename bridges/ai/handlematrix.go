@@ -15,6 +15,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -92,7 +93,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
 			oc.inboundDebouncer.flush(debounceKey)
 		}
-		oc.sendPendingStatus(ctx, portal, msg.Event, "Processing...")
+		bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
+			Status:    event.MessageStatusPending,
+			Message:   "Processing...",
+			IsCertain: true,
+		})
 		pendingSent := true
 		return oc.handleMediaMessage(ctx, msg, portal, meta, msgType, pendingSent)
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
@@ -252,7 +257,11 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 		// Let the client know the message is pending due to debounce.
 		if debounceDelay >= 0 && !pendingSent {
-			oc.sendPendingStatus(ctx, portal, msg.Event, "Combining messages...")
+			bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
+				Status:    event.MessageStatusPending,
+				Message:   "Combining messages...",
+				IsCertain: true,
+			})
 			entry.PendingSent = true
 		}
 		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)

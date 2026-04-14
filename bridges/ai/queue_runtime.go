@@ -94,12 +94,6 @@ func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Eve
 	return events
 }
 
-func (oc *AIClient) sendQueueAcceptedSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, extras []*event.Event) {
-	for _, statusEvt := range queueStatusEvents(evt, extras) {
-		oc.sendSuccessStatus(ctx, portal, statusEvt)
-	}
-}
-
 func (oc *AIClient) sendQueueRejectedStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, extras []*event.Event, reason string) {
 	if portal == nil || portal.Bridge == nil {
 		return
@@ -152,7 +146,11 @@ func (oc *AIClient) dispatchOrQueueCore(
 			oc.saveUserMessage(ctx, evt, userMessage)
 		}
 		if evt != nil && !queueItem.pending.PendingSent {
-			oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+			bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+				Status:    event.MessageStatusPending,
+				Message:   "Processing...",
+				IsCertain: true,
+			})
 			queueItem.pending.PendingSent = true
 		}
 		runCtx := oc.backgroundContext(ctx)
@@ -192,7 +190,11 @@ func (oc *AIClient) dispatchOrQueueCore(
 			}
 			if !shouldFollowup {
 				if evt != nil && !queueItem.pending.PendingSent {
-					oc.sendPendingStatus(ctx, portal, evt, "Processing...")
+					bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+						Status:    event.MessageStatusPending,
+						Message:   "Processing...",
+						IsCertain: true,
+					})
 					queueItem.pending.PendingSent = true
 				}
 				if hasDBMessage {
@@ -211,7 +213,12 @@ func (oc *AIClient) dispatchOrQueueCore(
 		oc.sendQueueRejectedStatus(ctx, portal, evt, queueItem.pending.StatusEvents, "Couldn't queue the message. Try again.")
 		return false
 	}
-	oc.sendQueueAcceptedSuccess(ctx, portal, evt, queueItem.pending.StatusEvents)
+	for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
+		bridgeutil.SendMessageStatus(ctx, portal, statusEvt, bridgev2.MessageStatus{
+			Status:    event.MessageStatusSuccess,
+			IsCertain: true,
+		})
+	}
 	if hasDBMessage && !messageSaved {
 		oc.saveUserMessage(ctx, evt, userMessage)
 	}

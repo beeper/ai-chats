@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -264,7 +265,10 @@ func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2
 		if state.statusSentIDs[extra.ID] {
 			continue
 		}
-		oc.sendSuccessStatus(ctx, portal, extra)
+		bridgeutil.SendMessageStatus(ctx, portal, extra, bridgev2.MessageStatus{
+			Status:    event.MessageStatusSuccess,
+			IsCertain: true,
+		})
 		state.statusSentIDs[extra.ID] = true
 	}
 	if len(state.statusSentIDs) > 0 {
