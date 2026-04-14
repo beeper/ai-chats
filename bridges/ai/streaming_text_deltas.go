@@ -2,6 +2,9 @@ package ai
 
 import (
 	"context"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -55,7 +58,25 @@ func (oc *AIClient) processStreamingTextDelta(
 	errText string,
 	logMessage string,
 ) (string, error) {
-	delta = maybePrependTextSeparator(state, delta)
+	if state != nil && state.needsTextSeparator {
+		// Keep waiting until we see a non-whitespace delta; some providers stream whitespace separately.
+		if strings.TrimSpace(delta) != "" {
+			visible := ""
+			if state.turn != nil {
+				visible = state.turn.VisibleText()
+			}
+			if visible == "" {
+				state.needsTextSeparator = false
+			} else {
+				last, _ := utf8.DecodeLastRuneInString(visible)
+				first, _ := utf8.DecodeRuneInString(delta)
+				state.needsTextSeparator = false
+				if !unicode.IsSpace(last) && !unicode.IsSpace(first) {
+					delta = "\n" + delta
+				}
+			}
+		}
+	}
 	state.accumulated.WriteString(delta)
 
 	roundDelta := delta

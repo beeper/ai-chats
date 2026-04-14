@@ -415,32 +415,24 @@ func (oc *AIClient) resolveAgentChatTarget(ctx context.Context, agentID string) 
 	return &chatResolveTarget{agent: agent}, nil
 }
 
-func (oc *AIClient) resolveParsedChatGhostTarget(ctx context.Context, rawID string) (*chatResolveTarget, bool, error) {
-	modelID, agentID := parseChatGhostTarget(rawID)
-	if modelID == "" && agentID == "" {
-		return nil, false, nil
-	}
-	if agentID != "" {
-		target, err := oc.resolveAgentChatTarget(ctx, agentID)
-		return target, true, err
-	}
-	target, err := oc.resolveModelChatTarget(ctx, modelID)
-	if err != nil {
-		return nil, true, err
-	}
-	if target == nil {
-		return nil, true, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
-	}
-	return target, true, nil
-}
-
 func (oc *AIClient) resolveChatTargetFromIdentifier(ctx context.Context, identifier string) (*chatResolveTarget, error) {
 	id := normalizeChatIdentifier(identifier)
 	if id == "" {
 		return nil, bridgev2.WrapRespErr(errors.New("identifier is required"), mautrix.MInvalidParam)
 	}
-	if target, matched, err := oc.resolveParsedChatGhostTarget(ctx, id); matched || err != nil {
-		return target, err
+	modelID, agentID := parseChatGhostTarget(id)
+	if modelID != "" || agentID != "" {
+		if agentID != "" {
+			return oc.resolveAgentChatTarget(ctx, agentID)
+		}
+		target, err := oc.resolveModelChatTarget(ctx, modelID)
+		if err != nil {
+			return nil, err
+		}
+		if target == nil {
+			return nil, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
+		}
+		return target, nil
 	}
 	if catalogAgent, err := oc.sdkAgentCatalog().ResolveAgent(ctx, oc.UserLogin, id); err == nil && catalogAgent != nil {
 		agentID := catalogAgentID(catalogAgent)
@@ -467,8 +459,19 @@ func (oc *AIClient) resolveChatTargetFromGhost(ctx context.Context, ghost *bridg
 		return nil, bridgev2.WrapRespErr(errors.New("ghost is required"), mautrix.MInvalidParam)
 	}
 	ghostID := string(ghost.ID)
-	if target, matched, err := oc.resolveParsedChatGhostTarget(ctx, ghostID); matched || err != nil {
-		return target, err
+	modelID, agentID := parseChatGhostTarget(ghostID)
+	if modelID != "" || agentID != "" {
+		if agentID != "" {
+			return oc.resolveAgentChatTarget(ctx, agentID)
+		}
+		target, err := oc.resolveModelChatTarget(ctx, modelID)
+		if err != nil {
+			return nil, err
+		}
+		if target == nil {
+			return nil, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
+		}
+		return target, nil
 	}
 	return nil, bridgev2.WrapRespErr(fmt.Errorf("unsupported ghost ID: %s", ghostID), mautrix.MInvalidParam)
 }
