@@ -201,6 +201,10 @@ Recent progress also removed the cron forwarding chain from
 `runtimeIntegrationHost`: cron now wires directly to the scheduler, and the
 old builtin-module registry layer is gone.
 
+Recent progress also removed the SDK command-path runtime downcast: commands now
+build a plain `Conversation` snapshot instead of reaching through `login.Client`
+for SDK-private runtime state.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer

@@ -298,6 +298,8 @@ Why this still violates the goal:
 
 - the runtime surface is still split between `sdkClient`,
   stream host/state helpers, and client-cache/login helpers
+- commands no longer downcast `login.Client` to recover SDK-private runtime
+  state; the remaining SDK runtime debt is the actual builder/loading split
 - the SDK still reads like a local bridge framework rather than a thin runtime
   layer
 
