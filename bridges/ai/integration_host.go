@@ -134,24 +134,6 @@ func (h *runtimeIntegrationHost) RawLogger() zerolog.Logger {
 	return h.client.log
 }
 
-// ---- Host methods: portal management ----
-
-func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID string, receiver string, displayName string, setupMeta func(meta *PortalMetadata)) (portal *bridgev2.Portal, roomID string, err error) {
-	if h == nil || h.client == nil || h.client.UserLogin == nil {
-		return nil, "", fmt.Errorf("missing login")
-	}
-	portalKey := portalKeyFromParts(h.client, portalID, receiver)
-	p, err := h.client.ensureNamedPortalRoom(ctx, portalKey, displayName, func(_ *bridgev2.Portal, meta *PortalMetadata) {
-		if setupMeta != nil {
-			setupMeta(meta)
-		}
-	}, portalRoomMaterializeOptions{})
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
-	}
-	return p, p.MXID.String(), nil
-}
-
 func (h *runtimeIntegrationHost) SavePortal(ctx context.Context, portal *bridgev2.Portal, reason string) error {
 	if h == nil || h.client == nil {
 		return nil
@@ -248,79 +230,6 @@ func summarizeMessages(history []*database.Message) []integrationruntime.Message
 	return out
 }
 
-func (h *runtimeIntegrationHost) LastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {
-	if h == nil || h.client == nil {
-		return assistantTurnCheckpoint{}
-	}
-	return h.client.lastAssistantTurnCheckpoint(ctx, portal)
-}
-
-func (h *runtimeIntegrationHost) WaitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after assistantTurnCheckpoint) (*integrationruntime.AssistantMessageInfo, bool) {
-	if h == nil || h.client == nil {
-		return nil, false
-	}
-	msg, found := h.client.waitForAssistantTurnAfter(ctx, portal, after)
-	if !found || msg == nil {
-		return nil, false
-	}
-	meta := messageMeta(msg)
-	if meta == nil {
-		return nil, false
-	}
-	return &integrationruntime.AssistantMessageInfo{
-		Body:             strings.TrimSpace(meta.Body),
-		Model:            strings.TrimSpace(meta.Model),
-		PromptTokens:     meta.PromptTokens,
-		CompletionTokens: meta.CompletionTokens,
-	}, true
-}
-
-// ---- Host methods: heartbeat helpers ----
-
-func (h *runtimeIntegrationHost) RunHeartbeatOnce(ctx context.Context, reason string) (status string, reasonMsg string) {
-	if h == nil || h.client == nil || h.client.scheduler == nil {
-		return "skipped", "disabled"
-	}
-	return h.client.scheduler.RunHeartbeatSweep(ctx, reason)
-}
-
-func (h *runtimeIntegrationHost) ResolveHeartbeatSessionKey(agentID string) string {
-	if h == nil || h.client == nil {
-		return ""
-	}
-	hb := resolveHeartbeatConfig(&h.client.connector.Config, agentID)
-	return strings.TrimSpace(h.client.resolveHeartbeatSession(agentID, hb).SessionKey)
-}
-
-func (h *runtimeIntegrationHost) HeartbeatAckMaxChars(agentID string) int {
-	if h == nil || h.client == nil {
-		return 0
-	}
-	hb := resolveHeartbeatConfig(&h.client.connector.Config, agentID)
-	return resolveHeartbeatAckMaxChars(&h.client.connector.Config, hb)
-}
-
-func (h *runtimeIntegrationHost) EnqueueSystemEvent(sessionKey string, text string, agentID string) {
-	if h == nil || h.client == nil {
-		return
-	}
-	enqueueSystemEvent(systemEventsOwnerKey(h.client), sessionKey, text, agentID)
-}
-
-func (h *runtimeIntegrationHost) PersistSystemEvents() {
-	if h == nil || h.client == nil {
-		return
-	}
-	persistSystemEventsSnapshot(h.client)
-}
-
-func (h *runtimeIntegrationHost) ResolveLastTarget(agentID string) (channel string, target string, ok bool) {
-	if h == nil || h.client == nil {
-		return "", "", false
-	}
-	return h.client.lastRoute(agentID)
-}
-
 // ---- Host methods: agent helpers ----
 
 func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault string) string {
@@ -357,17 +266,6 @@ func (h *runtimeIntegrationHost) DefaultAgentID() string {
 	return agents.DefaultAgentID
 }
 
-func (h *runtimeIntegrationHost) AgentTimeoutSeconds() int {
-	if h == nil || h.client == nil || h.client.connector == nil {
-		return 600
-	}
-	cfg := &h.client.connector.Config
-	if cfg.Agents != nil && cfg.Agents.Defaults != nil && cfg.Agents.Defaults.TimeoutSeconds > 0 {
-		return cfg.Agents.Defaults.TimeoutSeconds
-	}
-	return 600
-}
-
 func (h *runtimeIntegrationHost) UserTimezone() (tz string, loc *time.Location) {
 	if h == nil || h.client == nil {
 		return "", time.UTC
@@ -395,40 +293,6 @@ func (h *runtimeIntegrationHost) ContextWindow(meta integrationruntime.Meta) int
 	}
 	m, _ := meta.(*PortalMetadata)
 	return h.client.getModelContextWindow(m)
-}
-
-// ---- Host methods: context helpers ----
-
-func (h *runtimeIntegrationHost) MergeDisconnectContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	if h == nil || h.client == nil {
-		return context.WithCancel(ctx)
-	}
-	var base context.Context
-	if h.client.disconnectCtx != nil {
-		base = h.client.disconnectCtx
-	} else if h.client.UserLogin != nil && h.client.UserLogin.Bridge != nil && h.client.UserLogin.Bridge.BackgroundCtx != nil {
-		base = h.client.UserLogin.Bridge.BackgroundCtx
-	} else {
-		base = context.Background()
-	}
-	if model, ok := modelOverrideFromContext(ctx); ok {
-		base = withModelOverride(base, model)
-	}
-	var merged context.Context
-	var cancel context.CancelFunc
-	if deadline, ok := ctx.Deadline(); ok {
-		merged, cancel = context.WithDeadline(base, deadline)
-	} else {
-		merged, cancel = context.WithCancel(base)
-	}
-	go func() {
-		select {
-		case <-ctx.Done():
-			cancel()
-		case <-merged.Done():
-		}
-	}()
-	return h.client.loggerForContext(ctx).WithContext(merged), cancel
 }
 
 // ---- Host methods: chat completions ----
@@ -716,31 +580,6 @@ func (h *runtimeIntegrationHost) CronRun(ctx context.Context, jobID string) (boo
 		return false, "", fmt.Errorf("scheduler not available")
 	}
 	return h.client.scheduler.CronRun(ctx, jobID)
-}
-
-// ---- Host methods: dispatch/lookup primitives ----
-
-func (h *runtimeIntegrationHost) ResolvePortalByRoomID(ctx context.Context, roomID string) *bridgev2.Portal {
-	if h == nil || h.client == nil || strings.TrimSpace(roomID) == "" {
-		return nil
-	}
-	return h.client.portalByRoomID(ctx, portalRoomIDFromString(roomID))
-}
-
-func (h *runtimeIntegrationHost) RequestNow(ctx context.Context, reason string) {
-	if h == nil || h.client == nil || h.client.scheduler == nil {
-		return
-	}
-	h.client.scheduler.RequestHeartbeatNow(ctx, reason)
-}
-
-func (h *runtimeIntegrationHost) ToolDefinitionByName(name string) (integrationruntime.ToolDefinition, bool) {
-	for _, def := range BuiltinTools() {
-		if def.Name == name {
-			return def, true
-		}
-	}
-	return integrationruntime.ToolDefinition{}, false
 }
 
 func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope integrationruntime.ToolScope, name string, rawArgsJSON string) (string, error) {
