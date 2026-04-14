@@ -58,25 +58,17 @@ func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok
 	return "matrix", sessionKey, true
 }
 
-func (oc *AIClient) lastActiveRoomID(agentID string) string {
-	channel, room, ok := oc.lastRoute(agentID)
-	if !ok {
-		return ""
-	}
-	channel = strings.TrimSpace(channel)
-	room = strings.TrimSpace(room)
-	if room == "" || (!strings.EqualFold(channel, "matrix") && channel != "") {
-		return ""
-	}
-	return room
-}
-
 func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
-	room := oc.lastActiveRoomID(agentID)
-	if room == "" {
+	channel, room, ok := oc.lastRoute(agentID)
+	if !ok {
+		return nil
+	}
+	channel = strings.TrimSpace(channel)
+	room = strings.TrimSpace(room)
+	if room == "" || (!strings.EqualFold(channel, "matrix") && channel != "") {
 		return nil
 	}
 	portal := oc.portalByRoomID(context.Background(), id.RoomID(room))

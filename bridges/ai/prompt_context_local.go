@@ -245,25 +245,18 @@ func promptToolToChatMessage(msg PromptMessage) *openai.ChatCompletionToolMessag
 func chatMessagesToPromptContext(messages []openai.ChatCompletionMessageParamUnion) PromptContext {
 	var ctx PromptContext
 	for _, msg := range messages {
-		appendChatMessageToPromptContext(&ctx, msg)
+		switch {
+		case msg.OfSystem != nil:
+			AppendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
+		case msg.OfUser != nil:
+			ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
+		case msg.OfAssistant != nil:
+			ctx.Messages = append(ctx.Messages, promptMessageFromChatAssistant(msg.OfAssistant))
+		case msg.OfTool != nil:
+			ctx.Messages = append(ctx.Messages, promptMessageFromChatTool(msg.OfTool))
+		}
 	}
 	return ctx
-}
-
-func appendChatMessageToPromptContext(ctx *PromptContext, msg openai.ChatCompletionMessageParamUnion) {
-	if ctx == nil {
-		return
-	}
-	switch {
-	case msg.OfSystem != nil:
-		AppendPromptText(&ctx.SystemPrompt, extractChatSystemText(msg.OfSystem.Content))
-	case msg.OfUser != nil:
-		ctx.Messages = append(ctx.Messages, promptMessageFromChatUser(msg.OfUser))
-	case msg.OfAssistant != nil:
-		ctx.Messages = append(ctx.Messages, promptMessageFromChatAssistant(msg.OfAssistant))
-	case msg.OfTool != nil:
-		ctx.Messages = append(ctx.Messages, promptMessageFromChatTool(msg.OfTool))
-	}
 }
 
 func extractChatSystemText(content openai.ChatCompletionSystemMessageParamContentUnion) string {
