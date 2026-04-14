@@ -158,43 +158,6 @@ func (oc *AIClient) replayHistoryMessages(
 	return messages, nil
 }
 
-func (oc *AIClient) buildCurrentTurnText(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userText string,
-	eventID id.EventID,
-	opts currentTurnTextOptions,
-) (PromptContext, string, error) {
-	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, userText, eventID)
-	if err != nil {
-		return PromptContext{}, "", err
-	}
-
-	prepend := slices.Clone(opts.prepend)
-	if portal != nil && portal.MXID != "" {
-		reactionFeedback := DrainReactionFeedback(portal.MXID)
-		if len(reactionFeedback) > 0 {
-			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
-				prepend = append(prepend, feedbackText)
-			}
-		}
-	}
-	if result.UntrustedPrefix != "" {
-		prepend = append(prepend, result.UntrustedPrefix)
-	}
-
-	appendParts := slices.Clone(opts.append)
-	if opts.includeLinkScope {
-		if linkContext := oc.buildLinkContext(ctx, userText, opts.rawEventContent); linkContext != "" {
-			appendParts = append(appendParts, linkContext)
-		}
-	}
-
-	body := joinPromptFragments(append(append(prepend, result.ResolvedBody), appendParts...)...)
-	return result.PromptContext, body, nil
-}
-
 func (oc *AIClient) buildPromptContextForTurn(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -236,11 +199,32 @@ func (oc *AIClient) buildPromptContextForTurn(
 
 	textOpts := opts.currentTurnTextOptions
 	textOpts.append = appendFragments
-	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, userText, eventID, textOpts)
+
+	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, userText, eventID)
 	if err != nil {
 		return PromptContext{}, err
 	}
+	prepend := slices.Clone(textOpts.prepend)
+	if portal != nil && portal.MXID != "" {
+		reactionFeedback := DrainReactionFeedback(portal.MXID)
+		if len(reactionFeedback) > 0 {
+			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
+				prepend = append(prepend, feedbackText)
+			}
+		}
+	}
+	if result.UntrustedPrefix != "" {
+		prepend = append(prepend, result.UntrustedPrefix)
+	}
+	appendParts := slices.Clone(textOpts.append)
+	if textOpts.includeLinkScope {
+		if linkContext := oc.buildLinkContext(ctx, userText, textOpts.rawEventContent); linkContext != "" {
+			appendParts = append(appendParts, linkContext)
+		}
+	}
+	text := joinPromptFragments(append(append(prepend, result.ResolvedBody), appendParts...)...)
 
+	base := result.PromptContext
 	blocks := make([]PromptBlock, 0, len(leadingBlocks)+1)
 	blocks = append(blocks, leadingBlocks...)
 	if strings.TrimSpace(text) != "" {
