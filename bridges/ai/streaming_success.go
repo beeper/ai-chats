@@ -48,8 +48,10 @@ func (oc *AIClient) finalizeStreamingTurn(
 		if state.responseStatus == "" && state.responseID != "" {
 			state.responseStatus = canonicalResponseStatus(state)
 		}
-		if params.finalizeAccumulator {
-			oc.finalizeStreamingReplyAccumulator(state)
+		if params.finalizeAccumulator && oc != nil && state.replyAccumulator != nil {
+			if parsed := state.replyAccumulator.Consume("", true); parsed != nil {
+				oc.applyStreamingReplyTarget(state, parsed)
+			}
 		}
 	} else {
 		state.finishReason = reason
