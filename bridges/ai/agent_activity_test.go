@@ -40,7 +40,7 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 	}
 }
 
-func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
+func TestLoadLastRoutedSessionKeyIgnoresMainSessionRow(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
@@ -53,12 +53,12 @@ func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 		t.Fatalf("upsert room session entry: %v", err)
 	}
 
-	channel, target, ok := client.lastRoute(agentID)
+	target, ok := client.loadLastRoutedSessionKey(context.Background(), agentID)
 	if !ok {
 		t.Fatalf("expected last route to resolve")
 	}
-	if channel != "matrix" || target != "!chat:example.com" {
-		t.Fatalf("expected last route to ignore main session row, got channel=%q target=%q", channel, target)
+	if target != "!chat:example.com" {
+		t.Fatalf("expected last route to ignore main session row, got target=%q", target)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 	}
 }
 
-func TestLastRouteUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
+func TestLoadLastRoutedSessionKeyUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	client.connector.Config.Session = &SessionConfig{Scope: sessionScopeGlobal}
 	agentID := normalizeAgentID("custom-agent")
@@ -119,12 +119,12 @@ func TestLastRouteUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	channel, target, ok := client.lastRoute(agentID)
+	target, ok := client.loadLastRoutedSessionKey(context.Background(), agentID)
 	if !ok {
 		t.Fatalf("expected last route to resolve from shared global session store")
 	}
-	if channel != "matrix" || target != "!chat:example.com" {
-		t.Fatalf("expected global last route lookup to return room session, got channel=%q target=%q", channel, target)
+	if target != "!chat:example.com" {
+		t.Fatalf("expected global last route lookup to return room session, got target=%q", target)
 	}
 	if got := client.resolveSessionRouting(agentID).StoreAgentID; got != sessionScopeGlobal {
 		t.Fatalf("expected global session store owner %q, got %q", sessionScopeGlobal, got)

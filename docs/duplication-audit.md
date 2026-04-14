@@ -193,6 +193,9 @@ Why this still violates the goal:
 - status/session readers now enter through `session_store.go`; the remaining
   fragmentation is in write-side ownership, heartbeat selection, and route
   resolution
+- last-routed-room lookup now also lives in `session_store.go`; remaining
+  fragmentation is not consumer-side DB querying, but how different features
+  choose and touch sessions
 - canonical key rules, store routing, heartbeat selection, timestamp touching,
   still live in separate places
 - there is not one obvious entrypoint for “resolve the session”

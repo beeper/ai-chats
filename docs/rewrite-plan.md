@@ -259,6 +259,7 @@ Deliverable:
 - no re-derived store-agent identity at consumers
 - high-level readers call session lookups by `agentID`; raw store IDs stay
   internal to the session subsystem
+- last-routed-room lookup lives in the same subsystem as timestamp reads
 
 Why third:
 

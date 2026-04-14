@@ -366,7 +366,11 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 func (s *schedulerRuntime) resolveCronDeliveryTarget(agentID string, delivery *integrationcron.Delivery) integrationcron.DeliveryTarget {
 	return integrationcron.ResolveCronDeliveryTarget(agentID, delivery, integrationcron.DeliveryResolverDeps{
 		ResolveLastTarget: func(agentID string) (channel string, target string, ok bool) {
-			return s.client.lastRoute(agentID)
+			target, ok = s.client.loadLastRoutedSessionKey(context.Background(), agentID)
+			if !ok {
+				return "", "", false
+			}
+			return "matrix", target, true
 		},
 		IsStaleTarget: func(roomID string, agentID string) bool {
 			portal := s.client.portalByRoomID(context.Background(), id.RoomID(roomID))

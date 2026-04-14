@@ -143,6 +143,36 @@ func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, agentID string, se
 	return oc.loadStoredSessionUpdatedAt(ctx, oc.resolveSessionRouting(agentID).StoreAgentID, sessionKey)
 }
 
+func (oc *AIClient) loadLastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
+	if oc == nil {
+		return "", false
+	}
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return "", false
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	routing := oc.resolveSessionRouting(agentID)
+	var sessionKey string
+	err := scope.db.QueryRow(ctx, `
+		SELECT session_key
+		FROM `+aiSessionsTable+`
+		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
+		ORDER BY updated_at_ms DESC
+		LIMIT 1
+	`, scope.bridgeID, scope.loginID, normalizeAgentID(routing.StoreAgentID), strings.TrimSpace(routing.MainKey)).Scan(&sessionKey)
+	if err == sql.ErrNoRows {
+		return "", false
+	}
+	if err != nil {
+		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("session store: latest route lookup failed")
+		return "", false
+	}
+	return sessionKey, true
+}
+
 func (oc *AIClient) loadStoredSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return 0, false
