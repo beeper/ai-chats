@@ -26,34 +26,6 @@ func transcriptMetaSummary(meta *MessageMetadata) string {
 	)
 }
 
-func transcriptHistorySummary(messages []*database.Message, maxItems int) string {
-	if len(messages) == 0 {
-		return "empty"
-	}
-	if maxItems <= 0 {
-		maxItems = 1
-	}
-	if maxItems > len(messages) {
-		maxItems = len(messages)
-	}
-	parts := make([]string, 0, maxItems)
-	for i := 0; i < maxItems; i++ {
-		msg := messages[i]
-		if msg == nil {
-			parts = append(parts, "<nil>")
-			continue
-		}
-		meta, _ := msg.Metadata.(*MessageMetadata)
-		parts = append(parts, fmt.Sprintf(
-			"id=%q event=%q %s",
-			msg.ID,
-			msg.MXID,
-			transcriptMetaSummary(meta),
-		))
-	}
-	return strings.Join(parts, " | ")
-}
-
 func cloneCanonicalTurnData(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return nil

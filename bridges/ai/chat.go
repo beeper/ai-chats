@@ -685,13 +685,9 @@ func (oc *AIClient) createAgentChatWithModel(ctx context.Context, agent *agents.
 
 	oc.configureAgentChatPortal(ctx, portal, chatInfo, agent, modelID, applyModelOverride, "agent config")
 
-	// Rooms created via provisioning (ResolveIdentifier/CreateDM) won't go through our explicit
-	// post-CreateMatrixRoom call sites. Schedule the welcome notice + auto-greeting for when the
-	// Matrix room ID becomes available.
-	oc.scheduleWelcomeMessage(ctx, portal.PortalKey)
-
 	return &bridgev2.CreateChatResponse{
 		PortalKey: portal.PortalKey,
+		Portal:    portal,
 		// Return the full ChatInfo so bridgev2 can apply ExtraUpdates (initial room state,
 		// welcome notice, etc.) when creating the Matrix room via provisioning (CreateDM).
 		PortalInfo: chatInfo,
@@ -706,10 +702,6 @@ func (oc *AIClient) createNewChat(ctx context.Context, modelID string) (*bridgev
 	if err != nil {
 		return nil, err
 	}
-
-	// Rooms created via provisioning (ResolveIdentifier/CreateDM) won't go through our explicit
-	// post-CreateMatrixRoom call sites. Schedule the welcome notice for when the Matrix room exists.
-	oc.scheduleWelcomeMessage(ctx, portal.PortalKey)
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
@@ -999,7 +991,7 @@ func (oc *AIClient) createAndOpenChat(
 		return
 	}
 
-	newPortal, err := oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{SendWelcome: true})
+	newPortal, err := oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{})
 	if err != nil {
 		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the room: "+err.Error())
 		return
@@ -1017,6 +1009,20 @@ func (oc *AIClient) materializeCreatedChatPortal(
 	chatResp *bridgev2.CreateChatResponse,
 	opts portalRoomMaterializeOptions,
 ) (*bridgev2.Portal, error) {
+	portal, err := oc.resolveCreatedChatPortal(ctx, chatResp)
+	if err != nil {
+		return nil, err
+	}
+	if err := oc.materializePortalRoom(ctx, portal, chatResp.PortalInfo, opts); err != nil {
+		return nil, err
+	}
+	return portal, nil
+}
+
+func (oc *AIClient) resolveCreatedChatPortal(
+	ctx context.Context,
+	chatResp *bridgev2.CreateChatResponse,
+) (*bridgev2.Portal, error) {
 	if chatResp == nil {
 		return nil, fmt.Errorf("missing chat response")
 	}
@@ -1030,9 +1036,6 @@ func (oc *AIClient) materializeCreatedChatPortal(
 		if portal == nil {
 			return nil, fmt.Errorf("missing created portal")
 		}
-	}
-	if err := oc.materializePortalRoom(ctx, portal, chatResp.PortalInfo, opts); err != nil {
-		return nil, err
 	}
 	return portal, nil
 }
@@ -1091,6 +1094,7 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 		BotDisplayName: modelName,
 		CanBackfill:    true,
 	})
+	chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, oc.welcomeBootstrapUpdater())
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
 	return chatInfo
@@ -1249,7 +1253,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 
 	oc.configureAgentChatPortal(ctx, portal, chatInfo, beeperAgent, modelID, false, "default chat agent config")
 
-	err = oc.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{SendWelcome: true})
+	err = oc.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 		return err
@@ -1268,7 +1272,7 @@ func (oc *AIClient) ensureChatPortalReady(ctx context.Context, portal *bridgev2.
 	}
 	info := oc.chatInfoFromPortal(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
-	if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{SendWelcome: true}); err != nil {
+	if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{}); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg(errMsg)
 		return err
 	}

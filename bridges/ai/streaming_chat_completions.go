@@ -25,7 +25,7 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	currentMessages []openai.ChatCompletionMessageParamUnion,
 	stepErr error,
 ) (*ContextLengthError, error) {
-	finalizeCtx, reason, finalErr, cle := resolveStreamingTerminalError(ctx, stepErr, true, ctx)
+	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, true, ctx, stepErr)
 	if reason != "" && cle != nil {
 		return cle, a.oc.finishStreamingWithFailure(finalizeCtx, a.log, a.portal, a.state, a.meta, reason, finalErr)
 	}

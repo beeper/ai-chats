@@ -5,11 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 // ---------------------------------------------------------------------------

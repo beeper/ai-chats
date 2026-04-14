@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
-	"github.com/rs/zerolog"
 )
 
 func (r demoRunner) runLorem(ctx context.Context, turn *sdk.Turn, cmd loremCommand, _ zerolog.Logger) error {

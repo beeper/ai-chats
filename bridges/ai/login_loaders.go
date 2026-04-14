@@ -15,13 +15,17 @@ const (
 	initLoginClientError = "Couldn't initialize this login. Remove and re-add the account."
 )
 
-func reuseAIClient(login *bridgev2.UserLogin, client *AIClient, bootstrap bool) {
+func reuseAIClient(login *bridgev2.UserLogin, client *AIClient) {
 	if login == nil || client == nil {
 		return
 	}
 	client.SetUserLogin(login)
 	login.Client = client
-	if bootstrap {
+}
+
+func activateLoadedAIClient(login *bridgev2.UserLogin, client *AIClient) {
+	reuseAIClient(login, client)
+	if client != nil {
 		client.scheduleBootstrap()
 	}
 }
@@ -71,7 +75,7 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 	}
 	oc.clientsMu.Lock()
 	if cached, ok := oc.clients[login.ID].(*AIClient); ok && cached != nil && cached != replace {
-		reuseAIClient(login, cached, false)
+		reuseAIClient(login, cached)
 		oc.clientsMu.Unlock()
 		created.Disconnect()
 		return cached
@@ -81,7 +85,7 @@ func (oc *OpenAIConnector) publishOrReuseClient(login *bridgev2.UserLogin, creat
 		disconnectReplace = replace
 	}
 	oc.clients[login.ID] = created
-	reuseAIClient(login, created, false)
+	reuseAIClient(login, created)
 	oc.clientsMu.Unlock()
 	if disconnectReplace != nil {
 		disconnectReplace.Disconnect()
@@ -122,7 +126,7 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 	}
 
 	if existing != nil && !aiClientNeedsRebuildConfig(existing, key, meta.Provider, cfg) {
-		reuseAIClient(login, existing, true)
+		activateLoadedAIClient(login, existing)
 		return nil
 	}
 
@@ -134,7 +138,7 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 	if err != nil {
 		// Keep the existing client if rebuilding failed.
 		if existing != nil {
-			reuseAIClient(login, existing, false)
+			activateLoadedAIClient(login, existing)
 			return nil
 		}
 		login.Client = newBrokenLoginClient(login, initLoginClientError)
@@ -143,7 +147,7 @@ func (oc *OpenAIConnector) loadAIUserLoginWithConfig(ctx context.Context, login 
 
 	chosen := oc.publishOrReuseClient(login, client, existing)
 	if chosen != nil {
-		chosen.scheduleBootstrap()
+		activateLoadedAIClient(login, chosen)
 	}
 	return nil
 }

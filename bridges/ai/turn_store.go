@@ -196,14 +196,6 @@ func advanceAIPortalContextEpochByScope(ctx context.Context, scope *portalScope)
 	return err
 }
 
-func loadAITurnByRef(ctx context.Context, portal *bridgev2.Portal, messageID networkid.MessageID, eventID id.EventID) (*aiTurnRecord, error) {
-	_, scope, err := resolveAIDBPortalScope(ctx, nil, portal)
-	if err != nil {
-		return nil, err
-	}
-	return loadAITurnByRefByScope(ctx, scope, messageID, eventID)
-}
-
 func loadAITurnByRefByScope(
 	ctx context.Context,
 	scope *portalScope,
@@ -232,14 +224,6 @@ func loadAITurnByRefValue(ctx context.Context, scope *portalScope, refKind, refV
 		return nil, err
 	}
 	return rows[0], nil
-}
-
-func upsertAITurn(ctx context.Context, portal *bridgev2.Portal, entry aiTurnUpsert) error {
-	portal, scope, err := resolveAIDBPortalScope(ctx, nil, portal)
-	if err != nil {
-		return err
-	}
-	return upsertAITurnByScope(ctx, scope, portal, entry)
 }
 
 func upsertAITurnByScope(
@@ -578,16 +562,7 @@ func loadAIPromptHistoryTurnsByScope(
 	if limit <= 0 {
 		return nil, nil
 	}
-	if scope == nil {
-		return nil, nil
-	}
-	record, err := ensurePortalTurnStateByScope(ctx, scope)
-	if err != nil || record == nil {
-		return nil, err
-	}
 	query := aiTurnQuery{
-		contextEpoch:     record.ContextEpoch,
-		hasContextEpoch:  true,
 		includeInHistory: true,
 		limit:            limit,
 	}
@@ -602,7 +577,7 @@ func loadAIPromptHistoryTurnsByScope(
 			query.hasContextEpoch = true
 		}
 	}
-	return queryAITurnRows(ctx, scope, query)
+	return loadAICurrentContextTurnsByScope(ctx, scope, query)
 }
 
 func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bool {
@@ -658,18 +633,27 @@ func aiHistoryMessageFromTurn(portalKey networkid.PortalKey, row *aiTurnRecord) 
 	return msg
 }
 
+func loadAICurrentContextTurnsByScope(ctx context.Context, scope *portalScope, query aiTurnQuery) ([]*aiTurnRecord, error) {
+	if scope == nil || query.limit <= 0 {
+		return nil, nil
+	}
+	record, err := ensurePortalTurnStateByScope(ctx, scope)
+	if err != nil || record == nil {
+		return nil, err
+	}
+	if !query.hasContextEpoch {
+		query.contextEpoch = record.ContextEpoch
+		query.hasContextEpoch = true
+	}
+	return queryAITurnRows(ctx, scope, query)
+}
+
 func (oc *AIClient) loadAIHistoryMessagesFromTurns(ctx context.Context, portal *bridgev2.Portal, limit int) ([]*database.Message, error) {
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
 	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*database.Message, error) {
-		record, err := ensurePortalTurnStateByScope(ctx, scope)
-		if err != nil || record == nil {
-			return nil, err
-		}
-		rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
-			contextEpoch:     record.ContextEpoch,
-			hasContextEpoch:  true,
+		rows, err := loadAICurrentContextTurnsByScope(ctx, scope, aiTurnQuery{
 			includeInHistory: true,
 			roles:            []string{"user", "assistant"},
 			limit:            limit,
@@ -703,10 +687,6 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	}
 	messages := make([]*database.Message, 0, len(rows))
 	for _, msg := range rows {
-		msgMeta := messageMeta(msg)
-		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
 		messages = append(messages, cloneMessageForAIHistory(msg))
 	}
 	return messages, nil

@@ -46,19 +46,19 @@ func (oc *AIClient) finishStreamingWithFailure(
 
 func resolveStreamingTerminalError(
 	ctx context.Context,
-	err error,
 	includeContextLength bool,
 	cancelFinalizeCtx context.Context,
-) (finalizeCtx context.Context, reason string, finalErr error, cle *ContextLengthError) {
+	err error,
+) (finalizeCtx context.Context, reason string, cle *ContextLengthError, finalErr error) {
 	if errors.Is(err, context.Canceled) {
 		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-			return cancelFinalizeCtx, "timeout", timeoutErr, nil
+			return cancelFinalizeCtx, "timeout", nil, timeoutErr
 		}
-		return cancelFinalizeCtx, "cancelled", err, nil
+		return cancelFinalizeCtx, "cancelled", nil, err
 	}
 	if includeContextLength {
 		if cle := ParseContextLengthError(err); cle != nil {
-			return ctx, "context-length", err, cle
+			return ctx, "context-length", cle, err
 		}
 	}
 	return nil, "", nil, nil
@@ -72,7 +72,7 @@ func (oc *AIClient) handleResponsesStreamErr(
 	err error,
 	includeContextLength bool,
 ) (*ContextLengthError, error) {
-	finalizeCtx, reason, finalErr, cle := resolveStreamingTerminalError(ctx, err, includeContextLength, context.Background())
+	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, includeContextLength, context.Background(), err)
 	if reason != "" {
 		return nil, oc.finishStreamingWithFailure(finalizeCtx, *oc.loggerForContext(ctx), portal, state, meta, reason, finalErr)
 	}

@@ -289,25 +289,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	roomName := resolveSubagentRoomName(label, task)
-	childPortal, err := oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{
-		CleanupOnCreateError: "failed to create subagent Matrix room",
-		SaveBefore:           true,
-		SendWelcome:          true,
-		MutatePortal: func(childPortal *bridgev2.Portal) {
-			childMeta := portalMeta(childPortal)
-			childMeta.SubagentParentRoomID = portal.MXID.String()
-			if reasoningEffort != "" {
-				childMeta.RuntimeReasoning = reasoningEffort
-			}
-			if roomName != "" {
-				if chatResp.PortalInfo != nil {
-					chatResp.PortalInfo.Name = &roomName
-				}
-				childPortal.Name = roomName
-				childPortal.NameSet = true
-			}
-		},
-	})
+	childPortal, err := oc.resolveCreatedChatPortal(ctx, chatResp)
 	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",
@@ -315,6 +297,32 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}), nil
 	}
 	childMeta := portalMeta(childPortal)
+	childMeta.SubagentParentRoomID = portal.MXID.String()
+	if reasoningEffort != "" {
+		childMeta.RuntimeReasoning = reasoningEffort
+	}
+	if roomName != "" {
+		if chatResp.PortalInfo != nil {
+			chatResp.PortalInfo.Name = &roomName
+		}
+		childPortal.Name = roomName
+		childPortal.NameSet = true
+	}
+	if err := oc.savePortal(ctx, childPortal, "subagent room setup"); err != nil {
+		return tools.JSONResult(map[string]any{
+			"status": "error",
+			"error":  err.Error(),
+		}), nil
+	}
+	childPortal, err = oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{
+		CleanupOnCreateError: "failed to create subagent Matrix room",
+	})
+	if err != nil {
+		return tools.JSONResult(map[string]any{
+			"status": "error",
+			"error":  err.Error(),
+		}), nil
+	}
 
 	eventID := sdk.NewEventID("subagent")
 	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)

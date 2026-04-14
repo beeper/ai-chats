@@ -13,7 +13,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
@@ -320,43 +319,39 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
-// This is primarily for rooms created via provisioning (ResolveIdentifier/CreateDM),
-// where the room creation happens in bridgev2 internals and we don't have a direct hook
-// after CreateMatrixRoom succeeds.
-func (oc *AIClient) scheduleWelcomeMessage(ctx context.Context, portalKey networkid.PortalKey) {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+func (oc *AIClient) welcomeBootstrapUpdater() bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	if oc == nil {
+		return nil
+	}
+	return func(ctx context.Context, portal *bridgev2.Portal) bool {
+		oc.queueWelcomeBootstrap(ctx, portal)
+		return false
+	}
+}
+
+// queueWelcomeBootstrap is the single owner for room welcome/bootstrap behavior.
+// It works for both explicit AI room creation and provisioning-created rooms by
+// waiting on the portal's own room-created event instead of polling storage.
+func (oc *AIClient) queueWelcomeBootstrap(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil {
 		return
 	}
-	if portalKey.ID == "" {
+	if portal.PortalKey.ID == "" {
 		return
 	}
 	bgCtx := oc.backgroundContext(ctx)
 	go func() {
-		oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule started")
-		deadline := time.Now().Add(45 * time.Second)
-		for time.Now().Before(deadline) {
-			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
-			if err != nil || current == nil {
-				oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule exiting: portal not found")
-				return
-			}
-			meta := portalMeta(current)
-			if meta != nil && meta.WelcomeSent {
-				oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule exiting: already sent")
-				return
-			}
-			if current.MXID == "" {
-				time.Sleep(150 * time.Millisecond)
-				continue
-			}
-			if err := oc.sendWelcomeMessage(bgCtx, current); err != nil {
-				oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", string(portalKey.ID)).Msg("Failed to send welcome message")
-				return
-			}
-			oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message sent")
+		portalID := string(portal.PortalKey.ID)
+		oc.Log().Debug().Str("portal_id", portalID).Msg("welcome bootstrap queued")
+		if err := portal.RoomCreated.WaitTimeoutCtx(bgCtx, 45*time.Second); err != nil {
+			oc.Log().Debug().Err(err).Str("portal_id", portalID).Msg("welcome bootstrap exiting before room creation")
 			return
 		}
-		oc.Log().Debug().Str("portal_id", string(portalKey.ID)).Msg("welcome message schedule timed out waiting for room ID")
+		if err := oc.sendWelcomeMessage(bgCtx, portal); err != nil {
+			oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", portalID).Msg("Failed to send welcome message")
+			return
+		}
+		oc.Log().Debug().Str("portal_id", portalID).Msg("welcome bootstrap completed")
 	}()
 }
 

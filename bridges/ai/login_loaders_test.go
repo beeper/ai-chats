@@ -164,7 +164,7 @@ func TestReuseAIClientUpdatesClientBaseLogin(t *testing.T) {
 	login := testUserLoginWithMeta("login-2", &UserLoginMetadata{Provider: ProviderOpenAI})
 	client := &AIClient{}
 
-	reuseAIClient(login, client, false)
+	reuseAIClient(login, client)
 
 	if client.UserLogin != login {
 		t.Fatal("expected user login to be updated on the client")

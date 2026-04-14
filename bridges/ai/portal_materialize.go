@@ -12,7 +12,6 @@ import (
 type portalRoomMaterializeOptions struct {
 	SaveBefore           bool
 	CleanupOnCreateError string
-	SendWelcome          bool
 	MutatePortal         func(*bridgev2.Portal)
 }
 
@@ -76,12 +75,5 @@ func (oc *AIClient) materializePortalRoom(
 	}
 	portal.UpdateBridgeInfo(ctx)
 	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
-	if created {
-		if opts.SendWelcome {
-			if err := oc.sendWelcomeMessage(ctx, portal); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send welcome message")
-			}
-		}
-	}
 	return nil
 }

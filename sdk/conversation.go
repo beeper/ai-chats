@@ -141,17 +141,6 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	return computeRoomFeaturesForAgents(agents)
 }
 
-func (c *Conversation) aiRoomKind() string {
-	if c == nil {
-		return AIRoomKindAgent
-	}
-	state := c.state()
-	if state.Kind == ConversationKindDelegated || strings.TrimSpace(state.ParentConversationID) != "" {
-		return "subagent"
-	}
-	return AIRoomKindAgent
-}
-
 // SendHTML sends a message with both plaintext and HTML body.
 func (c *Conversation) SendHTML(ctx context.Context, text, html string) error {
 	content := &event.MessageEventContent{
