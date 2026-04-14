@@ -519,15 +519,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
 
-	// Get the portal to apply any overrides
-	portal, err := b.client.UserLogin.Bridge.GetPortalByKey(ctx, resp.PortalKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to get created portal: %w", err)
-	}
-
-	// Apply custom room name if provided.
-	// Create the Matrix room
-	if err := b.client.materializePortalRoom(ctx, portal, resp.PortalInfo, portalRoomMaterializeOptions{
+	portal, err := b.client.materializeCreatedChatPortal(ctx, resp, portalRoomMaterializeOptions{
 		CleanupOnCreateError: "failed to create Matrix room",
 		SaveBefore:           room.Name != "",
 		SendWelcome:          true,
@@ -539,7 +531,8 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 				}
 			}
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 

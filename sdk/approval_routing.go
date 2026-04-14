@@ -10,6 +10,17 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+func approvalDecisionFromOption(prompt ApprovalPromptRegistration, option ApprovalOption, reactionKey string) ApprovalDecisionPayload {
+	return ApprovalDecisionPayload{
+		ApprovalID:  prompt.ApprovalID,
+		Approved:    option.Approved,
+		Always:      option.Always,
+		Reason:      option.decisionReason(),
+		ReactionKey: reactionKey,
+		ResolvedBy:  ApprovalResolutionOriginUser,
+	}
+}
+
 func (f *ApprovalFlow[D]) promptRegistration(approvalID string) (ApprovalPromptRegistration, bool) {
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
@@ -88,14 +99,7 @@ func (f *ApprovalFlow[D]) matchReactionTarget(targetMessageID networkid.MessageI
 				continue
 			}
 			match.ShouldResolve = true
-			match.Decision = ApprovalDecisionPayload{
-				ApprovalID:  promptCopy.ApprovalID,
-				Approved:    opt.Approved,
-				Always:      opt.Always,
-				Reason:      opt.decisionReason(),
-				ReactionKey: key,
-				ResolvedBy:  ApprovalResolutionOriginUser,
-			}
+			match.Decision = approvalDecisionFromOption(promptCopy, opt, key)
 			return match
 		}
 	}
@@ -161,14 +165,7 @@ func (f *ApprovalFlow[D]) matchFallbackReaction(roomID id.RoomID, sender id.User
 					continue
 				}
 				matched = true
-				decision = ApprovalDecisionPayload{
-					ApprovalID:  entry.ApprovalID,
-					Approved:    opt.Approved,
-					Always:      opt.Always,
-					Reason:      opt.decisionReason(),
-					ReactionKey: key,
-					ResolvedBy:  ApprovalResolutionOriginUser,
-				}
+				decision = approvalDecisionFromOption(entry, opt, key)
 				break
 			}
 			if matched {

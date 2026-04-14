@@ -117,6 +117,18 @@ type heartbeatSkipParams struct {
 	sent      bool   // whether this branch emitted a visible message
 }
 
+type heartbeatDeliveryState struct {
+	rawContent     string
+	cleaned        string
+	reasoningText  string
+	hasMedia       bool
+	shouldSkipMain bool
+	hasContent     bool
+	hasReasoning   bool
+	deliverable    bool
+	targetReason   string
+}
+
 // skipHeartbeatRun executes the common heartbeat-skip path shared by all early-
 // return branches: optionally restore the heartbeat timestamp, redact the
 // streaming message, clear pending images, emit the heartbeat event, send the
@@ -132,8 +144,7 @@ func (oc *AIClient) skipHeartbeatRun(
 	p heartbeatSkipParams,
 ) {
 	if p.restore {
-		storeRef := loginScopeForClient(oc).sessionStoreRef(hb.StoreAgentID)
-		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
+		oc.restoreHeartbeatUpdatedAt(hb.StoreAgentID, hb.SessionKey, hb.PrevUpdatedAt)
 	}
 	oc.redactInitialStreamingMessage(ctx, portal, state)
 	state.pendingImages = nil
@@ -163,6 +174,89 @@ func (oc *AIClient) skipHeartbeatRun(
 		Silent:  p.silent,
 		Skipped: true,
 	})
+}
+
+func heartbeatIndicator(hb *HeartbeatRunConfig, status string) *HeartbeatIndicatorType {
+	if hb == nil || !hb.UseIndicator {
+		return nil
+	}
+	return resolveIndicatorType(status)
+}
+
+func (state heartbeatDeliveryState) previewText() string {
+	if state.cleaned != "" {
+		return state.cleaned
+	}
+	if state.hasReasoning {
+		return state.reasoningText
+	}
+	return ""
+}
+
+func (oc *AIClient) resolveHeartbeatSkipParams(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	state *streamingState,
+	hb *HeartbeatRunConfig,
+	delivery heartbeatDeliveryState,
+) *heartbeatSkipParams {
+	if hb == nil {
+		return nil
+	}
+	if delivery.shouldSkipMain && !delivery.hasContent && !delivery.hasReasoning {
+		silent := true
+		if hb.ShowOk && delivery.deliverable {
+			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
+			silent = false
+		}
+		status := "ok-token"
+		if strings.TrimSpace(delivery.rawContent) == "" {
+			status = "ok-empty"
+		}
+		return &heartbeatSkipParams{
+			status:    status,
+			reason:    hb.Reason,
+			restore:   true,
+			indicator: heartbeatIndicator(hb, status),
+			to:        hb.TargetRoom.String(),
+			silent:    silent,
+			sent:      !silent,
+		}
+	}
+	if delivery.hasContent && !delivery.shouldSkipMain && !delivery.hasMedia &&
+		oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, delivery.cleaned, state.startedAtMs) {
+		return &heartbeatSkipParams{
+			status:    "skipped",
+			reason:    "duplicate",
+			restore:   true,
+			indicator: heartbeatIndicator(hb, "skipped"),
+			preview:   delivery.cleaned,
+			to:        "",
+			silent:    true,
+		}
+	}
+	if !delivery.deliverable {
+		return &heartbeatSkipParams{
+			status:  "skipped",
+			reason:  delivery.targetReason,
+			restore: false,
+			preview: delivery.previewText(),
+			to:      hb.TargetRoom.String(),
+			silent:  true,
+		}
+	}
+	if !hb.ShowAlerts {
+		return &heartbeatSkipParams{
+			status:    "skipped",
+			reason:    "alerts-disabled",
+			restore:   true,
+			indicator: heartbeatIndicator(hb, "sent"),
+			preview:   delivery.previewText(),
+			to:        hb.TargetRoom.String(),
+			silent:    true,
+		}
+	}
+	return nil
 }
 
 // sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
@@ -221,90 +315,23 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 			}
 		}
 	}
-
-	// Helper to pick preview text, preferring cleaned content then reasoning.
-	previewText := func() string {
-		if cleaned != "" {
-			return cleaned
-		}
-		if hasReasoning {
-			return reasoningText
-		}
-		return ""
+	skip := func(p heartbeatSkipParams) {
+		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, p)
 	}
 
-	if shouldSkipMain && !hasContent && !hasReasoning {
-		silent := true
-		if hb.ShowOk && deliverable {
-			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
-			silent = false
-		}
-		status := "ok-token"
-		if strings.TrimSpace(rawContent) == "" {
-			status = "ok-empty"
-		}
-		var indicator *HeartbeatIndicatorType
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType(status)
-		}
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:    status,
-			reason:    hb.Reason,
-			restore:   true,
-			indicator: indicator,
-			to:        hb.TargetRoom.String(),
-			silent:    silent,
-			sent:      !silent,
-		})
-		return
+	delivery := heartbeatDeliveryState{
+		rawContent:     rawContent,
+		cleaned:        cleaned,
+		reasoningText:  reasoningText,
+		hasMedia:       hasMedia,
+		shouldSkipMain: shouldSkipMain,
+		hasContent:     hasContent,
+		hasReasoning:   hasReasoning,
+		deliverable:    deliverable,
+		targetReason:   targetReason,
 	}
-
-	// Deduplicate identical heartbeat content within 24h
-	if hasContent && !shouldSkipMain && !hasMedia {
-		if oc.isDuplicateHeartbeat(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs) {
-			var indicator *HeartbeatIndicatorType
-			if hb.UseIndicator {
-				indicator = resolveIndicatorType("skipped")
-			}
-			oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-				status:    "skipped",
-				reason:    "duplicate",
-				restore:   true,
-				indicator: indicator,
-				preview:   cleaned,
-				to:        "",
-				silent:    true,
-			})
-			return
-		}
-	}
-
-	if !deliverable {
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:  "skipped",
-			reason:  targetReason,
-			restore: false,
-			preview: previewText(),
-			to:      hb.TargetRoom.String(),
-			silent:  true,
-		})
-		return
-	}
-
-	if !hb.ShowAlerts {
-		var indicator *HeartbeatIndicatorType
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType("sent")
-		}
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "alerts-disabled",
-			restore:   true,
-			indicator: indicator,
-			preview:   previewText(),
-			to:        hb.TargetRoom.String(),
-			silent:    true,
-		})
+	if skipParams := oc.resolveHeartbeatSkipParams(ctx, portal, state, hb, delivery); skipParams != nil {
+		skip(*skipParams)
 		return
 	}
 
@@ -326,10 +353,7 @@ func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2
 		oc.recordHeartbeatText(hb.AgentID, hb.SessionKey, cleaned, state.startedAtMs)
 	}
 
-	indicator := (*HeartbeatIndicatorType)(nil)
-	if hb.UseIndicator {
-		indicator = resolveIndicatorType("sent")
-	}
+	indicator := heartbeatIndicator(hb, "sent")
 	preview := cleaned
 	if preview == "" && hasReasoning {
 		preview = reasoningText
@@ -489,15 +513,6 @@ func finalRenderedBodyFallback(state *streamingState) string {
 		return body
 	}
 	return "..."
-}
-
-func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if state == nil {
-		return
-	}
-	if state.hasInitialMessageTarget() || state.heartbeat != nil {
-		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
-	}
 }
 
 func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any) *sdk.FinalEditPayload {

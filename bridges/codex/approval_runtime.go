@@ -29,6 +29,15 @@ type codexSDKApprovalHandle struct {
 	toolCallID string
 }
 
+type codexApprovalContext struct {
+	ctx               context.Context
+	turnID            string
+	replyToEventID    id.EventID
+	threadRootEventID id.EventID
+	expiresAt         time.Time
+	emitVia           *sdk.Turn
+}
+
 func (h *codexSDKApprovalHandle) ID() string {
 	if h == nil {
 		return ""
@@ -66,6 +75,34 @@ func (h *codexSDKApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalResp
 	}, nil
 }
 
+func resolveCodexApprovalContext(
+	ctx context.Context,
+	state *streamingState,
+	turn *sdk.Turn,
+	ttl time.Duration,
+) *codexApprovalContext {
+	if turn != nil {
+		return &codexApprovalContext{
+			ctx:               turn.Context(),
+			turnID:            turn.ID(),
+			replyToEventID:    turn.InitialEventID(),
+			threadRootEventID: turn.ThreadRoot(),
+			expiresAt:         time.Now().Add(ttl),
+			emitVia:           turn,
+		}
+	}
+	if state == nil || state.turn == nil {
+		return nil
+	}
+	return &codexApprovalContext{
+		ctx:            ctx,
+		turnID:         state.currentTurnID(),
+		replyToEventID: state.currentReplyTargetEventID(),
+		expiresAt:      sdk.ComputeApprovalExpiry(int(ttl / time.Second)),
+		emitVia:        state.turn,
+	}
+}
+
 func (cc *CodexClient) sendSDKApprovalPrompt(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -80,31 +117,21 @@ func (cc *CodexClient) sendSDKApprovalPrompt(
 	if cc == nil || cc.approvalFlow == nil || cc.UserLogin == nil || portal == nil {
 		return
 	}
+	approvalCtx := resolveCodexApprovalContext(ctx, state, turn, ttl)
+	if approvalCtx == nil {
+		return
+	}
 	params := sdk.ApprovalPromptMessageParams{
-		ApprovalID:   approvalID,
-		ToolCallID:   toolCallID,
-		ToolName:     toolName,
-		Presentation: presentation,
+		ApprovalID:        approvalID,
+		ToolCallID:        toolCallID,
+		ToolName:          toolName,
+		Presentation:      presentation,
+		TurnID:            approvalCtx.turnID,
+		ReplyToEventID:    approvalCtx.replyToEventID,
+		ThreadRootEventID: approvalCtx.threadRootEventID,
+		ExpiresAt:         approvalCtx.expiresAt,
 	}
-	if turn != nil {
-		params.TurnID = turn.ID()
-		params.ReplyToEventID = turn.InitialEventID()
-		params.ThreadRootEventID = turn.ThreadRoot()
-		params.ExpiresAt = time.Now().Add(ttl)
-		cc.approvalFlow.SendPrompt(turn.Context(), portal, sdk.SendPromptParams{
-			ApprovalPromptMessageParams: params,
-			RoomID:                      portal.MXID,
-			OwnerMXID:                   cc.UserLogin.UserMXID,
-		})
-		return
-	}
-	if state == nil {
-		return
-	}
-	params.TurnID = state.currentTurnID()
-	params.ReplyToEventID = state.currentReplyTargetEventID()
-	params.ExpiresAt = sdk.ComputeApprovalExpiry(int(ttl / time.Second))
-	cc.approvalFlow.SendPrompt(ctx, portal, sdk.SendPromptParams{
+	cc.approvalFlow.SendPrompt(approvalCtx.ctx, portal, sdk.SendPromptParams{
 		ApprovalPromptMessageParams: params,
 		RoomID:                      portal.MXID,
 		OwnerMXID:                   cc.UserLogin.UserMXID,
@@ -126,10 +153,8 @@ func (cc *CodexClient) requestSDKApproval(
 	}, sdk.DefaultApprovalExpiry, false)
 	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
 	cc.registerToolApproval(portal.MXID, approvalID, req.ToolCallID, req.ToolName, presentation, ttl)
-	if turn != nil {
-		turn.Approvals().EmitRequest(turn.Context(), approvalID, req.ToolCallID)
-	} else if state != nil && state.turn != nil {
-		state.turn.Approvals().EmitRequest(ctx, approvalID, req.ToolCallID)
+	if approvalCtx := resolveCodexApprovalContext(ctx, state, turn, ttl); approvalCtx != nil && approvalCtx.emitVia != nil {
+		approvalCtx.emitVia.Approvals().EmitRequest(approvalCtx.ctx, approvalID, req.ToolCallID)
 	}
 	cc.sendSDKApprovalPrompt(ctx, portal, state, turn, approvalID, ttl, presentation, req.ToolCallID, req.ToolName)
 	return &codexSDKApprovalHandle{

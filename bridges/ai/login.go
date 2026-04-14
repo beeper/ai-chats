@@ -245,41 +245,47 @@ func (ol *OpenAILogin) finishLogin(ctx context.Context, provider, apiKey, baseUR
 		return nil, err
 	}
 
-	login, err := ol.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata:   meta,
-	}, &bridgev2.NewLoginParams{
-		LoadUserLogin: func(loadCtx context.Context, login *bridgev2.UserLogin) error {
-			if ol.Connector == nil {
-				return nil
-			}
-			return ol.Connector.loadAIUserLoginWithConfig(loadCtx, login, meta, cfg)
+	login, step, err := sdk.PersistAndCompleteLoginWithOptions(
+		ctx,
+		context.Background(),
+		ol.User,
+		&database.UserLogin{
+			ID:         loginID,
+			RemoteName: remoteName,
+			Metadata:   meta,
 		},
-	})
+		"com.beeper.agentremote.ai.complete",
+		sdk.PersistLoginCompletionOptions{
+			NewLoginParams: &bridgev2.NewLoginParams{
+				LoadUserLogin: func(loadCtx context.Context, login *bridgev2.UserLogin) error {
+					if ol.Connector == nil {
+						return nil
+					}
+					return ol.Connector.loadAIUserLoginWithConfig(loadCtx, login, meta, cfg)
+				},
+			},
+			AfterPersist: func(saveCtx context.Context, login *bridgev2.UserLogin) error {
+				return saveAILoginConfig(saveCtx, login, cfg)
+			},
+			Cleanup: func(cleanupCtx context.Context, login *bridgev2.UserLogin) {
+				if login == nil {
+					return
+				}
+				login.Delete(cleanupCtx, status.BridgeState{}, bridgev2.DeleteOpts{
+					DontCleanupRooms: true,
+					BlockingCleanup:  true,
+				})
+			},
+		},
+	)
 	if err != nil {
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "AI", "CREATE_LOGIN_FAILED")
+		code := "CREATE_LOGIN_FAILED"
+		if login != nil {
+			code = "SAVE_LOGIN_FAILED"
+		}
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to complete login: %w", err), http.StatusInternalServerError, "AI", code)
 	}
-	if err = saveAILoginConfig(ctx, login, cfg); err != nil {
-		login.Delete(ctx, status.BridgeState{}, bridgev2.DeleteOpts{
-			DontCleanupRooms: true,
-			BlockingCleanup:  true,
-		})
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to persist login config: %w", err), http.StatusInternalServerError, "AI", "SAVE_LOGIN_FAILED")
-	}
-
-	// Trigger connection in background with a long-lived context
-	// (the request context gets cancelled after login returns)
-	go login.Client.Connect(login.Log.WithContext(context.Background()))
-
-	return &bridgev2.LoginStep{
-		Type:   bridgev2.LoginStepTypeComplete,
-		StepID: "com.beeper.agentremote.ai.complete",
-		CompleteParams: &bridgev2.LoginCompleteParams{
-			UserLoginID: login.ID,
-			UserLogin:   login,
-		},
-	}, nil
+	return step, nil
 }
 
 func (ol *OpenAILogin) resolveLoginTarget(ctx context.Context, provider string) (networkid.UserLoginID, int, error) {

@@ -25,14 +25,12 @@ func (a *chatCompletionsTurnAdapter) handleStreamStepError(
 	currentMessages []openai.ChatCompletionMessageParamUnion,
 	stepErr error,
 ) (*ContextLengthError, error) {
-	if errors.Is(stepErr, context.Canceled) {
-		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-			return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "timeout", timeoutErr)
-		}
-		return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "cancelled", stepErr)
+	finalizeCtx, reason, finalErr, cle := resolveStreamingTerminalError(ctx, stepErr, true, ctx)
+	if reason != "" && cle != nil {
+		return cle, a.oc.finishStreamingWithFailure(finalizeCtx, a.log, a.portal, a.state, a.meta, reason, finalErr)
 	}
-	if cle := ParseContextLengthError(stepErr); cle != nil {
-		return cle, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "context-length", stepErr)
+	if reason != "" {
+		return nil, a.oc.finishStreamingWithFailure(finalizeCtx, a.log, a.portal, a.state, a.meta, reason, finalErr)
 	}
 	logChatCompletionsFailure(a.log, stepErr, params, a.meta, a.prompt, "stream_err")
 	return nil, a.oc.finishStreamingWithFailure(ctx, a.log, a.portal, a.state, a.meta, "error", stepErr)

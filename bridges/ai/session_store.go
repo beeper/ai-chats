@@ -8,31 +8,19 @@ import (
 	"time"
 )
 
-type sessionEntry struct {
-	UpdatedAt int64
-}
-
-type sessionStoreRef struct {
-	BridgeID string
-	LoginID  string
-	AgentID  string
-}
-
 var sessionStoreLocks sync.Map
 
-func sessionStoreLockKey(ref sessionStoreRef, sessionKey string) string {
-	bridgeID := strings.TrimSpace(ref.BridgeID)
-	loginID := strings.TrimSpace(ref.LoginID)
-	agent := normalizeAgentID(ref.AgentID)
+func sessionStoreLockKey(ownerKey string, storeAgentID string, sessionKey string) string {
+	agent := normalizeAgentID(storeAgentID)
 	key := strings.TrimSpace(sessionKey)
 	if key == "" {
 		key = "main"
 	}
-	return bridgeID + "|" + loginID + "|" + agent + "|" + key
+	return ownerKey + "|" + agent + "|" + key
 }
 
-func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
-	key := sessionStoreLockKey(ref, sessionKey)
+func sessionStoreLock(ownerKey string, storeAgentID string, sessionKey string) *sync.Mutex {
+	key := sessionStoreLockKey(ownerKey, storeAgentID, sessionKey)
 	if val, ok := sessionStoreLocks.Load(key); ok {
 		return val.(*sync.Mutex)
 	}
@@ -41,44 +29,38 @@ func sessionStoreLock(ref sessionStoreRef, sessionKey string) *sync.Mutex {
 	return actual.(*sync.Mutex)
 }
 
-func (oc *AIClient) sessionDBScope() *loginScope {
-	return loginScopeForClient(oc)
-}
-
-func (oc *AIClient) getSessionEntry(ctx context.Context, ref sessionStoreRef, sessionKey string) (sessionEntry, bool) {
+func (oc *AIClient) loadSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
-		return sessionEntry{}, false
+		return 0, false
 	}
-	scope := oc.sessionDBScope()
+	scope := loginScopeForClient(oc)
 	if scope == nil {
-		return sessionEntry{}, false
+		return 0, false
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	var entry sessionEntry
+	var updatedAt int64
 	err := scope.db.QueryRow(ctx, `
 		SELECT
 			updated_at_ms
 		FROM `+aiSessionsTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key=$4
 	`,
-		scope.bridgeID, scope.loginID, normalizeAgentID(ref.AgentID), strings.TrimSpace(sessionKey),
-	).Scan(
-		&entry.UpdatedAt,
-	)
+		scope.bridgeID, scope.loginID, normalizeAgentID(storeAgentID), strings.TrimSpace(sessionKey),
+	).Scan(&updatedAt)
 	if err == sql.ErrNoRows {
-		return sessionEntry{}, false
+		return 0, false
 	}
 	if err != nil {
 		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: lookup failed")
-		return sessionEntry{}, false
+		return 0, false
 	}
-	return entry, true
+	return updatedAt, true
 }
 
-func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef, sessionKey string, entry sessionEntry) error {
-	scope := oc.sessionDBScope()
+func (oc *AIClient) storeSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string, updatedAt int64) error {
+	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return nil
 	}
@@ -98,35 +80,37 @@ func (oc *AIClient) upsertSessionEntry(ctx context.Context, ref sessionStoreRef,
 	`,
 		scope.bridgeID,
 		scope.loginID,
-		normalizeAgentID(ref.AgentID),
+		normalizeAgentID(storeAgentID),
 		strings.TrimSpace(sessionKey),
-		entry.UpdatedAt,
+		updatedAt,
 	)
 	return err
 }
 
-func (oc *AIClient) updateSessionTimestamp(ctx context.Context, ref sessionStoreRef, sessionKey string, minUpdatedAt int64) {
+func (oc *AIClient) updateSessionTimestamp(ctx context.Context, storeAgentID string, sessionKey string, minUpdatedAt int64) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return
 	}
-	lock := sessionStoreLock(ref, sessionKey)
+	scope := loginScopeForClient(oc)
+	if scope == nil {
+		return
+	}
+	lock := sessionStoreLock(scope.ownerKey(), storeAgentID, sessionKey)
 	lock.Lock()
 	defer lock.Unlock()
 
-	entry, _ := oc.getSessionEntry(ctx, ref, sessionKey)
 	updatedAt := time.Now().UnixMilli()
-	if entry.UpdatedAt > updatedAt {
-		updatedAt = entry.UpdatedAt
+	if existingUpdatedAt, ok := oc.loadSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
+		updatedAt = existingUpdatedAt
 	}
 	if minUpdatedAt > updatedAt {
 		updatedAt = minUpdatedAt
 	}
-	entry.UpdatedAt = updatedAt
-	if err := oc.upsertSessionEntry(ctx, ref, sessionKey, entry); err != nil {
+	if err := oc.storeSessionUpdatedAt(ctx, storeAgentID, sessionKey, updatedAt); err != nil {
 		oc.Log().Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
 	}
 }
 
-func (oc *AIClient) resolveSessionStoreRef(agentID string) sessionStoreRef {
-	return oc.resolveSessionRouting(agentID).StoreRef
+func (oc *AIClient) resolveSessionStoreAgentID(agentID string) string {
+	return oc.resolveSessionRouting(agentID).StoreAgentID
 }

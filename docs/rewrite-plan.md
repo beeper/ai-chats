@@ -168,10 +168,29 @@ Current status:
 - complete: AI turn sequencing/context-epoch persistence no longer routes through a dedicated portal-state store object; `turn_store.go` now owns the low-level `aichats_portal_state` SQL directly, and the extra `portal_state_db.go` layer is gone
 - complete: AI portal canonicalization/scope resolution no longer forks into parallel client-vs-non-client helper stacks; one resolver path now owns portal hydration and scope derivation for AI-owned storage
 - complete: AI turn-store persistence/replay no longer exposes duplicate package-level wrappers beside the `AIClient` methods; the remaining public entrypoints now route through one method surface over shared by-scope helpers
+- complete: AI session-store persistence no longer carries a fake composite ref object with duplicated bridge/login identity; `store_agent_id` is now the only explicit session-store owner passed through heartbeat, route, and status paths
+- complete: AI session-store persistence no longer exposes fake session row objects or duplicate scope wrappers; the store now owns one scalar `updated_at_ms` value behind direct `load/storeSessionUpdatedAt` helpers
+- complete: `portalMeta(...)` no longer performs hidden portal canonicalization or DB work; metadata access is now a pure helper, with portal resolution kept at explicit storage/runtime boundaries
+- complete: AI portal canonicalization no longer repeats across history replay, latest-assistant turn lookup, welcome/title generation, and system notices; each path now resolves the portal once and only asks for scope when it actually uses scope
+- complete: AI chat entry no longer branches through separate ghost-vs-identifier resolution stacks; one chat-target resolver now owns model/agent normalization, alias redirects, and handoff into the existing response builders
+- complete: AI streaming terminal success no longer carries a responses-only finish-reason prepass or a single-use terminal wrapper; final success fallback and terminal send ownership now live in one finalization path
+- complete: AI heartbeat terminal delivery no longer fans out through repeated skip branches; one heartbeat decision helper now chooses the skip action and the remaining body is the single deliver path
+- complete: AI new-chat command resolution no longer carries separate target representations or duplicated agent lookup branches; it now resolves straight into the shared chat target shape and one create/open path
+- complete: AI streaming failure handling no longer duplicates cancel/timeout/context-length classification between chat-completions and responses paths; one terminal-error helper now owns that decision tree
 - complete: AI scheduler/internal rooms no longer route durable portal updates through redundant save callbacks and post-save fixups; scheduler room materialization now uses one pre-save mutation path
 - complete: AI room override/title/internal-room materialization paths no longer use `BeforeSave` just to persist portal mutations that `SaveBefore` already handles; the remaining callback cases are narrower and behavior-specific
 - complete: AI subagent spawn and generated-title sync no longer route portal mutation through `MutatePortal`/`BeforeSave`; they now perform explicit metadata/save work before room materialization
 - complete: AI `materializePortalRoom` no longer carries dead `BeforeSave` / `OnCreated` / `OnExisting` callback branches; the helper now only owns pre-save mutation, cleanup-on-create-error, and welcome behavior
+- complete: AI created-chat room finalization no longer forks across normal new-chat flow, boss-store room creation, and subagent spawn; one helper now owns created-portal lookup plus room materialization
+- complete: AI internal room bootstrap no longer duplicates portal lookup/materialization decisions between the integration host and scheduler; one `getOrMaterializePortalRoom` path now owns that create-or-update behavior
+- complete: AI default-chat bootstrap and regular agent-chat creation no longer configure ghost/avatar/model-target state separately; one agent-portal helper now owns agent room metadata and member shaping
+- complete: raw portal room materialization no longer forks across SDK conversation bootstrap, Codex welcome/session rooms, OpenClaw DMs, and OpenCode session rooms; one `bridgeutil.MaterializePortalRoom(...)` path now owns create-vs-update plus bridge-info/capability refresh
+- complete: DM portal configure-plus-persist no longer forks across Codex, OpenClaw, OpenCode, and the dummy bridge; one `bridgeutil.ConfigureAndPersistDMPortal(...)` path now owns the shared pre-save bootstrap step above bridge-specific state persistence
+- complete: Codex and OpenClaw session/DM bootstrap no longer perform redundant second `portal.Save(ctx)` writes after state persistence; the state-save owner is now the only durable portal write in that pre-room phase
+- complete: the dummy bridge reference implementation no longer teaches bespoke DM room bootstrap logic; it now follows the same shared bridgeutil portal bootstrap/materialization path as the real bridges
+- complete: Codex thread start and thread resume no longer duplicate post-RPC loaded-thread bookkeeping; one helper now owns recovered-turn restoration and room-info refresh
+- complete: Codex login flow metadata no longer splits auth-mode/step-id/wait-deadline/display behavior across `Start`, `SubmitUserInput`, `spawnAndStartLogin`, and `buildStillWaitingStep`; one flow-spec table now owns that state-machine mapping
+- complete: OpenCode permission request/reply handling no longer re-derive approval identifiers, owner MXID, and stream-event bootstrap in separate handlers; shared helpers now own approval request normalization and approval stream emission
 - complete: Codex no longer wraps message-status sends or sandbox/path normalization behind trivial bridge-local helpers; the call sites now use `bridgeutil.SendMessageStatus(...)`, `sdk.NormalizeAbsolutePath(...)`, and the sandbox constant directly
 - complete: Codex no longer routes room topic refresh through `syncCodexRoomTopic`; the three call sites now recompute `ChatInfo` and call `UpdateInfo(...)` directly
 - pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
@@ -179,6 +198,9 @@ Current status:
 - in progress: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state
 - pending: replace callback-driven portal mutation (`MutatePortal`, `BeforeSave`, `OnCreated`) with `ChatInfo.ExtraUpdates` / `UserInfo.ExtraUpdates` where the mutation is durable bridge state
 - pending: replace AI poll-based welcome/autogreeting flow with one event-driven bootstrap turn flow
+- complete: SDK login persistence/completion no longer forks across bridge-local “new login -> load client -> reconnect” tails; the shared helper now also covers bridge-specific post-persist setup and custom load params, so AI, OpenCode, and OpenClaw all use the same lifecycle owner
+- complete: connector-level login creation no longer open-codes the same enabled/flow-id gating in each bridge; Codex, OpenClaw, and OpenCode now share one SDK login-flow validator
+- complete: SDK approval reaction routing no longer reassembles user decision payloads in parallel match paths; one shared helper now owns reaction-option decision construction
 
 ### Phase 2: Vertical slice
 

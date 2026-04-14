@@ -88,11 +88,6 @@ func (oc *AIClient) replayHistoryMessages(
 	meta *PortalMetadata,
 	opts historyReplayOptions,
 ) ([]PromptMessage, error) {
-	var err error
-	portal, err = resolvePortalForAIDB(ctx, oc, portal)
-	if err != nil {
-		return nil, err
-	}
 	extra := 0
 	if opts.mode == historyReplayRegen {
 		extra = 2

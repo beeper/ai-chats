@@ -37,6 +37,13 @@ type permissionApprovalRef struct {
 	Presentation sdk.ApprovalPromptPresentation
 }
 
+type openCodeApprovalRequestContext struct {
+	approvalID string
+	toolCallID string
+	toolName   string
+	messageID  string
+}
+
 func buildOpenCodeApprovalPresentation(req api.PermissionRequest) sdk.ApprovalPromptPresentation {
 	permission := strings.TrimSpace(req.Permission)
 	details := make([]sdk.ApprovalDetail, 0, 8)
@@ -50,6 +57,25 @@ func buildOpenCodeApprovalPresentation(req api.PermissionRequest) sdk.ApprovalPr
 		details = sdk.AppendDetailsFromMap(details, "Metadata", req.Metadata, 4)
 	}
 	return sdk.BuildApprovalPresentation("OpenCode permission request", permission, details, len(req.Always) > 0)
+}
+
+func normalizeOpenCodeApprovalRequest(req api.PermissionRequest) openCodeApprovalRequestContext {
+	ctx := openCodeApprovalRequestContext{
+		approvalID: strings.TrimSpace(req.ID),
+		toolCallID: strings.TrimSpace(req.ID),
+		messageID:  "",
+		toolName:   strings.TrimSpace(req.Permission),
+	}
+	if req.Tool != nil {
+		if callID := strings.TrimSpace(req.Tool.CallID); callID != "" {
+			ctx.toolCallID = callID
+		}
+		ctx.messageID = strings.TrimSpace(req.Tool.MessageID)
+	}
+	if ctx.toolName == "" {
+		ctx.toolName = "tool"
+	}
+	return ctx
 }
 
 func NewOpenCodeManager(bridge *Bridge) *OpenCodeManager {
@@ -121,6 +147,31 @@ func (m *OpenCodeManager) log() *zerolog.Logger {
 	}
 	l := zerolog.Nop()
 	return &l
+}
+
+func (m *OpenCodeManager) approvalOwnerMXID() id.UserID {
+	if m == nil || m.bridge == nil || m.bridge.host == nil {
+		return ""
+	}
+	if login := m.bridge.host.GetUserLogin(); login != nil {
+		return login.UserMXID
+	}
+	return ""
+}
+
+func (m *OpenCodeManager) emitOpenCodeApprovalStreamEvent(
+	ctx context.Context,
+	inst *openCodeInstance,
+	portal *bridgev2.Portal,
+	sessionID, messageID string,
+	payload map[string]any,
+) {
+	if m == nil || m.bridge == nil || inst == nil || portal == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(messageID) == "" {
+		return
+	}
+	m.ensureStepStarted(ctx, inst, portal, sessionID, messageID)
+	turnID := opencodeMessageStreamTurnID(sessionID, messageID)
+	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), payload)
 }
 
 func (m *OpenCodeManager) getInstance(instanceID string) *openCodeInstance {
@@ -748,16 +799,8 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 	if portal == nil {
 		return
 	}
-	approvalID := strings.TrimSpace(req.ID)
-	toolCallID := approvalID
-	messageID := ""
-	if req.Tool != nil {
-		if callID := strings.TrimSpace(req.Tool.CallID); callID != "" {
-			toolCallID = callID
-		}
-		messageID = strings.TrimSpace(req.Tool.MessageID)
-	}
-	if messageID == "" {
+	approvalCtx := normalizeOpenCodeApprovalRequest(req)
+	if approvalCtx.messageID == "" {
 		m.log().Warn().
 			Str("instance", inst.cfg.ID).
 			Str("session", req.SessionID).
@@ -766,47 +809,35 @@ func (m *OpenCodeManager) handlePermissionAskedEvent(ctx context.Context, inst *
 		return
 	}
 	presentation := buildOpenCodeApprovalPresentation(req)
-	_, created := m.approvalFlow.Register(approvalID, 10*time.Minute, &permissionApprovalRef{
+	_, created := m.approvalFlow.Register(approvalCtx.approvalID, 10*time.Minute, &permissionApprovalRef{
 		RoomID:       portal.MXID,
 		InstanceID:   inst.cfg.ID,
 		SessionID:    req.SessionID,
-		MessageID:    messageID,
-		ToolCallID:   toolCallID,
-		PermissionID: approvalID,
+		MessageID:    approvalCtx.messageID,
+		ToolCallID:   approvalCtx.toolCallID,
+		PermissionID: approvalCtx.approvalID,
 		Presentation: presentation,
 	})
 	if !created {
 		return
 	}
-	toolName := strings.TrimSpace(req.Permission)
-	if toolName == "" {
-		toolName = "tool"
-	}
-	m.ensureStepStarted(ctx, inst, portal, req.SessionID, messageID)
-	turnID := opencodeMessageStreamTurnID(req.SessionID, messageID)
-	m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
+	m.emitOpenCodeApprovalStreamEvent(ctx, inst, portal, req.SessionID, approvalCtx.messageID, map[string]any{
 		"type":       "tool-approval-request",
-		"approvalId": approvalID,
-		"toolCallId": toolCallID,
-		"toolName":   toolName,
+		"approvalId": approvalCtx.approvalID,
+		"toolCallId": approvalCtx.toolCallID,
+		"toolName":   approvalCtx.toolName,
 	})
-	ownerMXID := id.UserID("")
-	if m.bridge != nil && m.bridge.host != nil {
-		if login := m.bridge.host.GetUserLogin(); login != nil {
-			ownerMXID = login.UserMXID
-		}
-	}
 	m.approvalFlow.SendPrompt(ctx, portal, sdk.SendPromptParams{
 		ApprovalPromptMessageParams: sdk.ApprovalPromptMessageParams{
-			ApprovalID:   approvalID,
-			ToolCallID:   toolCallID,
-			ToolName:     toolName,
-			TurnID:       turnID,
+			ApprovalID:   approvalCtx.approvalID,
+			ToolCallID:   approvalCtx.toolCallID,
+			ToolName:     approvalCtx.toolName,
+			TurnID:       opencodeMessageStreamTurnID(req.SessionID, approvalCtx.messageID),
 			Presentation: presentation,
 			ExpiresAt:    time.Now().Add(10 * time.Minute),
 		},
 		RoomID:    portal.MXID,
-		OwnerMXID: ownerMXID,
+		OwnerMXID: m.approvalOwnerMXID(),
 	})
 }
 
@@ -841,11 +872,9 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 	if resolvedBy == "" {
 		resolvedBy = sdk.ApprovalResolutionOriginUser
 	}
-	turnID := opencodeMessageStreamTurnID(ref.SessionID, ref.MessageID)
 	portal := m.bridge.findOpenCodePortal(ctx, inst.cfg.ID, ref.SessionID)
 	if portal != nil {
-		m.ensureStepStarted(ctx, inst, portal, ref.SessionID, ref.MessageID)
-		m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
+		m.emitOpenCodeApprovalStreamEvent(ctx, inst, portal, ref.SessionID, ref.MessageID, map[string]any{
 			"type":       "tool-approval-response",
 			"approvalId": requestID,
 			"toolCallId": ref.ToolCallID,
@@ -853,7 +882,7 @@ func (m *OpenCodeManager) handlePermissionRepliedEvent(ctx context.Context, inst
 			"reason":     reply,
 		})
 		if !approved {
-			m.bridge.emitOpenCodeStreamEvent(ctx, portal, turnID, m.bridge.portalAgentID(portal), map[string]any{
+			m.emitOpenCodeApprovalStreamEvent(ctx, inst, portal, ref.SessionID, ref.MessageID, map[string]any{
 				"type":       "tool-output-denied",
 				"toolCallId": ref.ToolCallID,
 			})

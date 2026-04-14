@@ -288,39 +288,33 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}), nil
 	}
 
-	childPortal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, chatResp.PortalKey)
-	if err != nil || childPortal == nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  "failed to load sub-agent session",
-		}), nil
-	}
-
-	childMeta := portalMeta(childPortal)
-	childMeta.SubagentParentRoomID = portal.MXID.String()
-	if reasoningEffort != "" {
-		childMeta.RuntimeReasoning = reasoningEffort
-	}
-
 	roomName := resolveSubagentRoomName(label, task)
-	if roomName != "" {
-		if chatResp.PortalInfo != nil {
-			chatResp.PortalInfo.Name = &roomName
-		}
-		childPortal.Name = roomName
-		childPortal.NameSet = true
-	}
-	oc.savePortalQuiet(ctx, childPortal, "subagent spawn metadata")
-
-	if err := oc.materializePortalRoom(ctx, childPortal, chatResp.PortalInfo, portalRoomMaterializeOptions{
+	childPortal, err := oc.materializeCreatedChatPortal(ctx, chatResp, portalRoomMaterializeOptions{
 		CleanupOnCreateError: "failed to create subagent Matrix room",
+		SaveBefore:           true,
 		SendWelcome:          true,
-	}); err != nil {
+		MutatePortal: func(childPortal *bridgev2.Portal) {
+			childMeta := portalMeta(childPortal)
+			childMeta.SubagentParentRoomID = portal.MXID.String()
+			if reasoningEffort != "" {
+				childMeta.RuntimeReasoning = reasoningEffort
+			}
+			if roomName != "" {
+				if chatResp.PortalInfo != nil {
+					chatResp.PortalInfo.Name = &roomName
+				}
+				childPortal.Name = roomName
+				childPortal.NameSet = true
+			}
+		},
+	})
+	if err != nil {
 		return tools.JSONResult(map[string]any{
 			"status": "error",
 			"error":  err.Error(),
 		}), nil
 	}
+	childMeta := portalMeta(childPortal)
 
 	eventID := sdk.NewEventID("subagent")
 	promptContext, err := oc.buildCurrentTurnWithLinks(ctx, childPortal, childMeta, task, nil, eventID)

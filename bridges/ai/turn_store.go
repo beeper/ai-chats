@@ -697,13 +697,6 @@ func (oc *AIClient) getAIHistoryMessages(ctx context.Context, portal *bridgev2.P
 	if oc == nil || portal == nil || portal.MXID == "" || limit <= 0 {
 		return nil, nil
 	}
-	portal, err := resolvePortalForAIDB(ctx, oc, portal)
-	if err != nil {
-		return nil, err
-	}
-	if portal == nil {
-		return nil, nil
-	}
 	rows, err := oc.loadAIHistoryMessagesFromTurns(ctx, portal, limit)
 	if err != nil {
 		return nil, err

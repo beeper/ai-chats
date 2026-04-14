@@ -142,26 +142,24 @@ func (ol *OpenCodeLogin) SubmitUserInput(ctx context.Context, input map[string]s
 	loginID := sdk.NextUserLoginID(ol.User, "opencode")
 	instances = ol.scopeInstancesToLogin(loginID, instances)
 
-	login, createErr := ol.User.NewLogin(ctx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
-			Provider:          ProviderOpenCode,
-			OpenCodeInstances: instances,
-		},
-	}, nil)
-	if createErr != nil {
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", createErr), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
-	}
-	step, err := sdk.LoadConnectAndCompleteLogin(
+	_, step, err := sdk.PersistAndCompleteLogin(
 		ctx,
 		ol.BackgroundProcessContext(),
-		login,
+		ol.User,
+		&database.UserLogin{
+			ID:         loginID,
+			RemoteName: remoteName,
+			Metadata: &UserLoginMetadata{
+				Provider:          ProviderOpenCode,
+				OpenCodeInstances: instances,
+			},
+		},
 		openCodeLoginStepComplete,
 		ol.Connector.LoadUserLogin,
+		nil,
 	)
 	if err != nil {
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to complete login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCODE", "CREATE_LOGIN_FAILED")
 	}
 	return step, nil
 }

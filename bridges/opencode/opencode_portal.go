@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
@@ -48,34 +47,28 @@ func (b *Bridge) bootstrapOpenCodePortal(
 		return nil, nil, false, errors.New("login unavailable")
 	}
 	chatInfo := b.composeOpenCodeChatInfo(title, meta.InstanceID)
-	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		OtherUserID: OpenCodeUserID(meta.InstanceID),
-		Save:        false,
 		MutatePortal: func(portal *bridgev2.Portal) {
 			b.host.SetPortalMeta(portal, meta)
 		},
 	}); err != nil {
 		return nil, nil, false, err
 	}
-	if err := portal.Save(ctx); err != nil {
-		return nil, nil, false, fmt.Errorf("failed to save portal: %w", err)
-	}
 	if !createRoom {
 		return portal, chatInfo, false, nil
 	}
-	created := portal.MXID == ""
-	if created {
-		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
-			b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
-			return nil, nil, false, err
-		}
-	} else {
-		portal.UpdateInfo(ctx, chatInfo, login, nil, time.Time{})
+	created, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+		Login:    login,
+		Portal:   portal,
+		ChatInfo: chatInfo,
+	})
+	if err != nil {
+		b.host.CleanupPortal(ctx, portal, "failed to create OpenCode room")
+		return nil, nil, false, err
 	}
-	portal.UpdateBridgeInfo(ctx)
-	portal.UpdateCapabilities(ctx, login, true)
 	return portal, chatInfo, created, nil
 }
 

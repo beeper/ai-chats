@@ -1673,15 +1673,7 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	if err := saveCodexPortalState(ctx, portal, portalState); err != nil {
 		return err
 	}
-	cc.loadedMu.Lock()
-	cc.loadedThreads[portalState.CodexThreadID] = true
-	cc.loadedMu.Unlock()
-	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
-	if portal != nil && portal.MXID != "" {
-		if info := cc.composeCodexChatInfo(portal, portalState, strings.TrimSpace(portalState.CodexThreadID) != ""); info != nil {
-			portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
-		}
-	}
+	cc.finishCodexThreadLoad(ctx, portal, portalState, resp.Thread, resp.Model)
 	return nil
 }
 
@@ -1719,16 +1711,35 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	if err != nil {
 		return err
 	}
-	cc.loadedMu.Lock()
-	cc.loadedThreads[threadID] = true
-	cc.loadedMu.Unlock()
-	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
+	cc.finishCodexThreadLoad(ctx, portal, portalState, resp.Thread, resp.Model)
+	return nil
+}
+
+func (cc *CodexClient) finishCodexThreadLoad(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	portalState *codexPortalState,
+	thread codexThread,
+	model string,
+) {
+	if cc == nil || portalState == nil {
+		return
+	}
+	threadID := strings.TrimSpace(portalState.CodexThreadID)
+	if threadID == "" {
+		threadID = strings.TrimSpace(thread.ID)
+	}
+	if threadID != "" {
+		cc.loadedMu.Lock()
+		cc.loadedThreads[threadID] = true
+		cc.loadedMu.Unlock()
+	}
+	cc.restoreRecoveredActiveTurns(portal, portalState, thread, model)
 	if portal != nil && portal.MXID != "" {
-		if info := cc.composeCodexChatInfo(portal, portalState, strings.TrimSpace(portalState.CodexThreadID) != ""); info != nil {
+		if info := cc.composeCodexChatInfo(portal, portalState, threadID != ""); info != nil {
 			portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
 		}
 	}
-	return nil
 }
 
 // HandleMatrixDeleteChat best-effort archives the Codex thread and removes the temp cwd.

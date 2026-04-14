@@ -141,26 +141,23 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 		return nil, "", fmt.Errorf("missing login")
 	}
 	portalKey := portalKeyFromParts(h.client, portalID, receiver)
-	p, err := h.client.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return nil, "", err
-	}
-	if p.MXID != "" {
-		return p, p.MXID.String(), nil
-	}
-	chatInfo := &bridgev2.ChatInfo{Name: &p.Name}
-	if err := h.client.materializePortalRoom(ctx, p, chatInfo, portalRoomMaterializeOptions{
-		SaveBefore: true,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			meta := &PortalMetadata{}
-			if setupMeta != nil {
-				setupMeta(meta)
-			}
-			portal.Metadata = meta
-			portal.Name = displayName
-			portal.NameSet = true
+	chatName := displayName
+	p, err := h.client.getOrMaterializePortalRoom(ctx, portalKey, &bridgev2.ChatInfo{Name: &chatName}, portalRoomResolveOptions{
+		SkipIfExists: true,
+		Materialize: portalRoomMaterializeOptions{
+			SaveBefore: true,
+			MutatePortal: func(portal *bridgev2.Portal) {
+				meta := &PortalMetadata{}
+				if setupMeta != nil {
+					setupMeta(meta)
+				}
+				portal.Metadata = meta
+				portal.Name = displayName
+				portal.NameSet = true
+			},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 	return p, p.MXID.String(), nil
@@ -915,30 +912,23 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil, nil
 	}
-	var err error
-	portal, err = resolvePortalForAIDB(ctx, oc, portal)
-	if err != nil {
-		return nil, err
-	}
-	_, scope, err := resolveAIDBPortalScope(ctx, oc, portal)
-	if err != nil || scope == nil {
-		return nil, err
-	}
-	record, err := ensurePortalTurnStateByScope(ctx, scope)
-	if err != nil || record == nil {
-		return nil, err
-	}
-	rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
-		contextEpoch:    record.ContextEpoch,
-		hasContextEpoch: true,
-		kind:            aiTurnKindConversation,
-		roles:           []string{"assistant"},
-		limit:           1,
+	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (*aiTurnRecord, error) {
+		record, err := ensurePortalTurnStateByScope(ctx, scope)
+		if err != nil || record == nil {
+			return nil, err
+		}
+		rows, err := queryAITurnRows(ctx, scope, aiTurnQuery{
+			contextEpoch:    record.ContextEpoch,
+			hasContextEpoch: true,
+			kind:            aiTurnKindConversation,
+			roles:           []string{"assistant"},
+			limit:           1,
+		})
+		if err != nil || len(rows) == 0 {
+			return nil, err
+		}
+		return rows[0], nil
 	})
-	if err != nil || len(rows) == 0 {
-		return nil, err
-	}
-	return rows[0], nil
 }
 
 func (oc *AIClient) lastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {

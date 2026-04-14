@@ -56,7 +56,9 @@ func (oc *AIClient) finalizeStreamingTurn(
 		state.finishReason = reason
 	}
 
-	oc.persistTerminalAssistantTurn(ctx, portal, state, meta)
+	if state.hasInitialMessageTarget() || state.heartbeat != nil {
+		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
+	}
 	if writer := state.writer(); writer != nil {
 		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
 		if !params.success && reason == "cancelled" {

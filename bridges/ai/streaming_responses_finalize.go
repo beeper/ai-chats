@@ -14,10 +14,6 @@ func (oc *AIClient) finalizeResponsesStream(
 	state *streamingState,
 	meta *PortalMetadata,
 ) {
-	if state.finishReason == "" {
-		state.finishReason = "stop"
-	}
-
 	// Send any generated images as separate messages
 	for _, img := range state.pendingImages {
 		imageData, mimeType, err := decodeBase64Image(img.imageB64)

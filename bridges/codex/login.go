@@ -71,6 +71,100 @@ type codexAccountInfo struct {
 	Email string `json:"email"`
 }
 
+type codexLoginFlowSpec struct {
+	authMode      string
+	startStepID   string
+	startMessage  string
+	waitStepID    string
+	waitMessage   string
+	waitDeadline  time.Duration
+	displayType   bridgev2.LoginDisplayType
+	inputStep     func() *bridgev2.LoginStep
+	usesBrowserUI bool
+}
+
+func codexLoginFlowSpecForFlow(flowID string) (codexLoginFlowSpec, bool) {
+	switch flowID {
+	case FlowCodexChatGPT:
+		return codexLoginFlowSpec{
+			authMode:      "chatgpt",
+			startStepID:   "com.beeper.agentremote.codex.starting",
+			startMessage:  "Starting Codex browser login…",
+			waitStepID:    "com.beeper.agentremote.codex.chatgpt",
+			waitMessage:   "Still waiting for Codex login to complete.",
+			waitDeadline:  10 * time.Minute,
+			displayType:   bridgev2.LoginDisplayTypeCode,
+			usesBrowserUI: true,
+		}, true
+	case FlowCodexAPIKey:
+		return codexLoginFlowSpec{
+			authMode:     "apiKey",
+			startStepID:  "com.beeper.agentremote.codex.validating",
+			startMessage: "Validating the API key with Codex. Keep this screen open.",
+			waitStepID:   "com.beeper.agentremote.codex.validating",
+			waitMessage:  "Still validating the API key with Codex. Keep this screen open.",
+			waitDeadline: 5 * time.Minute,
+			displayType:  bridgev2.LoginDisplayTypeNothing,
+			inputStep: func() *bridgev2.LoginStep {
+				return &bridgev2.LoginStep{
+					Type:         bridgev2.LoginStepTypeUserInput,
+					StepID:       "com.beeper.agentremote.codex.enter_api_key",
+					Instructions: "Enter your OpenAI API key.",
+					UserInputParams: &bridgev2.LoginUserInputParams{
+						Fields: []bridgev2.LoginInputDataField{{
+							Type:        bridgev2.LoginInputFieldTypeToken,
+							ID:          "api_key",
+							Name:        "OpenAI API key",
+							Description: "Paste your OpenAI API key (sk-...).",
+						}},
+					},
+				}
+			},
+		}, true
+	case FlowCodexChatGPTExternalTokens:
+		return codexLoginFlowSpec{
+			authMode:     "chatgptAuthTokens",
+			startStepID:  "com.beeper.agentremote.codex.validating_external_tokens",
+			startMessage: "Validating ChatGPT external tokens with Codex. Keep this screen open.",
+			waitStepID:   "com.beeper.agentremote.codex.validating_external_tokens",
+			waitMessage:  "Still validating ChatGPT external tokens with Codex. Keep this screen open.",
+			waitDeadline: 5 * time.Minute,
+			displayType:  bridgev2.LoginDisplayTypeNothing,
+			inputStep: func() *bridgev2.LoginStep {
+				return &bridgev2.LoginStep{
+					Type:         bridgev2.LoginStepTypeUserInput,
+					StepID:       "com.beeper.agentremote.codex.enter_chatgpt_tokens",
+					Instructions: "Enter externally managed ChatGPT tokens.",
+					UserInputParams: &bridgev2.LoginUserInputParams{
+						Fields: []bridgev2.LoginInputDataField{
+							{
+								Type:        bridgev2.LoginInputFieldTypeToken,
+								ID:          "access_token",
+								Name:        "ChatGPT access token",
+								Description: "Paste the ChatGPT accessToken JWT.",
+							},
+							{
+								Type:        bridgev2.LoginInputFieldTypeUsername,
+								ID:          "chatgpt_account_id",
+								Name:        "ChatGPT account ID",
+								Description: "Paste the ChatGPT workspace/account identifier.",
+							},
+							{
+								Type:        bridgev2.LoginInputFieldTypeUsername,
+								ID:          "chatgpt_plan_type",
+								Name:        "ChatGPT plan type",
+								Description: "Optional. Leave blank to let Codex infer it.",
+							},
+						},
+					},
+				}
+			},
+		}, true
+	default:
+		return codexLoginFlowSpec{}, false
+	}
+}
+
 func (cl *CodexLogin) logger(ctx context.Context) *zerolog.Logger {
 	var l zerolog.Logger
 	if cl != nil && cl.User != nil {
@@ -102,59 +196,15 @@ func (cl *CodexLogin) Start(ctx context.Context) (*bridgev2.LoginStep, error) {
 		}, nil
 	}
 	log := cl.logger(ctx)
-	switch cl.FlowID {
-	case FlowCodexChatGPT:
-		cl.setAuthMode("chatgpt")
-		return cl.spawnAndStartLogin(ctx, log, "chatgpt", nil)
-	case FlowCodexAPIKey:
-		cl.setAuthMode("apiKey")
-		return &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeUserInput,
-			StepID:       "com.beeper.agentremote.codex.enter_api_key",
-			Instructions: "Enter your OpenAI API key.",
-			UserInputParams: &bridgev2.LoginUserInputParams{
-				Fields: []bridgev2.LoginInputDataField{
-					{
-						Type:        bridgev2.LoginInputFieldTypeToken,
-						ID:          "api_key",
-						Name:        "OpenAI API key",
-						Description: "Paste your OpenAI API key (sk-...).",
-					},
-				},
-			},
-		}, nil
-	case FlowCodexChatGPTExternalTokens:
-		cl.setAuthMode("chatgptAuthTokens")
-		return &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeUserInput,
-			StepID:       "com.beeper.agentremote.codex.enter_chatgpt_tokens",
-			Instructions: "Enter externally managed ChatGPT tokens.",
-			UserInputParams: &bridgev2.LoginUserInputParams{
-				Fields: []bridgev2.LoginInputDataField{
-					{
-						Type:        bridgev2.LoginInputFieldTypeToken,
-						ID:          "access_token",
-						Name:        "ChatGPT access token",
-						Description: "Paste the ChatGPT accessToken JWT.",
-					},
-					{
-						Type:        bridgev2.LoginInputFieldTypeUsername,
-						ID:          "chatgpt_account_id",
-						Name:        "ChatGPT account ID",
-						Description: "Paste the ChatGPT workspace/account identifier.",
-					},
-					{
-						Type:        bridgev2.LoginInputFieldTypeUsername,
-						ID:          "chatgpt_plan_type",
-						Name:        "ChatGPT plan type",
-						Description: "Optional. Leave blank to let Codex infer it.",
-					},
-				},
-			},
-		}, nil
-	default:
+	spec, ok := codexLoginFlowSpecForFlow(cl.FlowID)
+	if !ok {
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
+	cl.setAuthMode(spec.authMode)
+	if spec.inputStep != nil {
+		return spec.inputStep(), nil
+	}
+	return cl.spawnAndStartLogin(ctx, log, spec, nil)
 }
 
 func (cl *CodexLogin) Cancel() {
@@ -218,18 +268,21 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("codex CLI not found (%q): %w", cmd, err), http.StatusInternalServerError, "CODEX", "CLI_NOT_FOUND")
 	}
 	log := cl.logger(ctx)
+	spec, ok := codexLoginFlowSpecForFlow(cl.FlowID)
+	if !ok {
+		return nil, bridgev2.ErrInvalidLoginFlowID
+	}
+	cl.setAuthMode(spec.authMode)
 	switch cl.FlowID {
 	case FlowCodexAPIKey:
-		cl.setAuthMode("apiKey")
 		apiKey := strings.TrimSpace(input["api_key"])
 		if apiKey == "" {
 			return nil, errCodexAPIKeyRequired
 		}
-		return cl.spawnAndStartLogin(ctx, log, "apiKey", map[string]string{
+		return cl.spawnAndStartLogin(ctx, log, spec, map[string]string{
 			"apiKey": apiKey,
 		})
 	case FlowCodexChatGPTExternalTokens:
-		cl.setAuthMode("chatgptAuthTokens")
 		accessToken := strings.TrimSpace(input["access_token"])
 		accountID := strings.TrimSpace(input["chatgpt_account_id"])
 		planType := strings.TrimSpace(input["chatgpt_plan_type"])
@@ -247,18 +300,10 @@ func (cl *CodexLogin) SubmitUserInput(ctx context.Context, input map[string]stri
 		cl.chatgptAccountID = accountID
 		cl.chatgptPlanType = planType
 		cl.mu.Unlock()
-		return cl.spawnAndStartLogin(ctx, log, "chatgptAuthTokens", credentials)
+		return cl.spawnAndStartLogin(ctx, log, spec, credentials)
 	case FlowCodexChatGPT:
 		// Browser login starts during Start(); user input is not needed.
-		return &bridgev2.LoginStep{
-			Type:         bridgev2.LoginStepTypeDisplayAndWait,
-			StepID:       "com.beeper.agentremote.codex.chatgpt",
-			Instructions: "Open the login URL and complete ChatGPT authentication, then wait here.",
-			DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-				Type: bridgev2.LoginDisplayTypeCode,
-				Data: strings.TrimSpace(cl.getAuthURL()),
-			},
-		}, nil
+		return cl.displayWaitStep(spec.waitStepID, spec, "Open the login URL and complete ChatGPT authentication, then wait here.", strings.TrimSpace(cl.getAuthURL())), nil
 	default:
 		return nil, bridgev2.ErrInvalidLoginFlowID
 	}
@@ -312,7 +357,7 @@ func (cl *CodexLogin) cancelLoginAttempt(removeHome bool) {
 }
 
 // spawnAndStartLogin creates an isolated CODEX_HOME, spawns an app-server, and starts auth.
-func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logger, mode string, credentials map[string]string) (*bridgev2.LoginStep, error) {
+func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logger, spec codexLoginFlowSpec, credentials map[string]string) (*bridgev2.LoginStep, error) {
 	homeBase := cl.resolveCodexHomeBaseDir()
 	instanceID := generateShortID()
 	codexHome := filepath.Join(homeBase, instanceID)
@@ -355,15 +400,11 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 	cl.instanceID = instanceID
 	cl.loginID = ""
 	cl.authURL = ""
-	if mode != "chatgptAuthTokens" {
+	if spec.authMode != "chatgptAuthTokens" {
 		cl.chatgptAccountID = ""
 		cl.chatgptPlanType = ""
 	}
-	if mode == "apiKey" || mode == "chatgptAuthTokens" {
-		cl.waitUntil = time.Now().Add(5 * time.Minute)
-	} else {
-		cl.waitUntil = time.Now().Add(10 * time.Minute)
-	}
+	cl.waitUntil = time.Now().Add(spec.waitDeadline)
 
 	cl.loginDoneCh = make(chan codexLoginDone, 1)
 	cl.startCh = make(chan error, 1)
@@ -377,7 +418,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		// Initialize first (some Codex builds won't accept login/start before initialize).
 		initCtx, cancelInit := context.WithTimeout(procCtx, 45*time.Second)
 		ci := cl.Connector.Config.Codex.ClientInfo
-		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, cl.initializeExperimental(mode))
+		_, initErr := rpc.Initialize(initCtx, codexrpc.ClientInfo{Name: ci.Name, Title: ci.Title, Version: ci.Version}, cl.initializeExperimental(spec.authMode))
 		cancelInit()
 		if initErr != nil {
 			log.Warn().Err(initErr).Msg("Codex initialize failed")
@@ -424,8 +465,8 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 			}
 		})
 
-		if mode == "apiKey" || mode == "chatgptAuthTokens" {
-			loginParams := map[string]any{"type": mode}
+		if spec.authMode == "apiKey" || spec.authMode == "chatgptAuthTokens" {
+			loginParams := map[string]any{"type": spec.authMode}
 			for k, v := range credentials {
 				loginParams[k] = strings.TrimSpace(v)
 			}
@@ -433,7 +474,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 			startErr := rpc.Call(startCtx, "account/login/start", loginParams, &struct{}{})
 			cancel()
 			if startErr != nil {
-				log.Warn().Err(startErr).Str("mode", mode).Msg("Codex login start failed")
+				log.Warn().Err(startErr).Str("mode", spec.authMode).Msg("Codex login start failed")
 				cl.cancelLoginAttempt(true)
 			}
 			cl.signalStart(startErr)
@@ -466,26 +507,7 @@ func (cl *CodexLogin) spawnAndStartLogin(ctx context.Context, log *zerolog.Logge
 		cl.signalStart(nil)
 	}()
 
-	var stepID, instructions string
-	switch mode {
-	case "apiKey":
-		stepID = "com.beeper.agentremote.codex.validating"
-		instructions = "Validating the API key with Codex. Keep this screen open."
-	case "chatgptAuthTokens":
-		stepID = "com.beeper.agentremote.codex.validating_external_tokens"
-		instructions = "Validating ChatGPT external tokens with Codex. Keep this screen open."
-	default:
-		stepID = "com.beeper.agentremote.codex.starting"
-		instructions = "Starting Codex browser login…"
-	}
-	return &bridgev2.LoginStep{
-		Type:         bridgev2.LoginStepTypeDisplayAndWait,
-		StepID:       stepID,
-		Instructions: instructions,
-		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-			Type: bridgev2.LoginDisplayTypeNothing,
-		},
-	}, nil
+	return cl.displayWaitStep(spec.startStepID, spec, spec.startMessage, ""), nil
 }
 
 func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
@@ -498,7 +520,11 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 		return nil, errCodexWaitMissing
 	}
 	if cl.waitUntil.IsZero() {
-		cl.waitUntil = time.Now().Add(10 * time.Minute)
+		if spec, ok := codexLoginFlowSpecForFlow(cl.FlowID); ok && spec.waitDeadline > 0 {
+			cl.waitUntil = time.Now().Add(spec.waitDeadline)
+		} else {
+			cl.waitUntil = time.Now().Add(10 * time.Minute)
+		}
 	}
 	return sdk.RunDisplayAndWaitLoop[error, codexLoginDone](ctx, sdk.DisplayAndWaitLoopConfig[error, codexLoginDone]{
 		Deadline:         cl.waitUntil,
@@ -550,16 +576,8 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 				return &sdk.DisplayAndWaitLoopResult{Step: step}, nil
 			}
 			authURL := strings.TrimSpace(cl.getAuthURL())
-			if cl.getAuthMode() == "chatgpt" && authURL != "" {
-				return &sdk.DisplayAndWaitLoopResult{Step: &bridgev2.LoginStep{
-					Type:         bridgev2.LoginStepTypeDisplayAndWait,
-					StepID:       "com.beeper.agentremote.codex.chatgpt",
-					Instructions: "Open this URL in a browser and complete login, then wait here.",
-					DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-						Type: bridgev2.LoginDisplayTypeCode,
-						Data: authURL,
-					},
-				}}, nil
+			if spec, ok := codexLoginFlowSpecForFlow(cl.FlowID); ok && spec.usesBrowserUI && authURL != "" {
+				return &sdk.DisplayAndWaitLoopResult{Step: cl.displayWaitStep(spec.waitStepID, spec, "Open this URL in a browser and complete login, then wait here.", authURL)}, nil
 			}
 			return sdk.ContinueDisplayAndWaitLoop(), nil
 		},
@@ -580,29 +598,33 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 }
 
 func (cl *CodexLogin) buildStillWaitingStep(suffix string) *bridgev2.LoginStep {
-	stepID := "com.beeper.agentremote.codex.chatgpt"
-	instr := "Still waiting for Codex login to complete. " + suffix
-	displayType := bridgev2.LoginDisplayTypeNothing
-	data := ""
-	switch cl.getAuthMode() {
-	case "apiKey":
-		stepID = "com.beeper.agentremote.codex.validating"
-		instr = "Still validating the API key with Codex. Keep this screen open."
-	case "chatgptAuthTokens":
-		stepID = "com.beeper.agentremote.codex.validating_external_tokens"
-		instr = "Still validating ChatGPT external tokens with Codex. Keep this screen open."
-	default:
-		if authURL := strings.TrimSpace(cl.getAuthURL()); authURL != "" {
-			displayType = bridgev2.LoginDisplayTypeCode
-			data = authURL
+	spec, ok := codexLoginFlowSpecForFlow(cl.FlowID)
+	if !ok {
+		spec = codexLoginFlowSpec{
+			waitStepID:    "com.beeper.agentremote.codex.chatgpt",
+			waitMessage:   "Still waiting for Codex login to complete.",
+			displayType:   bridgev2.LoginDisplayTypeCode,
+			usesBrowserUI: true,
 		}
 	}
+	message := spec.waitMessage
+	if spec.usesBrowserUI && suffix != "" {
+		message = strings.TrimSpace(spec.waitMessage + " " + suffix)
+	}
+	data := ""
+	if spec.usesBrowserUI {
+		data = strings.TrimSpace(cl.getAuthURL())
+	}
+	return cl.displayWaitStep(spec.waitStepID, spec, message, data)
+}
+
+func (cl *CodexLogin) displayWaitStep(stepID string, spec codexLoginFlowSpec, instructions, data string) *bridgev2.LoginStep {
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeDisplayAndWait,
 		StepID:       stepID,
-		Instructions: instr,
+		Instructions: instructions,
 		DisplayAndWaitParams: &bridgev2.LoginDisplayAndWaitParams{
-			Type: displayType,
+			Type: spec.displayType,
 			Data: data,
 		},
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -138,6 +139,61 @@ func ConfigureDMPortal(ctx context.Context, p ConfigureDMPortalParams) error {
 		return nil
 	}
 	return p.Portal.Save(ctx)
+}
+
+type ConfigureAndPersistDMPortalParams struct {
+	Portal       *bridgev2.Portal
+	Title        string
+	Topic        string
+	OtherUserID  networkid.UserID
+	MutatePortal func(*bridgev2.Portal)
+	Persist      func(context.Context, *bridgev2.Portal) error
+}
+
+func ConfigureAndPersistDMPortal(ctx context.Context, p ConfigureAndPersistDMPortalParams) error {
+	if err := ConfigureDMPortal(ctx, ConfigureDMPortalParams{
+		Portal:       p.Portal,
+		Title:        p.Title,
+		Topic:        p.Topic,
+		OtherUserID:  p.OtherUserID,
+		Save:         false,
+		MutatePortal: p.MutatePortal,
+	}); err != nil {
+		return err
+	}
+	if p.Persist != nil {
+		return p.Persist(ctx, p.Portal)
+	}
+	if p.Portal == nil {
+		return fmt.Errorf("missing portal")
+	}
+	return p.Portal.Save(ctx)
+}
+
+type MaterializePortalRoomParams struct {
+	Login    *bridgev2.UserLogin
+	Portal   *bridgev2.Portal
+	ChatInfo *bridgev2.ChatInfo
+}
+
+func MaterializePortalRoom(ctx context.Context, p MaterializePortalRoomParams) (bool, error) {
+	if p.Login == nil {
+		return false, fmt.Errorf("missing login")
+	}
+	if p.Portal == nil {
+		return false, fmt.Errorf("missing portal")
+	}
+	created := p.Portal.MXID == ""
+	if created {
+		if err := p.Portal.CreateMatrixRoom(ctx, p.Login, p.ChatInfo); err != nil {
+			return false, err
+		}
+	} else if p.ChatInfo != nil {
+		p.Portal.UpdateInfo(ctx, p.ChatInfo, p.Login, nil, time.Time{})
+	}
+	p.Portal.UpdateBridgeInfo(ctx)
+	p.Portal.UpdateCapabilities(ctx, p.Login, true)
+	return created, nil
 }
 
 func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic string) *bridgev2.ChatInfo {

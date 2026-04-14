@@ -3,11 +3,12 @@ package sdk
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 // LoginHandle wraps a UserLogin and provides convenience methods for creating
@@ -63,17 +64,13 @@ func (l *LoginHandle) EnsureConversation(ctx context.Context, spec ConversationS
 	if err := portal.Save(ctx); err != nil {
 		return nil, fmt.Errorf("failed to save portal: %w", err)
 	}
-	if portal.MXID == "" {
-		err = portal.CreateMatrixRoom(ctx, l.login, info)
-	} else {
-		portal.UpdateInfo(ctx, info, l.login, nil, time.Time{})
-		err = nil
-	}
-	if err != nil {
+	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+		Login:    l.login,
+		Portal:   portal,
+		ChatInfo: info,
+	}); err != nil {
 		return nil, err
 	}
-	portal.UpdateBridgeInfo(ctx)
-	portal.UpdateCapabilities(ctx, l.login, true)
 	return conv, nil
 }
 

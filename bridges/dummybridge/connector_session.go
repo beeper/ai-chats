@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
@@ -109,29 +108,23 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	meta.Topic = dummyPortalTopic
 	meta.ChatIndex = idx
 
-	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
 		Portal:      portal,
 		Title:       title,
 		Topic:       dummyPortalTopic,
 		OtherUserID: dummyAgentUserID,
-		Save:        false,
 	}); err != nil {
 		return nil, fmt.Errorf("save portal: %w", err)
 	}
 
 	chatInfo := dc.composeChatInfo(login, title)
-	if err := portal.Save(ctx); err != nil {
-		return nil, fmt.Errorf("save portal: %w", err)
+	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+		Login:    login,
+		Portal:   portal,
+		ChatInfo: chatInfo,
+	}); err != nil {
+		return nil, fmt.Errorf("create Matrix room: %w", err)
 	}
-	if portal.MXID == "" {
-		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
-			return nil, fmt.Errorf("create Matrix room: %w", err)
-		}
-	} else {
-		portal.UpdateInfo(ctx, chatInfo, login, nil, time.Time{})
-	}
-	portal.UpdateBridgeInfo(ctx)
-	portal.UpdateCapabilities(ctx, login, true)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		Portal:     portal,

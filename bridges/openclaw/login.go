@@ -238,40 +238,41 @@ func (ol *OpenClawLogin) completeLogin(pending *openClawPendingLogin, deviceToke
 	remoteName := openClawRemoteName(pending.gatewayURL, pending.label)
 	loginID := sdk.NextUserLoginID(ol.User, "openclaw")
 	log.Debug().Str("login_id", string(loginID)).Str("remote_name", remoteName).Msg("Creating OpenClaw user login")
-	login, err := ol.User.NewLogin(persistCtx, &database.UserLogin{
-		ID:         loginID,
-		RemoteName: remoteName,
-		Metadata: &UserLoginMetadata{
-			Provider:        ProviderOpenClaw,
-			GatewayURL:      pending.gatewayURL,
-			GatewayLabel:    pending.label,
-			GatewayToken:    pending.token,
-			GatewayPassword: pending.password,
-			DeviceToken:     deviceToken,
+	login, step, err := sdk.PersistAndCompleteLogin(
+		persistCtx,
+		ol.BackgroundProcessContext(),
+		ol.User,
+		&database.UserLogin{
+			ID:         loginID,
+			RemoteName: remoteName,
+			Metadata: &UserLoginMetadata{
+				Provider:        ProviderOpenClaw,
+				GatewayURL:      pending.gatewayURL,
+				GatewayLabel:    pending.label,
+				GatewayToken:    pending.token,
+				GatewayPassword: pending.password,
+				DeviceToken:     deviceToken,
+			},
 		},
-	}, nil)
+		"com.beeper.agentremote.openclaw.complete",
+		nil,
+		func(ctx context.Context, login *bridgev2.UserLogin) {
+			if login == nil {
+				return
+			}
+			log.Warn().Str("login_id", string(login.ID)).Msg("Rolling back OpenClaw login after completion failure")
+			login.Delete(ctx, status.BridgeState{}, bridgev2.DeleteOpts{
+				DontCleanupRooms: true,
+				BlockingCleanup:  true,
+			})
+			log.Info().Str("login_id", string(login.ID)).Msg("Finished OpenClaw login rollback")
+		},
+	)
 	if err != nil {
 		log.Debug().Err(err).Str("login_id", string(loginID)).Msg("OpenClaw user login creation failed")
 		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create login: %w", err), http.StatusInternalServerError, "OPENCLAW", "CREATE_LOGIN_FAILED")
 	}
 	log.Debug().Str("login_id", string(login.ID)).Msg("Created OpenClaw user login")
-	step, err := sdk.LoadConnectAndCompleteLogin(
-		persistCtx,
-		ol.BackgroundProcessContext(),
-		login,
-		"com.beeper.agentremote.openclaw.complete",
-		nil,
-	)
-	if err != nil {
-		log.Warn().Err(err).Str("login_id", string(login.ID)).Msg("Failed to complete OpenClaw login after persistence")
-		log.Warn().Str("login_id", string(login.ID)).Msg("Rolling back OpenClaw login after completion failure")
-		login.Delete(persistCtx, status.BridgeState{}, bridgev2.DeleteOpts{
-			DontCleanupRooms: true,
-			BlockingCleanup:  true,
-		})
-		log.Info().Str("login_id", string(login.ID)).Msg("Finished OpenClaw login rollback")
-		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to complete login: %w", err), http.StatusInternalServerError, "OPENCLAW", "COMPLETE_LOGIN_FAILED")
-	}
 	ol.pending = nil
 	ol.step = ""
 	ol.waitUntil = time.Time{}

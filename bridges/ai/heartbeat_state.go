@@ -89,7 +89,7 @@ func (oc *AIClient) recordHeartbeatText(agentID string, sessionKey string, text 
 	})
 }
 
-func (oc *AIClient) restoreHeartbeatUpdatedAt(ref sessionStoreRef, sessionKey string, updatedAt int64) {
+func (oc *AIClient) restoreHeartbeatUpdatedAt(storeAgentID string, sessionKey string, updatedAt int64) {
 	if oc == nil {
 		return
 	}
@@ -100,12 +100,12 @@ func (oc *AIClient) restoreHeartbeatUpdatedAt(ref sessionStoreRef, sessionKey st
 	if sessionKey == "" {
 		return
 	}
-	entry, ok := oc.getSessionEntry(context.Background(), ref, sessionKey)
+	currentUpdatedAt, ok := oc.loadSessionUpdatedAt(context.Background(), storeAgentID, sessionKey)
 	if !ok {
 		return
 	}
-	if entry.UpdatedAt >= updatedAt {
+	if currentUpdatedAt >= updatedAt {
 		return
 	}
-	oc.updateSessionTimestamp(context.Background(), ref, sessionKey, updatedAt)
+	oc.updateSessionTimestamp(context.Background(), storeAgentID, sessionKey, updatedAt)
 }

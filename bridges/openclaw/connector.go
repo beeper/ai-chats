@@ -107,8 +107,14 @@ func NewConnector() *OpenClawConnector {
 			Description: "Create a login for an OpenClaw gateway.",
 		}),
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if !oc.openClawEnabled() {
-				return nil, bridgev2.ErrInvalidLoginFlowID
+			if err := sdk.ValidateLoginFlow(flowID, oc.openClawEnabled(), "OpenClaw login is disabled in the configuration.", "OPENCLAW", "LOGIN_DISABLED", func(flowID string) bool {
+				if flowID == ProviderOpenClaw {
+					return true
+				}
+				_, ok := oc.loginPrefill(flowID, user)
+				return ok
+			}); err != nil {
+				return nil, err
 			}
 			if flowID == ProviderOpenClaw {
 				return &OpenClawLogin{User: user, Connector: oc}, nil

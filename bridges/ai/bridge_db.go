@@ -257,17 +257,6 @@ func (scope *loginScope) ownerKey() string {
 	return scope.bridgeID + "|" + scope.loginID
 }
 
-func (scope *loginScope) sessionStoreRef(agentID string) sessionStoreRef {
-	if scope == nil {
-		return sessionStoreRef{AgentID: agentID}
-	}
-	return sessionStoreRef{
-		BridgeID: scope.bridgeID,
-		LoginID:  scope.loginID,
-		AgentID:  agentID,
-	}
-}
-
 // loginScopeForClient builds a loginScope from an AIClient, returning nil if the
 // client is not fully initialised.
 func loginScopeForClient(client *AIClient) *loginScope {

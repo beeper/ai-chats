@@ -53,25 +53,23 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 		return nil, errors.New("scheduler client is not available")
 	}
 	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
-	portal, err := s.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
-	if err != nil {
-		return nil, err
-	}
 	chatName := displayName
-	chatInfo := &bridgev2.ChatInfo{Name: &chatName}
-	if err := s.client.materializePortalRoom(ctx, portal, chatInfo, portalRoomMaterializeOptions{
-		SaveBefore: true,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			meta := portalMeta(portal)
-			if meta == nil {
-				meta = &PortalMetadata{}
-				portal.Metadata = meta
-			}
-			meta.InternalRoomKind = internalRoomKind
-			portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
-			s.client.applyPortalRoomName(ctx, portal, displayName)
+	portal, err := s.client.getOrMaterializePortalRoom(ctx, key, &bridgev2.ChatInfo{Name: &chatName}, portalRoomResolveOptions{
+		Materialize: portalRoomMaterializeOptions{
+			SaveBefore: true,
+			MutatePortal: func(portal *bridgev2.Portal) {
+				meta := portalMeta(portal)
+				if meta == nil {
+					meta = &PortalMetadata{}
+					portal.Metadata = meta
+				}
+				meta.InternalRoomKind = internalRoomKind
+				portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
+				s.client.applyPortalRoomName(ctx, portal, displayName)
+			},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 	return portal, nil

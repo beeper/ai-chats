@@ -305,33 +305,24 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		},
 		CanBackfill: true,
 	})
-	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
+	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
 		Portal:      portal,
 		Title:       presentation.Title,
 		Topic:       presentation.Topic,
 		OtherUserID: openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
-		Save:        false,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			portalMeta(portal).IsOpenClawRoom = true
+		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
+			return saveOpenClawPortalState(ctx, portal, oc.UserLogin, state)
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
-	if err := saveOpenClawPortalState(ctx, portal, oc.UserLogin, state); err != nil {
+	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+		Login:    oc.UserLogin,
+		Portal:   portal,
+		ChatInfo: chatInfo,
+	}); err != nil {
 		return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
 	}
-	if err := portal.Save(ctx); err != nil {
-		return nil, fmt.Errorf("failed to save openclaw dm portal: %w", err)
-	}
-	if portal.MXID == "" {
-		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-			return nil, fmt.Errorf("failed to ensure openclaw dm portal room: %w", err)
-		}
-	} else {
-		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
-	}
-	portal.UpdateBridgeInfo(ctx)
-	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	oc.maybeRefreshPortalCapabilities(ctx, portal, &previous, state)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,

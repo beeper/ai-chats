@@ -35,6 +35,13 @@ func CompleteLoginStep(stepID string, login *bridgev2.UserLogin) *bridgev2.Login
 	}
 }
 
+type PersistLoginCompletionOptions struct {
+	NewLoginParams *bridgev2.NewLoginParams
+	Load           func(context.Context, *bridgev2.UserLogin) error
+	AfterPersist   func(context.Context, *bridgev2.UserLogin) error
+	Cleanup        func(context.Context, *bridgev2.UserLogin)
+}
+
 // LoadConnectAndCompleteLogin reloads the typed client, reconnects it in the
 // background, and returns the standard completion step.
 func LoadConnectAndCompleteLogin(
@@ -58,6 +65,67 @@ func LoadConnectAndCompleteLogin(
 	return CompleteLoginStep(stepID, login), nil
 }
 
+// PersistAndCompleteLogin persists a login, reloads the typed client, reconnects
+// it in the background, and returns the standard completion step. Callers can
+// provide optional cleanup when the completion phase fails after persistence.
+func PersistAndCompleteLogin(
+	persistCtx context.Context,
+	connectCtx context.Context,
+	user *bridgev2.User,
+	loginData *database.UserLogin,
+	stepID string,
+	load func(context.Context, *bridgev2.UserLogin) error,
+	cleanup func(context.Context, *bridgev2.UserLogin),
+) (*bridgev2.UserLogin, *bridgev2.LoginStep, error) {
+	return PersistAndCompleteLoginWithOptions(
+		persistCtx,
+		connectCtx,
+		user,
+		loginData,
+		stepID,
+		PersistLoginCompletionOptions{
+			Load:    load,
+			Cleanup: cleanup,
+		},
+	)
+}
+
+// PersistAndCompleteLoginWithOptions persists a login, optionally runs extra
+// setup, reloads the typed client when requested, reconnects it in the
+// background, and returns the standard completion step.
+func PersistAndCompleteLoginWithOptions(
+	persistCtx context.Context,
+	connectCtx context.Context,
+	user *bridgev2.User,
+	loginData *database.UserLogin,
+	stepID string,
+	opts PersistLoginCompletionOptions,
+) (*bridgev2.UserLogin, *bridgev2.LoginStep, error) {
+	if user == nil || loginData == nil {
+		return nil, nil, nil
+	}
+	login, err := user.NewLogin(persistCtx, loginData, opts.NewLoginParams)
+	if err != nil {
+		return nil, nil, err
+	}
+	if opts.AfterPersist != nil {
+		if err = opts.AfterPersist(persistCtx, login); err != nil {
+			if opts.Cleanup != nil {
+				opts.Cleanup(persistCtx, login)
+			}
+			return login, nil, err
+		}
+	}
+	step, err := LoadConnectAndCompleteLogin(persistCtx, connectCtx, login, stepID, opts.Load)
+	if err != nil {
+		if opts.Cleanup != nil {
+			opts.Cleanup(persistCtx, login)
+		}
+		return login, nil, err
+	}
+	return login, step, nil
+}
+
 // CreateAndCompleteLogin creates a user login and returns the standard completion step.
 func CreateAndCompleteLogin(
 	persistCtx context.Context,
@@ -69,20 +137,17 @@ func CreateAndCompleteLogin(
 	stepID string,
 	load func(context.Context, *bridgev2.UserLogin) error,
 ) (*bridgev2.UserLogin, *bridgev2.LoginStep, error) {
-	if user == nil {
-		return nil, nil, nil
-	}
-	login, err := user.NewLogin(persistCtx, &database.UserLogin{
-		ID:         NextUserLoginID(user, loginType),
-		RemoteName: remoteName,
-		Metadata:   metadata,
-	}, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	step, err := LoadConnectAndCompleteLogin(persistCtx, connectCtx, login, stepID, load)
-	if err != nil {
-		return nil, nil, err
-	}
-	return login, step, nil
+	return PersistAndCompleteLogin(
+		persistCtx,
+		connectCtx,
+		user,
+		&database.UserLogin{
+			ID:         NextUserLoginID(user, loginType),
+			RemoteName: remoteName,
+			Metadata:   metadata,
+		},
+		stepID,
+		load,
+		nil,
+	)
 }

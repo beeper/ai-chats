@@ -110,11 +110,10 @@ func NewConnector() *CodexConnector {
 		},
 		LoginFlows: loginFlows,
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if !cc.codexEnabled() {
-				return nil, sdk.NewLoginRespError(403, "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED")
-			}
-			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-				return nil, bridgev2.ErrInvalidLoginFlowID
+			if err := sdk.ValidateLoginFlow(flowID, cc.codexEnabled(), "Codex login is disabled in the configuration.", "CODEX", "LOGIN_DISABLED", func(flowID string) bool {
+				return slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID })
+			}); err != nil {
+				return nil, err
 			}
 			return &CodexLogin{User: user, Connector: cc, FlowID: flowID}, nil
 		},

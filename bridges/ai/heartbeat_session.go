@@ -8,16 +8,16 @@ import (
 )
 
 type sessionRouting struct {
-	AgentID  string
-	StoreRef sessionStoreRef
-	MainKey  string
-	Scope    string
+	AgentID      string
+	StoreAgentID string
+	MainKey      string
+	Scope        string
 }
 
 type heartbeatSessionResolution struct {
-	StoreRef   sessionStoreRef
-	SessionKey string
-	UpdatedAt  int64
+	StoreAgentID string
+	SessionKey   string
+	UpdatedAt    int64
 }
 
 func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
@@ -43,10 +43,10 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 		storeAgentID = sessionScopeGlobal
 	}
 	return sessionRouting{
-		AgentID:  resolvedAgent,
-		StoreRef: loginScopeForClient(oc).sessionStoreRef(storeAgentID),
-		MainKey:  mainSessionKey,
-		Scope:    scope,
+		AgentID:      resolvedAgent,
+		StoreAgentID: storeAgentID,
+		MainKey:      mainSessionKey,
+		Scope:        scope,
 	}
 }
 
@@ -67,11 +67,11 @@ func (routing sessionRouting) resolveRequestedSession(session string) string {
 
 func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *HeartbeatConfig) heartbeatSessionResolution {
 	routing := oc.resolveSessionRouting(agentID)
-	lookup := func(key string) (sessionEntry, bool) {
-		return oc.getSessionEntry(context.Background(), routing.StoreRef, key)
+	lookup := func(key string) (int64, bool) {
+		return oc.loadSessionUpdatedAt(context.Background(), routing.StoreAgentID, key)
 	}
 	if routing.Scope == sessionScopeGlobal {
-		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: routing.MainKey}
+		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: routing.MainKey}
 	}
 
 	trimmed := ""
@@ -80,10 +80,10 @@ func (oc *AIClient) resolveHeartbeatSession(agentID string, heartbeat *Heartbeat
 	}
 	sessionKey := routing.resolveRequestedSession(trimmed)
 	if sessionKey == routing.MainKey {
-		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey}
+		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
 	}
-	if entry, ok := lookup(sessionKey); ok {
-		return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey, UpdatedAt: entry.UpdatedAt}
+	if updatedAt, ok := lookup(sessionKey); ok {
+		return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey, UpdatedAt: updatedAt}
 	}
-	return heartbeatSessionResolution{StoreRef: routing.StoreRef, SessionKey: sessionKey}
+	return heartbeatSessionResolution{StoreAgentID: routing.StoreAgentID, SessionKey: sessionKey}
 }

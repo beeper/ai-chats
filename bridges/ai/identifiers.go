@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
 	"net/url"
@@ -166,11 +165,6 @@ func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	if portal != nil {
-		if canonical, err := resolvePortalForAIDB(context.Background(), nil, portal); err == nil && canonical != nil {
-			portal = canonical
-		}
-	}
 	meta := sdk.EnsurePortalMetadata[PortalMetadata](portal)
 	if meta != nil && portal != nil {
 		meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)

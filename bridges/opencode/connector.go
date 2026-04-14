@@ -93,11 +93,10 @@ func NewConnector() *OpenCodeConnector {
 		UpdateClient: sdk.TypedClientUpdater[*OpenCodeClient](),
 		LoginFlows:   loginFlows,
 		CreateLogin: func(_ context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
-			if !oc.openCodeEnabled() {
-				return nil, sdk.NewLoginRespError(403, "OpenCode login is disabled in the configuration.", "OPENCODE", "LOGIN_DISABLED")
-			}
-			if !slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID }) {
-				return nil, bridgev2.ErrInvalidLoginFlowID
+			if err := sdk.ValidateLoginFlow(flowID, oc.openCodeEnabled(), "OpenCode login is disabled in the configuration.", "OPENCODE", "LOGIN_DISABLED", func(flowID string) bool {
+				return slices.ContainsFunc(loginFlows, func(f bridgev2.LoginFlow) bool { return f.ID == flowID })
+			}); err != nil {
+				return nil, err
 			}
 			return &OpenCodeLogin{User: user, Connector: oc, FlowID: flowID}, nil
 		},

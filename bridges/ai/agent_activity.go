@@ -27,15 +27,15 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 		return
 	}
 
-	storeRef := oc.resolveSessionStoreRef(agentID)
-	oc.updateSessionTimestamp(ctx, storeRef, portal.MXID.String(), 0)
+	storeAgentID := oc.resolveSessionStoreAgentID(agentID)
+	oc.updateSessionTimestamp(ctx, storeAgentID, portal.MXID.String(), 0)
 }
 
 func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok bool) {
 	if oc == nil {
 		return "", "", false
 	}
-	scope := oc.sessionDBScope()
+	scope := loginScopeForClient(oc)
 	if scope == nil {
 		return "", "", false
 	}
@@ -47,7 +47,7 @@ func (oc *AIClient) lastRoute(agentID string) (channel string, target string, ok
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
 		ORDER BY updated_at_ms DESC
 		LIMIT 1
-	`, scope.bridgeID, scope.loginID, normalizeAgentID(routing.StoreRef.AgentID), strings.TrimSpace(routing.MainKey)).Scan(&sessionKey)
+	`, scope.bridgeID, scope.loginID, normalizeAgentID(routing.StoreAgentID), strings.TrimSpace(routing.MainKey)).Scan(&sessionKey)
 	if err == sql.ErrNoRows {
 		return "", "", false
 	}

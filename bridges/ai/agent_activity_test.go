@@ -14,7 +14,7 @@ import (
 func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeRef := client.resolveSessionStoreRef(agentID)
+	storeAgentID := client.resolveSessionStoreAgentID(agentID)
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
 	portal := &bridgev2.Portal{
@@ -28,14 +28,14 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	entry, ok := client.getSessionEntry(context.Background(), storeRef, portal.MXID.String())
+	updatedAt, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String())
 	if !ok {
 		t.Fatalf("expected room session entry to be written")
 	}
-	if entry.UpdatedAt <= 0 {
+	if updatedAt <= 0 {
 		t.Fatalf("expected room session entry to have an updated timestamp")
 	}
-	if _, ok := client.getSessionEntry(context.Background(), storeRef, mainKey); ok {
+	if _, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, mainKey); ok {
 		t.Fatalf("expected main session row not to be created for route mirroring")
 	}
 }
@@ -43,17 +43,13 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeRef := client.resolveSessionStoreRef(agentID)
+	storeAgentID := client.resolveSessionStoreAgentID(agentID)
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
-	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
-		UpdatedAt: 3_000,
-	}); err != nil {
+	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 3_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
 	}
-	if err := client.upsertSessionEntry(context.Background(), storeRef, "!chat:example.com", sessionEntry{
-		UpdatedAt: 2_000,
-	}); err != nil {
+	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, "!chat:example.com", 2_000); err != nil {
 		t.Fatalf("upsert room session entry: %v", err)
 	}
 
@@ -69,12 +65,10 @@ func TestLastRouteIgnoresMainSessionRow(t *testing.T) {
 func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeRef := client.resolveSessionStoreRef(agentID)
+	storeAgentID := client.resolveSessionStoreAgentID(agentID)
 	mainKey := client.resolveSessionRouting(agentID).MainKey
 
-	if err := client.upsertSessionEntry(context.Background(), storeRef, mainKey, sessionEntry{
-		UpdatedAt: 1_000,
-	}); err != nil {
+	if err := client.storeSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
 	}
 
@@ -90,7 +84,7 @@ func TestResolveHeartbeatSessionDefaultDoesNotLoadMainSessionRoute(t *testing.T)
 func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeRef := client.resolveSessionStoreRef(agentID)
+	storeAgentID := client.resolveSessionStoreAgentID(agentID)
 
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
@@ -104,7 +98,7 @@ func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 
 	client.recordAgentActivity(context.Background(), portal, meta)
 
-	if _, ok := client.getSessionEntry(context.Background(), storeRef, portal.MXID.String()); ok {
+	if _, ok := client.loadSessionUpdatedAt(context.Background(), storeAgentID, portal.MXID.String()); ok {
 		t.Fatalf("expected internal rooms not to write route state")
 	}
 }
@@ -132,7 +126,7 @@ func TestLastRouteUsesGlobalSessionStoreForNonDefaultAgent(t *testing.T) {
 	if channel != "matrix" || target != "!chat:example.com" {
 		t.Fatalf("expected global last route lookup to return room session, got channel=%q target=%q", channel, target)
 	}
-	if got := client.resolveSessionStoreRef(agentID).AgentID; got != sessionScopeGlobal {
+	if got := client.resolveSessionStoreAgentID(agentID); got != sessionScopeGlobal {
 		t.Fatalf("expected global session store owner %q, got %q", sessionScopeGlobal, got)
 	}
 }
