@@ -24,7 +24,13 @@ func (oc *AIClient) effectiveSearchConfig(ctx context.Context) *retrieval.Search
 			}
 			return mapSearchConfig(connector.Config.Tools.Web.Search)
 		},
-		applyLoginTokensToSearchConfig,
+		func(cfg *retrieval.SearchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.SearchConfig {
+			if cfg == nil {
+				cfg = &retrieval.SearchConfig{}
+			}
+			applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+			return cfg
+		},
 		func(cfg *retrieval.SearchConfig) *retrieval.SearchConfig {
 			envCfg := &retrieval.SearchConfig{}
 			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("SEARCH_PROVIDER"))
@@ -68,7 +74,13 @@ func (oc *AIClient) effectiveFetchConfig(ctx context.Context) *retrieval.FetchCo
 			}
 			return mapFetchConfig(connector.Config.Tools.Web.Fetch)
 		},
-		applyLoginTokensToFetchConfig,
+		func(cfg *retrieval.FetchConfig, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) *retrieval.FetchConfig {
+			if cfg == nil {
+				cfg = &retrieval.FetchConfig{}
+			}
+			applyLoginTokensToRetrievalConfig(&cfg.Provider, &cfg.Fallbacks, &cfg.Exa.BaseURL, &cfg.Exa.APIKey, provider, loginCfg, connector)
+			return cfg
+		},
 		func(cfg *retrieval.FetchConfig) *retrieval.FetchConfig {
 			envCfg := &retrieval.FetchConfig{}
 			envCfg.Provider = stringutil.EnvOr(envCfg.Provider, os.Getenv("FETCH_PROVIDER"))
