@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -12,6 +13,7 @@ import (
 
 func newResponderMetadataTestClient(t *testing.T) *AIClient {
 	client := newCatalogTestClient(t)
+	client.SetLoggedIn(true)
 	setTestLoginState(client, &loginRuntimeState{
 		ModelCache: &ModelCache{
 			Models: []ModelInfo{
@@ -32,6 +34,8 @@ func newResponderMetadataTestClient(t *testing.T) *AIClient {
 					SupportsToolCalling: true,
 				},
 			},
+			LastRefresh:   time.Now().Unix(),
+			CacheDuration: 3600,
 		}})
 	return client
 }
@@ -51,15 +55,17 @@ func decodeExtraProfileValue[T any](t *testing.T, extra database.ExtraProfile, k
 
 func TestModelContactResponseIncludesResponderMetadata(t *testing.T) {
 	oc := newResponderMetadataTestClient(t)
-	resp := oc.modelContactResponse(context.Background(), &ModelInfo{
-		ID:                  "openai/gpt-5",
-		Name:                "GPT-5",
-		ContextWindow:       400000,
-		SupportsVision:      true,
-		SupportsReasoning:   true,
-		SupportsPDF:         true,
-		SupportsToolCalling: true,
-	})
+	results, err := oc.SearchUsers(context.Background(), "openai/gpt-5")
+	if err != nil {
+		t.Fatalf("search users: %v", err)
+	}
+	var resp *bridgev2.ResolveIdentifierResponse
+	for _, candidate := range results {
+		if candidate != nil && candidate.UserID == modelUserID("openai/gpt-5") {
+			resp = candidate
+			break
+		}
+	}
 	if resp == nil || resp.UserInfo == nil {
 		t.Fatalf("expected contact response with user info, got %#v", resp)
 	}

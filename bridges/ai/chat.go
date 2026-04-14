@@ -208,47 +208,6 @@ func agentMatchesQuery(query string, agent *sdk.Agent) bool {
 	return false
 }
 
-func (oc *AIClient) modelContactResponse(ctx context.Context, model *ModelInfo) *bridgev2.ResolveIdentifierResponse {
-	if model == nil || model.ID == "" {
-		return nil
-	}
-	responder, err := oc.ResolveResponderForModel(ctx, model.ID)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to resolve responder for model contact")
-	}
-	resp := &bridgev2.ResolveIdentifierResponse{
-		UserID:   modelUserID(model.ID),
-		UserInfo: responderUserInfoOrDefault(responder, modelContactName(model.ID, model), modelContactIdentifiers(model.ID), false),
-	}
-	return oc.hydrateContactResponseGhost(ctx, resp, "model", model.ID)
-}
-
-func (oc *AIClient) agentContactResponse(ctx context.Context, agent *sdk.Agent) *bridgev2.ResolveIdentifierResponse {
-	if agent == nil || !oc.agentsEnabledForLogin() {
-		return nil
-	}
-	resp := &bridgev2.ResolveIdentifierResponse{
-		UserID: networkid.UserID(agent.ID),
-	}
-	if agentInfo := agent.UserInfo(); agentInfo != nil {
-		resp.UserInfo = agentInfo
-	}
-	if agentID := catalogAgentID(agent); agentID != "" {
-		responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
-		} else if resp.UserInfo == nil {
-			resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
-		} else {
-			resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
-		}
-	}
-	if resp.UserInfo == nil {
-		return resp
-	}
-	return oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
-}
-
 func (oc *AIClient) hydrateContactResponseGhost(ctx context.Context, resp *bridgev2.ResolveIdentifierResponse, field, value string) *bridgev2.ResolveIdentifierResponse {
 	if resp == nil || resp.UserID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return resp
@@ -341,7 +300,29 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 		if query != "" && !agentMatchesQuery(query, agent) {
 			continue
 		}
-		appendResponse(oc.agentContactResponse(ctx, agent))
+		if agent == nil || !oc.agentsEnabledForLogin() {
+			continue
+		}
+		resp := &bridgev2.ResolveIdentifierResponse{
+			UserID: networkid.UserID(agent.ID),
+		}
+		if agentInfo := agent.UserInfo(); agentInfo != nil {
+			resp.UserInfo = agentInfo
+		}
+		if agentID := catalogAgentID(agent); agentID != "" {
+			responder, err := oc.ResolveResponderForAgent(ctx, agentID, ResponderResolveOptions{})
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
+			} else if resp.UserInfo == nil {
+				resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
+			} else {
+				resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
+			}
+		}
+		if resp.UserInfo != nil {
+			resp = oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
+		}
+		appendResponse(resp)
 	}
 
 	models, err := oc.listAvailableModels(ctx, false)
@@ -357,7 +338,14 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 		if query != "" && !modelMatchesQuery(query, model) {
 			continue
 		}
-		appendResponse(oc.modelContactResponse(ctx, model))
+		responder, err := oc.ResolveResponderForModel(ctx, model.ID)
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Str("model", model.ID).Msg("Failed to resolve responder for model contact")
+		}
+		appendResponse(oc.hydrateContactResponseGhost(ctx, &bridgev2.ResolveIdentifierResponse{
+			UserID:   modelUserID(model.ID),
+			UserInfo: responderUserInfoOrDefault(responder, modelContactName(model.ID, model), modelContactIdentifiers(model.ID), false),
+		}, "model", model.ID))
 	}
 	return results, nil
 }
@@ -438,7 +426,16 @@ func (oc *AIClient) resolveChatTargetFromIdentifier(ctx context.Context, identif
 	if catalogAgent, err := oc.sdkAgentCatalog().ResolveAgent(ctx, oc.UserLogin, id); err == nil && catalogAgent != nil {
 		agentID := catalogAgentID(catalogAgent)
 		if agentID == "" {
-			if resp := oc.agentContactResponse(ctx, catalogAgent); resp != nil {
+			if oc.agentsEnabledForLogin() {
+				resp := &bridgev2.ResolveIdentifierResponse{
+					UserID: networkid.UserID(catalogAgent.ID),
+				}
+				if agentInfo := catalogAgent.UserInfo(); agentInfo != nil {
+					resp.UserInfo = agentInfo
+				}
+				if resp.UserInfo != nil {
+					resp = oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
+				}
 				return &chatResolveTarget{response: resp}, nil
 			}
 			return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", id), mautrix.MNotFound)
