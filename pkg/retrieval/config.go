@@ -84,7 +84,18 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 		c.Fallbacks = append([]string(nil), DefaultFetchFallbackOrder...)
 	}
 	c.Exa = c.Exa.withFetchDefaults()
-	c.Direct = c.Direct.withDefaults()
+	if c.Direct.TimeoutSecs <= 0 {
+		c.Direct.TimeoutSecs = DefaultTimeoutSecs
+	}
+	if c.Direct.UserAgent == "" {
+		c.Direct.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+	}
+	if c.Direct.MaxChars <= 0 {
+		c.Direct.MaxChars = DefaultMaxChars
+	}
+	if c.Direct.MaxRedirects <= 0 {
+		c.Direct.MaxRedirects = 3
+	}
 	return c
 }
 
@@ -111,22 +122,6 @@ func (c ExaConfig) withFetchDefaults() ExaConfig {
 	}
 	if c.TextMaxCharacters <= 0 {
 		c.TextMaxCharacters = 5_000
-	}
-	return c
-}
-
-func (c DirectConfig) withDefaults() DirectConfig {
-	if c.TimeoutSecs <= 0 {
-		c.TimeoutSecs = DefaultTimeoutSecs
-	}
-	if c.UserAgent == "" {
-		c.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-	}
-	if c.MaxChars <= 0 {
-		c.MaxChars = DefaultMaxChars
-	}
-	if c.MaxRedirects <= 0 {
-		c.MaxRedirects = 3
 	}
 	return c
 }
