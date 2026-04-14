@@ -22,11 +22,6 @@ const (
 	ToolApprovalKindBuiltin ToolApprovalKind = "builtin"
 )
 
-type toolApprovalResolution struct {
-	Decision airuntime.ToolApprovalDecision
-	Always   bool // Persist allow rule when true (only meaningful when approved).
-}
-
 // pendingToolApprovalData holds bridge-specific metadata stored in
 // ApprovalFlow's Pending.Data field.
 type pendingToolApprovalData struct {
@@ -353,16 +348,11 @@ func (h *aiTurnApprovalHandle) Wait(ctx context.Context) (sdk.ToolApprovalRespon
 		ToolCallID:       h.toolCallID,
 		DenyToolOnReject: true,
 	}, func(ctx context.Context) (sdk.ToolApprovalResponse, error) {
-		resolution, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
-		decision := resolution.Decision
-		if !ok && decision.Reason == "" {
-			decision = airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
+		resp, _, ok := h.client.waitToolApproval(ctx, h.approvalID)
+		if !ok && resp.Reason == "" {
+			resp.Reason = sdk.ApprovalWaitReason(ctx)
 		}
-		return sdk.ToolApprovalResponse{
-			Approved: approvalAllowed(decision),
-			Always:   resolution.Always,
-			Reason:   decision.Reason,
-		}, nil
+		return resp, nil
 	})
 }
 
@@ -518,18 +508,18 @@ func (oc *AIClient) resolveToolApproval(approvalID string, approved bool, reason
 	})
 }
 
-func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (toolApprovalResolution, *pendingToolApprovalData, bool) {
+func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (sdk.ToolApprovalResponse, *pendingToolApprovalData, bool) {
 	if oc == nil || oc.approvalFlow == nil {
-		return toolApprovalResolution{}, nil, false
+		return sdk.ToolApprovalResponse{}, nil, false
 	}
 	approvalID = strings.TrimSpace(approvalID)
 	if approvalID == "" {
-		return toolApprovalResolution{}, nil, false
+		return sdk.ToolApprovalResponse{}, nil, false
 	}
 
 	p := oc.approvalFlow.Get(approvalID)
 	if p == nil {
-		return toolApprovalResolution{}, nil, false
+		return sdk.ToolApprovalResponse{}, nil, false
 	}
 	d := p.Data
 
@@ -546,15 +536,12 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 			}
 		},
 		OnResolved: func(ctx context.Context, decision sdk.ApprovalDecisionPayload, pending *pendingToolApprovalData) {
-			resolution := toolApprovalResolution{
-				Decision: airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: decision.Reason},
-				Always:   decision.Always,
-			}
+			state := "denied"
 			if decision.Approved {
-				resolution.Decision.State = airuntime.ToolApprovalApproved
+				state = "approved"
 			}
-			oc.Log().Debug().Str("approval_id", approvalID).Str("tool", pending.ToolName).Str("state", string(resolution.Decision.State)).Msg("tool approval decision received")
-			if approvalAllowed(resolution.Decision) && resolution.Always {
+			oc.Log().Debug().Str("approval_id", approvalID).Str("tool", pending.ToolName).Str("state", state).Msg("tool approval decision received")
+			if decision.Approved && decision.Always {
 				if err := oc.persistAlwaysAllow(ctx, pending); err != nil {
 					oc.Log().Warn().Err(err).Str("approval_id", approvalID).Msg("Failed to persist always-allow rule")
 				}
@@ -563,59 +550,38 @@ func (oc *AIClient) waitToolApproval(ctx context.Context, approvalID string) (to
 	})
 	if !ok {
 		reason := sdk.ApprovalWaitReason(ctx)
-		state := airuntime.ToolApprovalDenied
 		if decision.Reason != "" {
 			reason = decision.Reason
 		}
-		if reason == sdk.ApprovalReasonTimeout {
-			state = airuntime.ToolApprovalTimedOut
-		}
-		resolution := toolApprovalResolution{
-			Decision: airuntime.ToolApprovalDecision{State: state, Reason: reason},
-		}
 		oc.Log().Debug().Str("approval_id", approvalID).Str("tool", d.ToolName).Str("reason", reason).Msg("tool approval wait ended without decision")
-		return resolution, d, false
+		return sdk.ToolApprovalResponse{Reason: reason}, d, false
 	}
 
-	// Convert ApprovalDecisionPayload to toolApprovalResolution.
-	state := airuntime.ToolApprovalDenied
-	if decision.Approved {
-		state = airuntime.ToolApprovalApproved
-	}
-	resolution := toolApprovalResolution{
-		Decision: airuntime.ToolApprovalDecision{State: state, Reason: decision.Reason},
+	return sdk.ToolApprovalResponse{
+		Approved: decision.Approved,
 		Always:   decision.Always,
-	}
-	return resolution, d, true
+		Reason:   decision.Reason,
+	}, d, true
 }
 
-func approvalAllowed(decision airuntime.ToolApprovalDecision) bool {
-	return decision.State == airuntime.ToolApprovalApproved
-}
-
-func (oc *AIClient) waitForToolApprovalDecision(
+func (oc *AIClient) waitForToolApprovalResponse(
 	ctx context.Context,
-	state *streamingState,
 	handle sdk.ApprovalHandle,
-) airuntime.ToolApprovalDecision {
+) sdk.ToolApprovalResponse {
 	touchAgentLoopActivity(ctx)
 	if handle == nil {
-		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalTimedOut, Reason: sdk.ApprovalWaitReason(ctx)}
+		return sdk.ToolApprovalResponse{Reason: sdk.ApprovalWaitReason(ctx)}
 	}
 	resp, err := handle.Wait(ctx)
 	touchAgentLoopActivity(ctx)
 	if err != nil {
-		return airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: err.Error()}
+		return sdk.ToolApprovalResponse{Reason: err.Error()}
 	}
-	decision := airuntime.ToolApprovalDecision{State: airuntime.ToolApprovalDenied, Reason: strings.TrimSpace(resp.Reason)}
-	if resp.Approved {
-		decision.State = airuntime.ToolApprovalApproved
+	resp.Reason = strings.TrimSpace(resp.Reason)
+	if !resp.Approved && resp.Reason == "" {
+		resp.Reason = sdk.ApprovalReasonTimeout
 	}
-	if !resp.Approved && decision.Reason == "" {
-		decision.State = airuntime.ToolApprovalTimedOut
-		decision.Reason = sdk.ApprovalReasonTimeout
-	}
-	return decision
+	return resp
 }
 
 // isBuiltinToolDenied checks whether a builtin tool call requires user approval
@@ -670,6 +636,6 @@ func (oc *AIClient) isBuiltinToolDenied(
 	if handle == nil {
 		return true
 	}
-	decision := oc.waitForToolApprovalDecision(ctx, state, handle)
-	return !approvalAllowed(decision)
+	resp := oc.waitForToolApprovalResponse(ctx, handle)
+	return !resp.Approved
 }

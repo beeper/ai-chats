@@ -53,25 +53,8 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 		return nil, errors.New("scheduler client is not available")
 	}
 	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
-	chatName := displayName
-	portal, err := s.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	meta := portalMeta(portal)
-	if meta == nil {
-		meta = &PortalMetadata{}
-		portal.Metadata = meta
-	}
-	meta.InternalRoomKind = internalRoomKind
-	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
-	s.client.applyPortalRoomName(ctx, portal, displayName)
-	if err := portal.Save(ctx); err != nil {
-		return nil, err
-	}
-	err = s.client.materializePortalRoom(ctx, portal, &bridgev2.ChatInfo{Name: &chatName}, portalRoomMaterializeOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return portal, nil
+	return s.client.ensureNamedPortalRoom(ctx, key, displayName, func(portal *bridgev2.Portal, meta *PortalMetadata) {
+		meta.InternalRoomKind = internalRoomKind
+		portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
+	}, portalRoomMaterializeOptions{})
 }

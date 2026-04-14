@@ -70,11 +70,10 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 		if handle == nil {
 			return nil, responses.ResponseNewParams{}, fmt.Errorf("missing MCP approval handle for %s", approval.approvalID)
 		}
-		decision := a.oc.waitForToolApprovalDecision(ctx, state, handle)
-		approved := approvalAllowed(decision)
-		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, approved)
-		if decision.Reason != "" && item.OfMcpApprovalResponse != nil {
-			item.OfMcpApprovalResponse.Reason = param.NewOpt(decision.Reason)
+		resp := a.oc.waitForToolApprovalResponse(ctx, handle)
+		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, resp.Approved)
+		if resp.Reason != "" && item.OfMcpApprovalResponse != nil {
+			item.OfMcpApprovalResponse.Reason = param.NewOpt(resp.Reason)
 		}
 		approvalInputs = append(approvalInputs, item)
 	}

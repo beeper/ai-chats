@@ -141,25 +141,12 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 		return nil, "", fmt.Errorf("missing login")
 	}
 	portalKey := portalKeyFromParts(h.client, portalID, receiver)
-	chatName := displayName
-	p, err := h.client.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+	p, err := h.client.ensureNamedPortalRoom(ctx, portalKey, displayName, func(_ *bridgev2.Portal, meta *PortalMetadata) {
+		if setupMeta != nil {
+			setupMeta(meta)
+		}
+	}, portalRoomMaterializeOptions{})
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load portal: %w", err)
-	}
-	if p.MXID != "" {
-		return p, p.MXID.String(), nil
-	}
-	meta := &PortalMetadata{}
-	if setupMeta != nil {
-		setupMeta(meta)
-	}
-	p.Metadata = meta
-	p.Name = displayName
-	p.NameSet = true
-	if err := p.Save(ctx); err != nil {
-		return nil, "", fmt.Errorf("failed to save portal: %w", err)
-	}
-	if err := h.client.materializePortalRoom(ctx, p, &bridgev2.ChatInfo{Name: &chatName}, portalRoomMaterializeOptions{}); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 	return p, p.MXID.String(), nil

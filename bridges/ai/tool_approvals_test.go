@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -64,7 +63,7 @@ func TestToolApprovals_Resolve(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected wait ok")
 	}
-	if !approvalAllowed(resolution.Decision) {
+	if !resolution.Approved {
 		t.Fatalf("expected approve=true")
 	}
 }
@@ -176,8 +175,8 @@ func TestToolApprovals_WaitResolvedWithoutUserLogin(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected resolved approval to be returned even without UserLogin")
 	}
-	if !approvalAllowed(resolution.Decision) {
-		t.Fatalf("expected approval decision, got %#v", resolution.Decision)
+	if !resolution.Approved {
+		t.Fatalf("expected approval decision, got %#v", resolution)
 	}
 }
 
@@ -200,11 +199,11 @@ func TestToolApprovals_CancelDoesNotFinishResolved(t *testing.T) {
 	if ok {
 		t.Fatalf("expected cancelled wait to return ok=false")
 	}
-	if resolution.Decision.Reason != sdk.ApprovalReasonCancelled {
-		t.Fatalf("expected cancelled reason, got %#v", resolution.Decision)
+	if resolution.Reason != sdk.ApprovalReasonCancelled {
+		t.Fatalf("expected cancelled reason, got %#v", resolution)
 	}
-	if resolution.Decision.State != airuntime.ToolApprovalDenied {
-		t.Fatalf("expected denied state on cancellation, got %#v", resolution.Decision)
+	if resolution.Approved {
+		t.Fatalf("expected denied state on cancellation, got %#v", resolution)
 	}
 }
 
