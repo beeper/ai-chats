@@ -923,10 +923,7 @@ func resolveOpenRouterMediaBaseURL(oc *AIClient) string {
 	if oc == nil || oc.connector == nil {
 		return defaultOpenRouterBaseURL
 	}
-	provider := loginMetadata(oc.UserLogin).Provider
-	loginCfg := oc.loginConfigSnapshot(context.Background())
-	services := oc.connector.resolveServiceConfig(provider, loginCfg)
-	if svc, ok := services[serviceOpenRouter]; ok && strings.TrimSpace(svc.BaseURL) != "" {
+	if svc := resolveMediaServiceConfig(oc, serviceOpenRouter); strings.TrimSpace(svc.BaseURL) != "" {
 		return strings.TrimRight(svc.BaseURL, "/")
 	}
 	base := strings.TrimSpace(oc.connector.resolveOpenRouterBaseURL())
@@ -940,18 +937,22 @@ func resolveOpenAIMediaBaseURL(oc *AIClient) string {
 	if oc == nil || oc.connector == nil {
 		return defaultOpenAITranscriptionBaseURL
 	}
-	if oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
-		provider := loginMetadata(oc.UserLogin).Provider
-		loginCfg := oc.loginConfigSnapshot(context.Background())
-		services := oc.connector.resolveServiceConfig(provider, loginCfg)
-		if svc, ok := services[serviceOpenAI]; ok && strings.TrimSpace(svc.BaseURL) != "" {
-			return stringutil.NormalizeBaseURL(svc.BaseURL)
-		}
+	if svc := resolveMediaServiceConfig(oc, serviceOpenAI); strings.TrimSpace(svc.BaseURL) != "" {
+		return stringutil.NormalizeBaseURL(svc.BaseURL)
 	}
 	if base := stringutil.NormalizeBaseURL(oc.connector.resolveOpenAIBaseURL()); base != "" {
 		return base
 	}
 	return defaultOpenAITranscriptionBaseURL
+}
+
+func resolveMediaServiceConfig(oc *AIClient, service string) ServiceConfig {
+	if oc == nil || oc.connector == nil || oc.UserLogin == nil || oc.UserLogin.Metadata == nil {
+		return ServiceConfig{}
+	}
+	provider := loginMetadata(oc.UserLogin).Provider
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	return oc.connector.resolveServiceConfig(provider, loginCfg)[service]
 }
 
 func resolveMediaBaseURL(cfg *MediaUnderstandingConfig, entry MediaUnderstandingModelConfig) string {
@@ -1032,18 +1033,8 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 		if key := resolveProfiledKeys([]string{"OPENAI_API_KEY"}, profile, preferredProfile); key != "" {
 			return key
 		}
-		if oc.connector != nil && oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
-			provider := loginMetadata(oc.UserLogin).Provider
-			loginCfg := oc.loginConfigSnapshot(context.Background())
-			services := oc.connector.resolveServiceConfig(provider, loginCfg)
-			if svc, ok := services[serviceOpenAI]; ok {
-				if key := strings.TrimSpace(svc.APIKey); key != "" {
-					return key
-				}
-			}
-			if key := strings.TrimSpace(oc.connector.resolveOpenAIAPIKey(provider, loginCfg)); key != "" {
-				return key
-			}
+		if key := strings.TrimSpace(resolveMediaServiceConfig(oc, serviceOpenAI).APIKey); key != "" {
+			return key
 		}
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	case "groq":
@@ -1056,12 +1047,8 @@ func (oc *AIClient) resolveMediaProviderAPIKey(providerID string, profile string
 		if key := resolveProfiledKeys([]string{"OPENROUTER_API_KEY"}, profile, preferredProfile); key != "" {
 			return key
 		}
-		if oc.connector != nil && oc.UserLogin != nil && oc.UserLogin.Metadata != nil {
-			provider := loginMetadata(oc.UserLogin).Provider
-			loginCfg := oc.loginConfigSnapshot(context.Background())
-			if key := strings.TrimSpace(oc.connector.resolveOpenRouterAPIKey(provider, loginCfg)); key != "" {
-				return key
-			}
+		if key := strings.TrimSpace(resolveMediaServiceConfig(oc, serviceOpenRouter).APIKey); key != "" {
+			return key
 		}
 		return strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	default:

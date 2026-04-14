@@ -292,6 +292,8 @@ Deliverable:
 - one auth/base URL resolution path
 - media/image/tool policy reads from the same provider table
 - image-generation endpoint resolution uses the shared service-config path
+- media OpenAI/OpenRouter endpoint+auth resolution uses that same service-config
+  path
 
 Why fourth:
 

@@ -183,6 +183,8 @@ Why this still violates the goal:
 - image generation now resolves provider service endpoints through the shared
   service-config path; remaining provider duplication is the broader auth/media
   policy branching, not these endpoint-specific rebuilds
+- media understanding now also reads OpenAI/OpenRouter endpoint+auth config from
+  the shared service-config path instead of re-deriving those service values
 - token lookup, base URL routing, capability flags, media/image support, and
   provider-specific behavior are still derived in multiple subsystems
 - the current `AIProvider` abstraction does not buy enough to justify the extra
