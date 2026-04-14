@@ -38,84 +38,76 @@ func BuildDataURL(mimeType, b64Data string) string {
 func promptContextToResponsesInput(ctx PromptContext) responses.ResponseInputParam {
 	var result responses.ResponseInputParam
 	for _, msg := range ctx.Messages {
-		result = append(result, promptMessageToResponsesInputs(msg)...)
-	}
-	return result
-}
-
-func promptMessageToResponsesInputs(msg PromptMessage) responses.ResponseInputParam {
-	switch msg.Role {
-	case PromptRoleUser:
-		content := make([]responses.ResponseInputContentUnionParam, 0, len(msg.Blocks))
-		for _, block := range msg.Blocks {
-			switch block.Type {
-			case PromptBlockText:
-				text := strings.TrimSpace(block.Text)
-				if text == "" {
-					continue
-				}
-				content = append(content, responses.ResponseInputContentUnionParam{
-					OfInputText: &responses.ResponseInputTextParam{Text: text},
-				})
-			case PromptBlockImage:
-				imageURL := strings.TrimSpace(block.ImageURL)
-				if imageURL == "" && block.ImageB64 != "" {
-					mimeType := strings.TrimSpace(block.MimeType)
-					if mimeType == "" {
-						mimeType = "image/jpeg"
+		switch msg.Role {
+		case PromptRoleUser:
+			content := make([]responses.ResponseInputContentUnionParam, 0, len(msg.Blocks))
+			for _, block := range msg.Blocks {
+				switch block.Type {
+				case PromptBlockText:
+					text := strings.TrimSpace(block.Text)
+					if text == "" {
+						continue
 					}
-					imageURL = BuildDataURL(mimeType, block.ImageB64)
+					content = append(content, responses.ResponseInputContentUnionParam{
+						OfInputText: &responses.ResponseInputTextParam{Text: text},
+					})
+				case PromptBlockImage:
+					imageURL := strings.TrimSpace(block.ImageURL)
+					if imageURL == "" && block.ImageB64 != "" {
+						mimeType := strings.TrimSpace(block.MimeType)
+						if mimeType == "" {
+							mimeType = "image/jpeg"
+						}
+						imageURL = BuildDataURL(mimeType, block.ImageB64)
+					}
+					if imageURL == "" {
+						continue
+					}
+					content = append(content, responses.ResponseInputContentUnionParam{
+						OfInputImage: &responses.ResponseInputImageParam{
+							ImageURL: param.NewOpt(imageURL),
+						},
+					})
 				}
-				if imageURL == "" {
-					continue
-				}
-				content = append(content, responses.ResponseInputContentUnionParam{
-					OfInputImage: &responses.ResponseInputImageParam{
-						ImageURL: param.NewOpt(imageURL),
+			}
+			if len(content) == 0 {
+				continue
+			}
+			result = append(result, responses.ResponseInputItemUnionParam{
+				OfMessage: &responses.EasyInputMessageParam{
+					Role:    responses.EasyInputMessageRoleUser,
+					Content: responses.EasyInputMessageContentUnionParam{OfInputItemContentList: content},
+				},
+			})
+		case PromptRoleAssistant:
+			text := strings.TrimSpace(msg.VisibleText())
+			if text != "" {
+				result = append(result, responses.ResponseInputItemUnionParam{
+					OfMessage: &responses.EasyInputMessageParam{
+						Role:    responses.EasyInputMessageRoleAssistant,
+						Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(text)},
 					},
 				})
 			}
-		}
-		if len(content) == 0 {
-			return nil
-		}
-		return responses.ResponseInputParam{{
-			OfMessage: &responses.EasyInputMessageParam{
-				Role:    responses.EasyInputMessageRoleUser,
-				Content: responses.EasyInputMessageContentUnionParam{OfInputItemContentList: content},
-			},
-		}}
-	case PromptRoleAssistant:
-		var result responses.ResponseInputParam
-		text := strings.TrimSpace(msg.VisibleText())
-		if text != "" {
-			result = append(result, responses.ResponseInputItemUnionParam{
-				OfMessage: &responses.EasyInputMessageParam{
-					Role:    responses.EasyInputMessageRoleAssistant,
-					Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(text)},
-				},
-			})
-		}
-		for _, block := range msg.Blocks {
-			if block.Type != PromptBlockToolCall || strings.TrimSpace(block.ToolCallID) == "" || strings.TrimSpace(block.ToolName) == "" {
+			for _, block := range msg.Blocks {
+				if block.Type != PromptBlockToolCall || strings.TrimSpace(block.ToolCallID) == "" || strings.TrimSpace(block.ToolName) == "" {
+					continue
+				}
+				args := strings.TrimSpace(block.ToolCallArguments)
+				if args == "" {
+					args = "{}"
+				}
+				result = append(result, responses.ResponseInputItemParamOfFunctionCall(args, block.ToolCallID, block.ToolName))
+			}
+		case PromptRoleToolResult:
+			text := strings.TrimSpace(msg.Text())
+			if strings.TrimSpace(msg.ToolCallID) == "" || text == "" {
 				continue
 			}
-			args := strings.TrimSpace(block.ToolCallArguments)
-			if args == "" {
-				args = "{}"
-			}
-			result = append(result, responses.ResponseInputItemParamOfFunctionCall(args, block.ToolCallID, block.ToolName))
+			result = append(result, buildFunctionCallOutputItem(msg.ToolCallID, text, false))
 		}
-		return result
-	case PromptRoleToolResult:
-		text := strings.TrimSpace(msg.Text())
-		if strings.TrimSpace(msg.ToolCallID) == "" || text == "" {
-			return nil
-		}
-		return responses.ResponseInputParam{buildFunctionCallOutputItem(msg.ToolCallID, text, false)}
-	default:
-		return nil
 	}
+	return result
 }
 
 func promptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {

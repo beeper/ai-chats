@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"strconv"
 	"strings"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
@@ -57,36 +56,4 @@ func applyQueueDropPolicy[T any](params struct {
 		}
 	}
 	return true
-}
-
-func buildQueueSummaryPrompt(state *pendingQueue, noun string) string {
-	if state == nil || state.dropPolicy != airuntime.QueueDropSummarize || state.droppedCount <= 0 {
-		return ""
-	}
-	title := "[Queue overflow] Dropped " + strconv.Itoa(state.droppedCount) + " " + noun
-	if state.droppedCount != 1 {
-		title += "s"
-	}
-	title += " due to cap."
-	lines := []string{title}
-	if len(state.summaryLines) > 0 {
-		lines = append(lines, "Summary:")
-		for _, line := range state.summaryLines {
-			lines = append(lines, "- "+line)
-		}
-	}
-	state.droppedCount = 0
-	state.summaryLines = nil
-	return strings.Join(lines, "\n")
-}
-
-func buildCollectPrompt(title string, items []pendingQueueItem, summary string) string {
-	blocks := []string{title}
-	if strings.TrimSpace(summary) != "" {
-		blocks = append(blocks, summary)
-	}
-	for idx, item := range items {
-		blocks = append(blocks, strings.TrimSpace("---\nQueued #"+strconv.Itoa(idx+1)+"\n"+item.prompt))
-	}
-	return strings.Join(blocks, "\n\n")
 }

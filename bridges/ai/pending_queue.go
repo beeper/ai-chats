@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -287,7 +288,22 @@ func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
 	}
 	queue.mu.Lock()
 	defer queue.mu.Unlock()
-	summary := buildQueueSummaryPrompt(queue, noun)
+	summary := ""
+	if queue.dropPolicy == airuntime.QueueDropSummarize && queue.droppedCount > 0 {
+		title := "[Queue overflow] Dropped " + strconv.Itoa(queue.droppedCount) + " " + noun
+		if queue.droppedCount != 1 {
+			title += "s"
+		}
+		title += " due to cap."
+		lines := []string{title}
+		if len(queue.summaryLines) > 0 {
+			lines = append(lines, "Summary:")
+			for _, line := range queue.summaryLines {
+				lines = append(lines, "- "+line)
+			}
+		}
+		summary = strings.Join(lines, "\n")
+	}
 	queue.droppedCount = 0
 	queue.summaryLines = nil
 	if len(queue.items) == 0 {
@@ -386,7 +402,14 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 		if len(ackIDs) > 0 {
 			item.pending.AckEventIDs = ackIDs
 		}
-		return item, buildCollectPrompt("[Queued messages while agent was busy]", items, candidate.summaryPrompt), true
+		blocks := []string{"[Queued messages while agent was busy]"}
+		if strings.TrimSpace(candidate.summaryPrompt) != "" {
+			blocks = append(blocks, candidate.summaryPrompt)
+		}
+		for idx, queuedItem := range items {
+			blocks = append(blocks, strings.TrimSpace("---\nQueued #"+strconv.Itoa(idx+1)+"\n"+queuedItem.prompt))
+		}
+		return item, strings.Join(blocks, "\n\n"), true
 	}
 
 	item := candidate.items[0]
