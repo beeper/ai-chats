@@ -449,7 +449,7 @@ func approvalOptionDecisionKey(option ApprovalOption) string {
 }
 
 func approvalOptionKeyForDecision(options []ApprovalOption, decision ApprovalDecisionPayload) string {
-	options = normalizeApprovalOptions(options, DefaultApprovalOptions())
+	options = normalizeApprovalOptions(options, ApprovalPromptOptions(true))
 	if decision.Approved {
 		if decision.Always {
 			for _, option := range options {
@@ -496,7 +496,7 @@ func approvalReactionKeyForDecision(options []ApprovalOption, decision ApprovalD
 	if reactionKey == "" {
 		return canonicalKey
 	}
-	for _, option := range normalizeApprovalOptions(options, DefaultApprovalOptions()) {
+	for _, option := range normalizeApprovalOptions(options, ApprovalPromptOptions(true)) {
 		if option.Key != canonicalKey {
 			continue
 		}

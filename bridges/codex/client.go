@@ -41,7 +41,7 @@ var (
 const codexGhostID = networkid.UserID("codex")
 const aiCapabilityID = "com.beeper.ai.v1"
 
-var aiBaseCaps = sdk.BuildRoomFeatures(sdk.RoomFeaturesParams{
+var aiBaseCaps = &event.RoomFeatures{
 	ID:                  aiCapabilityID,
 	MaxTextLength:       100000,
 	Reply:               event.CapLevelFullySupported,
@@ -51,7 +51,7 @@ var aiBaseCaps = sdk.BuildRoomFeatures(sdk.RoomFeaturesParams{
 	ReadReceipts:        true,
 	TypingNotifications: true,
 	DeleteChat:          true,
-})
+}
 
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return sdk.HumanUserID("codex-user", loginID)

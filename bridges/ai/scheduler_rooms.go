@@ -55,6 +55,6 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
 	return s.client.ensureNamedPortalRoom(ctx, key, displayName, func(portal *bridgev2.Portal, meta *PortalMetadata) {
 		meta.InternalRoomKind = internalRoomKind
-		portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
+		setPortalResolvedTarget(portal, meta, s.client.agentUserID(normalizeAgentID(agentID)))
 	}, portalRoomMaterializeOptions{})
 }

@@ -172,6 +172,19 @@ func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
 	return meta
 }
 
+func setPortalResolvedTarget(portal *bridgev2.Portal, meta *PortalMetadata, ghostID networkid.UserID) {
+	if portal == nil {
+		return
+	}
+	portal.OtherUserID = ghostID
+	if meta == nil {
+		meta = portalMeta(portal)
+	}
+	if meta != nil {
+		meta.ResolvedTarget = resolveTargetFromGhostID(ghostID)
+	}
+}
+
 func resolveAgentID(meta *PortalMetadata) string {
 	if meta == nil || meta.ResolvedTarget == nil {
 		return ""

@@ -3,10 +3,11 @@ package ai
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 type portalRoomMaterializeOptions struct {
@@ -25,19 +26,16 @@ func (oc *AIClient) materializePortalRoom(
 	if oc == nil || oc.UserLogin == nil {
 		return fmt.Errorf("AIClient not initialized: missing UserLogin")
 	}
-	created := portal.MXID == ""
-	if created {
-		if err := portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-			if opts.CleanupOnCreateError != "" {
-				cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
-			}
-			return err
+	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+		Login:    oc.UserLogin,
+		Portal:   portal,
+		ChatInfo: chatInfo,
+	}); err != nil {
+		if opts.CleanupOnCreateError != "" && portal.MXID == "" {
+			cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
 		}
-	} else if chatInfo != nil {
-		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
+		return err
 	}
-	portal.UpdateBridgeInfo(ctx)
-	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	return nil
 }
 
@@ -69,11 +67,7 @@ func (oc *AIClient) ensureNamedPortalRoom(
 	if err := portal.Save(ctx); err != nil {
 		return nil, err
 	}
-	var chatInfo *bridgev2.ChatInfo
-	if displayName != "" {
-		chatName := displayName
-		chatInfo = &bridgev2.ChatInfo{Name: &chatName}
-	}
+	chatInfo := oc.portalRoomInfo(ctx, portal)
 	if err := oc.materializePortalRoom(ctx, portal, chatInfo, opts); err != nil {
 		return nil, err
 	}

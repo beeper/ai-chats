@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -28,7 +27,6 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -722,8 +720,7 @@ func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
 }
 
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	meta := portalMeta(portal)
-	return bridgeutil.BuildPortalFallbackChatInfo(portal, cmp.Or(strings.TrimSpace(meta.Slug), "AI Chat")), nil
+	return oc.portalRoomInfo(ctx, portal), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {

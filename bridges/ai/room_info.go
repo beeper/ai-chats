@@ -6,7 +6,24 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
+
+func (oc *AIClient) portalRoomInfo(ctx context.Context, portal *bridgev2.Portal) *bridgev2.ChatInfo {
+	if portal == nil {
+		return nil
+	}
+	meta := portalMeta(portal)
+	if meta != nil && meta.InternalRoom() {
+		fallbackName := strings.TrimSpace(meta.Slug)
+		if fallbackName == "" {
+			fallbackName = "AI Chat"
+		}
+		return bridgeutil.BuildPortalFallbackChatInfo(portal, fallbackName)
+	}
+	return oc.chatInfoFromPortal(ctx, portal)
+}
 
 // applyPortalRoomName updates the visible room name via bridgev2 for existing
 // rooms and falls back to local portal fields before the room exists.

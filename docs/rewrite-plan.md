@@ -81,6 +81,14 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI welcome/bootstrap no longer splits between direct post-create sends and provisioning polling; one portal-based room-created bootstrap path now owns welcome delivery and auto-greeting kickoff.
 - Responses API continuation no longer carries a synthetic fallback approval handle branch; pending approvals now require the real registered handle.
 - AI approval continuation and builtin-tool gating now use the shared SDK approval response directly instead of rehydrating a second runtime decision wrapper.
+- AI room projection now has one chat-portal owner for `Portal -> ChatInfo`; `GetChatInfo` and generated-title sync use the same projector instead of fallback/name-only chat shapes.
+- AI portal target mutation now has one helper for writing `OtherUserID` and derived target identity across chat creation, room mutation, scheduler rooms, and cron execution.
+- AI new-chat creation no longer routes through `createAndOpenResolvedChat` / `createAndOpenChat`; `handleNewChat` now owns the resolved-target create/materialize/announce flow directly.
+- AI room materialization now uses the shared `bridgeutil.MaterializePortalRoom` owner instead of a bridge-local reimplementation.
+- SDK default approval-option wrapper is gone; callers use `ApprovalPromptOptions(true)` directly.
+- SDK one-off path-expansion wrapper is gone; absolute-path normalization owns its only `~` expansion behavior directly.
+- SDK `LoginHandle` façade is gone; the unused login-scoped conversation shell was deleted outright.
+- SDK room-features helper wrappers are gone; the only remaining call site now uses `event.RoomFeatures` directly.
 - `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
 - AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.
@@ -106,7 +114,7 @@ Target:
 Problem:
 
 - a few AI flows still branch by historical entrypoint instead of behavior
-- common examples: new chat vs default chat vs subagent room vs provisioning-created room
+- the remaining concrete seams are the few room-update paths and SDK helpers that still exist because history created them, not because they are needed now
 
 Target:
 
@@ -159,4 +167,4 @@ Exit condition:
 
 1. trim SDK helpers that are no longer meaningfully shared after the deleted bridge experiments are gone
 2. keep deleting any remaining AI entrypoint-specific branches where the behavior is actually the same
-3. keep auditing portal/chat-info reconstruction to ensure room metadata is built from one behavior owner, not per entrypoint
+3. keep collapsing the remaining room-update and helper seams where the behavior is already settled

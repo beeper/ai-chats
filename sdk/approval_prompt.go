@@ -220,10 +220,6 @@ func ApprovalPromptOptions(allowAlways bool) []ApprovalOption {
 	}
 }
 
-func DefaultApprovalOptions() []ApprovalOption {
-	return ApprovalPromptOptions(true)
-}
-
 func renderApprovalOptionHints(options []ApprovalOption) []string {
 	hints := make([]string, 0, len(options))
 	for _, opt := range options {
@@ -690,7 +686,7 @@ func isApprovalReactionKey(key string) bool {
 	if strings.HasPrefix(key, "approval.") {
 		return true
 	}
-	for _, option := range DefaultApprovalOptions() {
+	for _, option := range ApprovalPromptOptions(true) {
 		for _, optionKey := range option.allKeys() {
 			if key == optionKey {
 				return true

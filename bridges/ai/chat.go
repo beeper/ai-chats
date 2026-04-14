@@ -738,7 +738,7 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
 	portal.RoomType = database.RoomTypeDM
-	portal.OtherUserID = modelUserID(modelID)
+	setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
 	portal.Name = strings.TrimSpace(title)
 	portal.NameSet = portal.Name != ""
 	portal.Topic = ""
@@ -776,7 +776,47 @@ func (oc *AIClient) handleNewChat(
 		oc.sendSystemNotice(runCtx, portal, err.Error())
 		return
 	}
-	oc.createAndOpenResolvedChat(runCtx, portal, target)
+	if target == nil {
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the chat: no target resolved")
+		return
+	}
+
+	var (
+		label  string
+		params chatCreateParams
+	)
+	switch {
+	case target.agent != nil:
+		label = oc.resolveAgentDisplayName(runCtx, target.agent)
+		params = chatCreateParams{
+			ModelID: target.modelID,
+			Agent:   target.agent,
+		}
+	case target.modelID != "":
+		label = modelContactName(target.modelID, oc.findModelInfo(target.modelID))
+		params = chatCreateParams{ModelID: target.modelID}
+	default:
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the chat: no target resolved")
+		return
+	}
+
+	chatResp, err := oc.createChat(runCtx, params)
+	if err != nil {
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the chat: "+err.Error())
+		return
+	}
+
+	newPortal, err := oc.prepareCreatedChatPortal(runCtx, chatResp, "", nil, portalRoomMaterializeOptions{})
+	if err != nil {
+		oc.sendSystemNotice(runCtx, portal, "Couldn't create the room: "+err.Error())
+		return
+	}
+
+	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
+	oc.sendSystemNotice(runCtx, portal, fmt.Sprintf(
+		"New %s chat created.\nOpen: %s",
+		label, roomLink,
+	))
 }
 
 func (oc *AIClient) validateNewChatCommand(
@@ -890,8 +930,7 @@ func (oc *AIClient) configureAgentChatPortal(
 	agentName := oc.resolveAgentDisplayName(ctx, agent)
 	agentGhostID := oc.agentUserID(agent.ID)
 	pm := portalMeta(portal)
-	portal.OtherUserID = agentGhostID
-	pm.ResolvedTarget = resolveTargetFromGhostID(agentGhostID)
+	setPortalResolvedTarget(portal, pm, agentGhostID)
 	if applyModelOverride {
 		pm.RuntimeModelOverride = ResolveAlias(modelID)
 	}
@@ -909,52 +948,6 @@ func (oc *AIClient) configureAgentChatPortal(
 		oc.applyAgentChatInfo(ctx, chatInfo, agent.ID, agentName, modelID)
 	}
 	return agentName
-}
-
-func (oc *AIClient) createAndOpenResolvedChat(ctx context.Context, portal *bridgev2.Portal, target *chatResolveTarget) {
-	if target == nil {
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: no target resolved")
-		return
-	}
-	switch {
-	case target.agent != nil:
-		agentName := oc.resolveAgentDisplayName(ctx, target.agent)
-		oc.createAndOpenChat(ctx, portal, agentName, chatCreateParams{
-			ModelID: target.modelID,
-			Agent:   target.agent,
-		})
-	case target.modelID != "":
-		oc.createAndOpenChat(ctx, portal, modelContactName(target.modelID, oc.findModelInfo(target.modelID)), chatCreateParams{
-			ModelID: target.modelID,
-		})
-	default:
-		oc.sendSystemNotice(ctx, portal, "Couldn't create the chat: no target resolved")
-	}
-}
-
-func (oc *AIClient) createAndOpenChat(
-	ctx context.Context,
-	sourcePortal *bridgev2.Portal,
-	label string,
-	params chatCreateParams,
-) {
-	chatResp, err := oc.createChat(ctx, params)
-	if err != nil {
-		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the chat: "+err.Error())
-		return
-	}
-
-	newPortal, err := oc.prepareCreatedChatPortal(ctx, chatResp, "", nil, portalRoomMaterializeOptions{})
-	if err != nil {
-		oc.sendSystemNotice(ctx, sourcePortal, "Couldn't create the room: "+err.Error())
-		return
-	}
-
-	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
-	oc.sendSystemNotice(ctx, sourcePortal, fmt.Sprintf(
-		"New %s chat created.\nOpen: %s",
-		label, roomLink,
-	))
 }
 
 func (oc *AIClient) prepareCreatedChatPortal(
@@ -1095,12 +1088,6 @@ func (oc *AIClient) applyAgentChatInfo(ctx context.Context, chatInfo *bridgev2.C
 	chatInfo.Members = members
 }
 
-// BroadcastRoomState refreshes standard Matrix room capabilities and command descriptions.
-func (oc *AIClient) BroadcastRoomState(ctx context.Context, portal *bridgev2.Portal) error {
-	portal.UpdateCapabilities(ctx, oc.UserLogin, true)
-	return nil
-}
-
 func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev2.Portal, message string) error {
 	if oc == nil || oc.UserLogin == nil || portal == nil {
 		return nil
@@ -1210,7 +1197,7 @@ func (oc *AIClient) ensureChatPortalReady(ctx context.Context, portal *bridgev2.
 		oc.loggerForContext(ctx).Debug().Stringer("portal", portal.PortalKey).Msg(readyMsg)
 		return nil
 	}
-	info := oc.chatInfoFromPortal(ctx, portal)
+	info := oc.portalRoomInfo(ctx, portal)
 	oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg(createMsg)
 	if err := oc.materializePortalRoom(ctx, portal, info, portalRoomMaterializeOptions{}); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg(errMsg)

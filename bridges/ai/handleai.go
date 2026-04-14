@@ -403,9 +403,7 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 		return fmt.Errorf("send welcome message: %w", err)
 	}
 
-	if err := oc.BroadcastRoomState(bgCtx, portal); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to broadcast room state")
-	}
+	portal.UpdateCapabilities(bgCtx, oc.UserLogin, true)
 
 	oc.scheduleAutoGreeting(bgCtx, portal)
 	return nil
@@ -478,7 +476,7 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
 			return
 		}
-		if err := oc.materializePortalRoom(bgCtx, portal, &bridgev2.ChatInfo{Name: &title}, portalRoomMaterializeOptions{}); err != nil {
+		if err := oc.materializePortalRoom(bgCtx, portal, oc.portalRoomInfo(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
 		}
 	}()

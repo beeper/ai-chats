@@ -126,7 +126,7 @@ func TestApprovalFlow_FinishResolvedQueuesEditAndPlaceholderCleanup(t *testing.T
 		ToolName:        "exec",
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -227,7 +227,7 @@ func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -269,7 +269,7 @@ func TestApprovalFlow_HandleReaction_UnknownPendingShowsUnknown(t *testing.T) {
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -312,7 +312,7 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesMessageStatus(t *testing.
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	}, ApprovalDecisionPayload{
 		ApprovalID: "approval-1",
 		Approved:   true,
@@ -353,7 +353,7 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByMessageID(t *testing.T) {
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -383,7 +383,7 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("$prompt-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.registerPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-2",
@@ -391,7 +391,7 @@ func TestApprovalFlow_HandleReaction_MatchesPromptByEventIDWhenMessageIDMissing(
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-2",
 		PromptMessageID: networkid.MessageID("$prompt-2"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -430,7 +430,7 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatus(t *te
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	}, ApprovalDecisionPayload{
 		ApprovalID: "approval-1",
 		Approved:   true,
@@ -489,7 +489,7 @@ func TestApprovalFlow_HandleReaction_ResolvedPromptUsesEventIDWhenMessageIDMissi
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		PromptMessageID: networkid.MessageID("$prompt"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	}, ApprovalDecisionPayload{
 		ApprovalID: "approval-1",
 		Approved:   true,
@@ -538,7 +538,7 @@ func TestApprovalFlow_HandleReactionRemove_ResolvedPromptUsesMessageStatusForAli
 		RoomID:          roomID,
 		OwnerMXID:       owner,
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	}, ApprovalDecisionPayload{
 		ApprovalID: "approval-1",
 		Approved:   true,
@@ -678,7 +678,7 @@ func TestApprovalFlow_ResolvedPromptLookupPrunesExpiredEntries(t *testing.T) {
 		ApprovalID:      "approval-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
 		ExpiresAt:       time.Now().Add(-time.Second),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	}, ApprovalDecisionPayload{
 		ApprovalID: "approval-1",
 		Approved:   true,
@@ -737,7 +737,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalMirrorsDecision(t 
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -796,7 +796,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetUniqueApprovalPreservesAliasReac
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -853,7 +853,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.registerPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-2",
@@ -861,7 +861,7 @@ func TestApprovalFlow_HandleReaction_WrongTargetAmbiguousApprovalUsesMessageStat
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-2",
 		PromptMessageID: networkid.MessageID("msg-2"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -935,7 +935,7 @@ func TestApprovalFlow_ResolveExternalMirrorsRemoteDecision(t *testing.T) {
 		OwnerMXID:       owner,
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -994,7 +994,7 @@ func TestApprovalFlow_ResolveExternalAgentKeepsSelectedPlaceholderReaction(t *te
 		ToolCallID:      "tool-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
 		PromptSenderID:  networkid.UserID("ghost:approval"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -1096,7 +1096,7 @@ func TestApprovalFlow_ResolveExternalDoesNotFinalizeWhenAlreadyHandled(t *testin
 	flow.registerPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 
@@ -1143,7 +1143,7 @@ func TestApprovalFlow_ResolvePreventsLaterTimeout(t *testing.T) {
 	flow.registerPromptLocked(ApprovalPromptRegistration{
 		ApprovalID:      "approval-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
 	})
 	flow.mu.Unlock()
@@ -1181,7 +1181,7 @@ func TestApprovalFlow_WaitTimeoutFinalizesPromptState(t *testing.T) {
 		ApprovalID:      "approval-1",
 		PromptMessageID: networkid.MessageID("msg-1"),
 		ExpiresAt:       time.Now().Add(25 * time.Millisecond),
-		Options:         DefaultApprovalOptions(),
+		Options:         ApprovalPromptOptions(true),
 	})
 	flow.mu.Unlock()
 

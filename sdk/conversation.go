@@ -228,14 +228,6 @@ func (c *Conversation) Context() context.Context {
 	return c.ctx
 }
 
-// LoginHandle returns the login-scoped conversation helper.
-func (c *Conversation) LoginHandle() *LoginHandle {
-	if c == nil {
-		return nil
-	}
-	return newLoginHandle(c.login, c.runtime)
-}
-
 // Spec returns the current persisted conversation spec snapshot.
 func (c *Conversation) Spec() ConversationSpec {
 	state := c.state()

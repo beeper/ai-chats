@@ -722,8 +722,11 @@ func (cl *CodexLogin) resolveCodexHomeBaseDir() string {
 			base = filepath.Join(os.TempDir(), "agentremote-codex")
 		}
 	}
-	if expanded, err := sdk.ExpandUserHome(base); err == nil && expanded != "" {
-		base = expanded
+	base = strings.TrimSpace(base)
+	if rest, isTilde := strings.CutPrefix(base, "~"); isTilde && (rest == "" || rest[0] == '/') {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			base = filepath.Join(home, rest)
+		}
 	}
 	if abs, err := filepath.Abs(base); err == nil {
 		return abs
