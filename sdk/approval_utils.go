@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"strings"
 	"time"
 )
 
@@ -15,33 +14,4 @@ func ApprovalWaitReason(ctx context.Context) string {
 		return ApprovalReasonCancelled
 	}
 	return ApprovalReasonTimeout
-}
-
-// ResolveApprovalRequest applies shared approval-request defaults while letting
-// the caller control ID generation and policy defaults.
-func ResolveApprovalRequest(
-	req ApprovalRequest,
-	newID func() string,
-	defaultTTL time.Duration,
-	defaultAllowAlways bool,
-) (string, time.Duration, ApprovalPromptPresentation) {
-	approvalID := strings.TrimSpace(req.ApprovalID)
-	if approvalID == "" && newID != nil {
-		approvalID = strings.TrimSpace(newID())
-	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = defaultTTL
-	}
-	if ttl <= 0 {
-		ttl = DefaultApprovalExpiry
-	}
-	presentation := ApprovalPromptPresentation{
-		Title:       strings.TrimSpace(req.ToolName),
-		AllowAlways: defaultAllowAlways,
-	}
-	if req.Presentation != nil {
-		presentation = *req.Presentation
-	}
-	return approvalID, ttl, presentation
 }

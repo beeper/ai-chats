@@ -2,7 +2,6 @@ package retrieval
 
 import (
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/providerkit"
 )
 
 const (
@@ -64,7 +63,12 @@ func (c *SearchConfig) WithDefaults() *SearchConfig {
 	if c == nil {
 		c = &SearchConfig{}
 	}
-	providerkit.ApplyDefaults(&c.Provider, &c.Fallbacks, ProviderExa, DefaultSearchFallbackOrder)
+	if c.Provider == "" {
+		c.Provider = ProviderExa
+	}
+	if len(c.Fallbacks) == 0 {
+		c.Fallbacks = append([]string(nil), DefaultSearchFallbackOrder...)
+	}
 	c.Exa = c.Exa.withSearchDefaults()
 	return c
 }
@@ -73,7 +77,12 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 	if c == nil {
 		c = &FetchConfig{}
 	}
-	providerkit.ApplyDefaults(&c.Provider, &c.Fallbacks, ProviderExa, DefaultFetchFallbackOrder)
+	if c.Provider == "" {
+		c.Provider = ProviderExa
+	}
+	if len(c.Fallbacks) == 0 {
+		c.Fallbacks = append([]string(nil), DefaultFetchFallbackOrder...)
+	}
 	c.Exa = c.Exa.withFetchDefaults()
 	c.Direct = c.Direct.withDefaults()
 	return c

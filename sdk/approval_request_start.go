@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -40,12 +41,24 @@ func (f *ApprovalFlow[D]) StartApprovalRequest(ctx context.Context, params Start
 	if f == nil {
 		return StartedApprovalRequest[D]{}
 	}
-	approvalID, ttl, presentation := ResolveApprovalRequest(
-		params.Request,
-		params.NewID,
-		params.DefaultTTL,
-		params.DefaultAllowAlways,
-	)
+	approvalID := strings.TrimSpace(params.Request.ApprovalID)
+	if approvalID == "" && params.NewID != nil {
+		approvalID = strings.TrimSpace(params.NewID())
+	}
+	ttl := params.Request.TTL
+	if ttl <= 0 {
+		ttl = params.DefaultTTL
+	}
+	if ttl <= 0 {
+		ttl = DefaultApprovalExpiry
+	}
+	presentation := ApprovalPromptPresentation{
+		Title:       strings.TrimSpace(params.Request.ToolName),
+		AllowAlways: params.DefaultAllowAlways,
+	}
+	if params.Request.Presentation != nil {
+		presentation = *params.Request.Presentation
+	}
 	started := StartedApprovalRequest[D]{
 		ApprovalID:   approvalID,
 		TTL:          ttl,

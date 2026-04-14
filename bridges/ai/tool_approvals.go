@@ -372,7 +372,24 @@ func (oc *AIClient) approvalParamsFromRequest(portal *bridgev2.Portal, state *st
 			defaultTTL = ttl
 		}
 	}
-	approvalID, ttl, presentation := sdk.ResolveApprovalRequest(req, NewCallID, defaultTTL, true)
+	approvalID := strings.TrimSpace(req.ApprovalID)
+	if approvalID == "" {
+		approvalID = strings.TrimSpace(NewCallID())
+	}
+	ttl := req.TTL
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
+	if ttl <= 0 {
+		ttl = sdk.DefaultApprovalExpiry
+	}
+	presentation := sdk.ApprovalPromptPresentation{
+		Title:       strings.TrimSpace(req.ToolName),
+		AllowAlways: true,
+	}
+	if req.Presentation != nil {
+		presentation = *req.Presentation
+	}
 	params := ToolApprovalParams{
 		ApprovalID:   approvalID,
 		ToolCallID:   strings.TrimSpace(req.ToolCallID),

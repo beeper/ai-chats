@@ -2,16 +2,22 @@ package retrieval
 
 import (
 	"os"
+	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/exa"
-	"github.com/beeper/agentremote/pkg/shared/providerkit"
 	"github.com/beeper/agentremote/pkg/shared/providerresource"
+	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
 // SearchConfigFromEnv builds a search config using environment variables.
 func SearchConfigFromEnv() *SearchConfig {
 	cfg := &SearchConfig{}
-	providerkit.ApplyNamedEnv(&cfg.Provider, &cfg.Fallbacks, os.Getenv("SEARCH_PROVIDER"), os.Getenv("SEARCH_FALLBACKS"))
+	cfg.Provider = stringutil.EnvOr(cfg.Provider, os.Getenv("SEARCH_PROVIDER"))
+	if len(cfg.Fallbacks) == 0 {
+		if raw := strings.TrimSpace(os.Getenv("SEARCH_FALLBACKS")); raw != "" {
+			cfg.Fallbacks = stringutil.SplitCSV(raw)
+		}
+	}
 	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
 	return cfg.WithDefaults()
 }
@@ -19,7 +25,12 @@ func SearchConfigFromEnv() *SearchConfig {
 // FetchConfigFromEnv builds a fetch config using environment variables.
 func FetchConfigFromEnv() *FetchConfig {
 	cfg := &FetchConfig{}
-	providerkit.ApplyNamedEnv(&cfg.Provider, &cfg.Fallbacks, os.Getenv("FETCH_PROVIDER"), os.Getenv("FETCH_FALLBACKS"))
+	cfg.Provider = stringutil.EnvOr(cfg.Provider, os.Getenv("FETCH_PROVIDER"))
+	if len(cfg.Fallbacks) == 0 {
+		if raw := strings.TrimSpace(os.Getenv("FETCH_FALLBACKS")); raw != "" {
+			cfg.Fallbacks = stringutil.SplitCSV(raw)
+		}
+	}
 	exa.ApplyEnv(&cfg.Exa.APIKey, &cfg.Exa.BaseURL)
 	return cfg.WithDefaults()
 }
