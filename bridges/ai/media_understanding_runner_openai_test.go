@@ -53,7 +53,7 @@ func TestResolveOpenAIMediaBaseURLMagicProxyUsesOpenAIServicePath(t *testing.T) 
 	}
 }
 
-func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
+func TestOpenRouterMediaConfigPrimitivesUseEntryOverrides(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY_SPECIAL_PROFILE", "entry-key")
 
 	client := newMediaTestClient(ProviderOpenAI, nil, &OpenAIConnector{
@@ -77,10 +77,17 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 		Profile: "special-profile",
 	}
 
-	apiKey, baseURL, headers, pdfEngine, _, err := client.resolveOpenRouterMediaConfig(cfg, entry)
-	if err != nil {
-		t.Fatalf("resolveOpenRouterMediaConfig returned error: %v", err)
+	headers := openRouterHeaders()
+	for key, value := range mergeMediaHeaders(cfg, entry) {
+		headers[key] = value
 	}
+	apiKey := client.resolveMediaProviderAPIKey("openrouter", entry.Profile, entry.PreferredProfile)
+	baseURL := resolveMediaBaseURL(cfg, entry)
+	if baseURL == "" {
+		baseURL = resolveOpenRouterMediaBaseURL(client)
+	}
+	pdfEngine := client.defaultPDFEngine()
+
 	if apiKey != "entry-key" {
 		t.Fatalf("expected entry-scoped API key, got %q", apiKey)
 	}
@@ -104,16 +111,17 @@ func TestResolveOpenRouterMediaConfigUsesEntryOverrides(t *testing.T) {
 	}
 }
 
-func TestResolveOpenRouterMediaConfigAllowsAuthHeaderWithoutAPIKey(t *testing.T) {
-	client := newMediaTestClient(ProviderOpenAI, nil, &OpenAIConnector{})
-
-	_, _, headers, _, _, err := client.resolveOpenRouterMediaConfig(nil, MediaUnderstandingModelConfig{
+func TestOpenRouterMediaConfigPrimitivesAllowAuthHeaderWithoutAPIKey(t *testing.T) {
+	headers := openRouterHeaders()
+	for key, value := range mergeMediaHeaders(nil, MediaUnderstandingModelConfig{
 		Headers: map[string]string{
 			"Authorization": "Bearer token",
 		},
-	})
-	if err != nil {
-		t.Fatalf("resolveOpenRouterMediaConfig returned error: %v", err)
+	}) {
+		headers[key] = value
+	}
+	if !hasProviderAuthHeader("openrouter", headers) {
+		t.Fatalf("expected auth header to satisfy openrouter auth, got %#v", headers)
 	}
 	if headers["Authorization"] != "Bearer token" {
 		t.Fatalf("expected auth header to be preserved, got %#v", headers)

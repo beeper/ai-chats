@@ -835,9 +835,25 @@ func (oc *AIClient) generateWithOpenRouter(
 	capCfg *MediaUnderstandingConfig,
 	entry MediaUnderstandingModelConfig,
 ) (*GenerateResponse, error) {
-	apiKey, baseURL, headers, pdfEngine, userID, err := oc.resolveOpenRouterMediaConfig(capCfg, entry)
-	if err != nil {
-		return nil, err
+	if oc == nil || oc.connector == nil {
+		return nil, errors.New("missing connector")
+	}
+	headers := openRouterHeaders()
+	for key, value := range mergeMediaHeaders(capCfg, entry) {
+		headers[key] = value
+	}
+	apiKey := strings.TrimSpace(oc.resolveMediaProviderAPIKey("openrouter", entry.Profile, entry.PreferredProfile))
+	if apiKey == "" && !hasProviderAuthHeader("openrouter", headers) {
+		return nil, errors.New("missing API key for openrouter")
+	}
+	baseURL := strings.TrimSpace(resolveMediaBaseURL(capCfg, entry))
+	if baseURL == "" {
+		baseURL = resolveOpenRouterMediaBaseURL(oc)
+	}
+	pdfEngine := oc.defaultPDFEngine()
+	userID := ""
+	if oc.UserLogin != nil && oc.UserLogin.User != nil && oc.UserLogin.User.MXID != "" {
+		userID = oc.UserLogin.User.MXID.String()
 	}
 	provider, err := NewOpenAIProviderWithPDFPlugin(apiKey, baseURL, userID, pdfEngine, headers, oc.log)
 	if err != nil {
@@ -849,34 +865,6 @@ func (oc *AIClient) generateWithOpenRouter(
 		MaxCompletionTokens: defaultImageUnderstandingLimit,
 	}
 	return provider.Generate(ctx, params)
-}
-
-func (oc *AIClient) resolveOpenRouterMediaConfig(
-	capCfg *MediaUnderstandingConfig,
-	entry MediaUnderstandingModelConfig,
-) (apiKey string, baseURL string, headers map[string]string, pdfEngine string, userID string, err error) {
-	if oc == nil || oc.connector == nil {
-		err = errors.New("missing connector")
-		return
-	}
-	headers = openRouterHeaders()
-	for key, value := range mergeMediaHeaders(capCfg, entry) {
-		headers[key] = value
-	}
-	apiKey = strings.TrimSpace(oc.resolveMediaProviderAPIKey("openrouter", entry.Profile, entry.PreferredProfile))
-	if apiKey == "" && !hasProviderAuthHeader("openrouter", headers) {
-		err = errors.New("missing API key for openrouter")
-		return
-	}
-	baseURL = strings.TrimSpace(resolveMediaBaseURL(capCfg, entry))
-	if baseURL == "" {
-		baseURL = resolveOpenRouterMediaBaseURL(oc)
-	}
-	pdfEngine = oc.defaultPDFEngine()
-	if oc.UserLogin != nil && oc.UserLogin.User != nil && oc.UserLogin.User.MXID != "" {
-		userID = oc.UserLogin.User.MXID.String()
-	}
-	return
 }
 
 func resolveOpenRouterMediaBaseURL(oc *AIClient) string {

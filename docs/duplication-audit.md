@@ -215,6 +215,9 @@ Why this still violates the goal:
   `effectiveToolConfig[T]` helper; `effectiveSearchConfig(...)` and
   `effectiveFetchConfig(...)` now own their direct load/login/default merge
   flow
+- OpenRouter media generation no longer routes through
+  `resolveOpenRouterMediaConfig(...)`; `generateWithOpenRouter(...)` now owns
+  its auth/header/base-URL/pdf-engine shaping directly
 - provider initialization, media understanding, and retrieval config no longer
   route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional
