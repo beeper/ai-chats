@@ -66,13 +66,11 @@ const (
 	modelValidationTimeout = 5 * time.Second
 )
 
-func aiCapID() string {
-	return "com.beeper.ai.capabilities.2026_02_05"
-}
+const aiCapabilitiesID = "com.beeper.ai.capabilities.2026_02_05"
 
 // aiBaseCaps defines the base capabilities for AI chat rooms
 var aiBaseCaps = &event.RoomFeatures{
-	ID: aiCapID(),
+	ID: aiCapabilitiesID,
 	Formatting: map[event.FormattingFeature]event.CapabilitySupportLevel{
 		event.FmtBold:          event.CapLevelFullySupported,
 		event.FmtItalic:        event.CapLevelFullySupported,
@@ -157,9 +155,9 @@ func buildCapabilityID(caps ModelCapabilities, opts capabilityIDOptions) string 
 	}
 
 	if len(suffixes) == 0 {
-		return aiCapID()
+		return aiCapabilitiesID
 	}
-	return aiCapID() + "+" + strings.Join(suffixes, "+")
+	return aiCapabilitiesID + "+" + strings.Join(suffixes, "+")
 }
 
 // visionFileFeatures returns FileFeatures for vision-capable models

@@ -83,13 +83,6 @@ func bridgeDBFromLogin(login *bridgev2.UserLogin) *dbutil.Database {
 	return nil
 }
 
-func bridgeDBFromPortal(portal *bridgev2.Portal) *dbutil.Database {
-	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
-		return nil
-	}
-	return newBridgeChildDB(portal.Bridge.DB.Database, portal.Bridge.Log)
-}
-
 func canonicalBridgeDBID(bridge *bridgev2.Bridge) string {
 	if bridge == nil {
 		return ""
@@ -353,8 +346,11 @@ type portalScope struct {
 }
 
 func portalScopeForPortal(portal *bridgev2.Portal) *portalScope {
-	db := bridgeDBFromPortal(portal)
-	if db == nil || portal == nil {
+	if portal == nil || portal.Bridge == nil || portal.Bridge.DB == nil {
+		return nil
+	}
+	db := newBridgeChildDB(portal.Bridge.DB.Database, portal.Bridge.Log)
+	if db == nil {
 		return nil
 	}
 	bridgeID := canonicalPortalBridgeID(portal)
