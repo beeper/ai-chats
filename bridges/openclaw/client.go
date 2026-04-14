@@ -21,6 +21,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/cachedvalue"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
@@ -353,7 +354,25 @@ func (oc *OpenClawClient) GetChatInfo(ctx context.Context, portal *bridgev2.Port
 	}
 	presentation := oc.deriveRoomPresentation(state, "", oc.roomPresentationSummary(ctx, state))
 	if presentation.RoomType == database.RoomTypeDM && presentation.AgentID != "" {
-		info := oc.buildOpenClawDMChatInfo(presentation.AgentID, presentation.Title, nil)
+		displayName := presentation.Title
+		if strings.TrimSpace(displayName) == "" {
+			displayName = oc.displayNameForAgent(presentation.AgentID)
+		}
+		info := bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+			Title:          displayName,
+			Topic:          "OpenClaw agent DM",
+			Login:          oc.UserLogin,
+			HumanUserID:    humanUserID(oc.UserLogin.ID),
+			HumanSender:    ptr.Ptr(oc.senderForAgent(presentation.AgentID, true)),
+			BotUserID:      openClawScopedGhostUserID(oc.UserLogin.ID, presentation.AgentID),
+			BotDisplayName: displayName,
+			BotSender:      ptr.Ptr(oc.senderForAgent(presentation.AgentID, false)),
+			BotUserInfo:    oc.sdkAgentForProfile(openClawAgentProfile{AgentID: presentation.AgentID, Name: displayName}).UserInfo(),
+			BotMemberEventExtra: map[string]any{
+				"displayname": displayName,
+			},
+			CanBackfill: true,
+		})
 		info.Topic = ptr.NonZero(presentation.Topic)
 		info.Type = ptr.Ptr(presentation.RoomType)
 		info.CanBackfill = true

@@ -240,7 +240,11 @@ func (cc *CodexClient) ensureCodexThreadPortal(ctx context.Context, existing *br
 	} else {
 		cc.UserLogin.Bridge.WakeupBackfillQueue()
 	}
-	cc.syncCodexRoomTopic(ctx, portal, state)
+	if portal != nil && portal.MXID != "" {
+		if info := cc.composeCodexChatInfo(portal, state, strings.TrimSpace(state.CodexThreadID) != ""); info != nil {
+			portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
+		}
+	}
 
 	return portal, created, nil
 }

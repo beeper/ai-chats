@@ -1677,7 +1677,11 @@ func (cc *CodexClient) ensureCodexThread(ctx context.Context, portal *bridgev2.P
 	cc.loadedThreads[portalState.CodexThreadID] = true
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
-	cc.syncCodexRoomTopic(ctx, portal, portalState)
+	if portal != nil && portal.MXID != "" {
+		if info := cc.composeCodexChatInfo(portal, portalState, strings.TrimSpace(portalState.CodexThreadID) != ""); info != nil {
+			portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
+		}
+	}
 	return nil
 }
 
@@ -1719,7 +1723,11 @@ func (cc *CodexClient) ensureCodexThreadLoaded(ctx context.Context, portal *brid
 	cc.loadedThreads[threadID] = true
 	cc.loadedMu.Unlock()
 	cc.restoreRecoveredActiveTurns(portal, portalState, resp.Thread, resp.Model)
-	cc.syncCodexRoomTopic(ctx, portal, portalState)
+	if portal != nil && portal.MXID != "" {
+		if info := cc.composeCodexChatInfo(portal, portalState, strings.TrimSpace(portalState.CodexThreadID) != ""); info != nil {
+			portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
+		}
+	}
 	return nil
 }
 

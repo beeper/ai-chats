@@ -160,12 +160,6 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 			portal.Name = displayName
 			portal.NameSet = true
 		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			if err := p.Save(ctx); err != nil {
-				return fmt.Errorf("failed to save portal state: %w", err)
-			}
-			return nil
-		},
 	}); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}

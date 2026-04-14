@@ -283,7 +283,28 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 	state.OpenClawDMTargetAgentID = agentID
 	state.OpenClawDMTargetAgentName = stringutil.TrimDefault(oc.configuredAgentDisplayName(agent), state.OpenClawDMTargetAgentName)
 	presentation := oc.deriveRoomPresentation(state, state.OpenClawDMTargetAgentName, oc.roomPresentationSummary(ctx, state))
-	chatInfo := oc.buildOpenClawDMChatInfo(agentID, presentation.Title, info)
+	displayName := presentation.Title
+	if strings.TrimSpace(displayName) == "" {
+		displayName = oc.displayNameForAgent(agentID)
+	}
+	if info == nil {
+		info = oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo()
+	}
+	chatInfo := bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+		Title:          displayName,
+		Topic:          "OpenClaw agent DM",
+		Login:          oc.UserLogin,
+		HumanUserID:    humanUserID(oc.UserLogin.ID),
+		HumanSender:    ptr.Ptr(oc.senderForAgent(agentID, true)),
+		BotUserID:      openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
+		BotDisplayName: displayName,
+		BotSender:      ptr.Ptr(oc.senderForAgent(agentID, false)),
+		BotUserInfo:    info,
+		BotMemberEventExtra: map[string]any{
+			"displayname": displayName,
+		},
+		CanBackfill: true,
+	})
 	if err := bridgeutil.ConfigureDMPortal(ctx, bridgeutil.ConfigureDMPortalParams{
 		Portal:      portal,
 		Title:       presentation.Title,
@@ -317,30 +338,6 @@ func (oc *OpenClawClient) createConfiguredAgentDM(ctx context.Context, agent gat
 		Portal:     portal,
 		PortalInfo: chatInfo,
 	}, nil
-}
-
-func (oc *OpenClawClient) buildOpenClawDMChatInfo(agentID, displayName string, userInfo *bridgev2.UserInfo) *bridgev2.ChatInfo {
-	if strings.TrimSpace(displayName) == "" {
-		displayName = oc.displayNameForAgent(agentID)
-	}
-	if userInfo == nil {
-		userInfo = oc.sdkAgentForProfile(openClawAgentProfile{AgentID: agentID, Name: displayName}).UserInfo()
-	}
-	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
-		Title:          displayName,
-		Topic:          "OpenClaw agent DM",
-		Login:          oc.UserLogin,
-		HumanUserID:    humanUserID(oc.UserLogin.ID),
-		HumanSender:    ptr.Ptr(oc.senderForAgent(agentID, true)),
-		BotUserID:      openClawScopedGhostUserID(oc.UserLogin.ID, agentID),
-		BotDisplayName: displayName,
-		BotSender:      ptr.Ptr(oc.senderForAgent(agentID, false)),
-		BotUserInfo:    userInfo,
-		BotMemberEventExtra: map[string]any{
-			"displayname": displayName,
-		},
-		CanBackfill: true,
-	})
 }
 
 func (oc *OpenClawClient) resolveAgentProfile(ctx context.Context, agentID, sessionKey string, current *GhostMetadata, configured *gatewayAgentSummary) openClawAgentProfile {

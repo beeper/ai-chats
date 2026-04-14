@@ -529,6 +529,7 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 	// Create the Matrix room
 	if err := b.client.materializePortalRoom(ctx, portal, resp.PortalInfo, portalRoomMaterializeOptions{
 		CleanupOnCreateError: "failed to create Matrix room",
+		SaveBefore:           room.Name != "",
 		SendWelcome:          true,
 		MutatePortal: func(portal *bridgev2.Portal) {
 			if room.Name != "" {
@@ -537,15 +538,6 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 					resp.PortalInfo.Name = &room.Name
 				}
 			}
-		},
-		BeforeSave: func(ctx context.Context, portal *bridgev2.Portal) error {
-			if room.Name == "" {
-				return nil
-			}
-			if err := b.client.savePortal(ctx, portal, "room overrides"); err != nil {
-				return fmt.Errorf("failed to persist room overrides: %w", err)
-			}
-			return nil
 		},
 	}); err != nil {
 		return "", fmt.Errorf("failed to create Matrix room: %w", err)

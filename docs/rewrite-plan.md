@@ -145,6 +145,7 @@ Current status:
 - complete: OpenClaw no longer persists history presentation/config fields in portal state or metadata; the one remaining visible history label is now a single presentation constant
 - complete: OpenClaw no longer wraps `sdk.BuildUIMessageMetadata` behind a bridge-local helper just to inject session extras; callers now pass `Extras` directly to the shared SDK helper
 - complete: OpenClaw no longer persists `OpenClawDMCreatedFromContact`; the synthetic-DM bootstrap path now derives that condition from `session_key` plus missing `session_id`
+- complete: OpenClaw no longer wraps DM chat info creation behind `buildOpenClawDMChatInfo`; the DM call sites now use `bridgeutil.BuildLoginDMChatInfo(...)` directly
 - complete: OpenCode portal setup/title branching no longer uses `AwaitingPath` plus `TitlePending` booleans; one `RoomState` now owns placeholder-vs-active-vs-title-pending behavior
 - complete: OpenCode portal creation, managed setup handoff, title finalization, and reconnect toggles no longer mutate portal metadata through separate code paths; one portal-meta helper now owns `InstanceID` / `SessionID` / `ReadOnly` / `RoomState` / `Title` transitions
 - complete: OpenCode callers no longer re-derive setup vs active vs title-pending behavior from raw `RoomState`; one explicit portal-phase layer now owns those read-side decisions
@@ -157,6 +158,12 @@ Current status:
 - complete: AI memory lifecycle, overflow flush, and bootstrap checks no longer open-code repeated field mutations; typed `MemoryState` methods now own those transitions
 - complete: AI login runtime state no longer open-codes heartbeat dedupe and provider health transitions in separate closure bodies; typed `loginRuntimeState` methods now own those mutations
 - complete: AI managed heartbeat scheduling no longer open-codes config/due/run-result transitions across runtime helpers; `managedHeartbeatState` now owns those transition rules directly
+- complete: AI scheduler/internal rooms no longer route durable portal updates through redundant save callbacks and post-save fixups; scheduler room materialization now uses one pre-save mutation path
+- complete: AI room override/title/internal-room materialization paths no longer use `BeforeSave` just to persist portal mutations that `SaveBefore` already handles; the remaining callback cases are narrower and behavior-specific
+- complete: AI subagent spawn and generated-title sync no longer route portal mutation through `MutatePortal`/`BeforeSave`; they now perform explicit metadata/save work before room materialization
+- complete: AI `materializePortalRoom` no longer carries dead `BeforeSave` / `OnCreated` / `OnExisting` callback branches; the helper now only owns pre-save mutation, cleanup-on-create-error, and welcome behavior
+- complete: Codex no longer wraps message-status sends or sandbox/path normalization behind trivial bridge-local helpers; the call sites now use `bridgeutil.SendMessageStatus(...)`, `sdk.NormalizeAbsolutePath(...)`, and the sandbox constant directly
+- complete: Codex no longer routes room topic refresh through `syncCodexRoomTopic`; the three call sites now recompute `ChatInfo` and call `UpdateInfo(...)` directly
 - pending: split AI storage into three real owners only: `LoginStorage`, `PortalRepository`, and `PortalTurnStore`
 - pending: collapse `aichats_portal_state` so it owns only sequencing/reset infrastructure and no longer hydrates metadata-shaped state
 - in progress: move durable portal/login state out of JSON sidecar tables and into bridge metadata wherever the data is connector metadata rather than runtime-only state

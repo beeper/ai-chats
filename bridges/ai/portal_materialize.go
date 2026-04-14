@@ -13,9 +13,6 @@ type portalRoomMaterializeOptions struct {
 	CleanupOnCreateError string
 	SendWelcome          bool
 	MutatePortal         func(*bridgev2.Portal)
-	BeforeSave           func(context.Context, *bridgev2.Portal) error
-	OnCreated            func(context.Context, *bridgev2.Portal) error
-	OnExisting           func(context.Context, *bridgev2.Portal) error
 }
 
 func (oc *AIClient) materializePortalRoom(
@@ -32,11 +29,6 @@ func (oc *AIClient) materializePortalRoom(
 	}
 	if opts.MutatePortal != nil {
 		opts.MutatePortal(portal)
-	}
-	if opts.BeforeSave != nil {
-		if err := opts.BeforeSave(ctx, portal); err != nil {
-			return err
-		}
 	}
 	if opts.SaveBefore {
 		if err := portal.Save(ctx); err != nil {
@@ -62,11 +54,6 @@ func (oc *AIClient) materializePortalRoom(
 				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send welcome message")
 			}
 		}
-		if opts.OnCreated != nil {
-			return opts.OnCreated(ctx, portal)
-		}
-	} else if opts.OnExisting != nil {
-		return opts.OnExisting(ctx, portal)
 	}
 	return nil
 }

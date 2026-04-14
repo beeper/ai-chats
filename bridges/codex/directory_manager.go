@@ -49,17 +49,6 @@ func (cc *CodexClient) codexTopicForPortal(_ *bridgev2.Portal, state *codexPorta
 	return codexTopicForPath(state.CodexCwd)
 }
 
-func (cc *CodexClient) syncCodexRoomTopic(ctx context.Context, portal *bridgev2.Portal, state *codexPortalState) {
-	if cc == nil || portal == nil || state == nil || portal.MXID == "" {
-		return
-	}
-	info := cc.composeCodexChatInfo(portal, state, strings.TrimSpace(state.CodexThreadID) != "")
-	if info == nil {
-		return
-	}
-	portal.UpdateInfo(ctx, info, cc.UserLogin, nil, time.Time{})
-}
-
 func parseCodexCommand(body string) (string, string, bool) {
 	body = strings.TrimSpace(body)
 	if body == "" {
