@@ -160,7 +160,7 @@ type Host interface {
 
 	RecentMessages(ctx context.Context, portal *bridgev2.Portal, count int) []MessageSummary
 
-	ResolveAgentID(raw string, fallbackDefault string) string
+	ResolveAgentID(raw string) string
 	DefaultAgentID() string
 	UserTimezone() (tz string, loc *time.Location)
 

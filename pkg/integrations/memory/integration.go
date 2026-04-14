@@ -438,7 +438,7 @@ func (i *Integration) agentIDFromEventMeta(meta iruntime.Meta) string {
 	if meta != nil {
 		rawAgentID = meta.AgentID()
 	}
-	return i.host.ResolveAgentID(rawAgentID, i.host.DefaultAgentID())
+	return i.host.ResolveAgentID(rawAgentID)
 }
 
 // splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.

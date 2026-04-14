@@ -215,16 +215,13 @@ func summarizeMessages(history []*database.Message) []integrationruntime.Message
 
 // ---- Host methods: agent helpers ----
 
-func (h *runtimeIntegrationHost) ResolveAgentID(raw string, fallbackDefault string) string {
+func (h *runtimeIntegrationHost) ResolveAgentID(raw string) string {
 	if h == nil || h.client == nil {
 		return agents.DefaultAgentID
 	}
 	normalized := normalizeAgentID(raw)
 	if normalized == "" || !h.AgentExists(normalized) {
-		if fallbackDefault != "" {
-			return normalizeAgentID(fallbackDefault)
-		}
-		return agents.DefaultAgentID
+		return normalizeAgentID(agents.DefaultAgentID)
 	}
 	return normalized
 }
@@ -468,7 +465,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, agentID str
 	if h == nil || h.client == nil || h.client.UserLogin == nil || h.client.UserLogin.Bridge == nil || h.client.UserLogin.Bridge.DB == nil {
 		return nil, nil
 	}
-	targetAgentID := h.ResolveAgentID(agentID, h.DefaultAgentID())
+	targetAgentID := h.ResolveAgentID(agentID)
 	targetAgentID = normalizeAgentID(targetAgentID)
 
 	portals, err := h.client.listAllChatPortals(ctx)
@@ -488,7 +485,7 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, agentID str
 		if !ok || meta == nil || meta.InternalRoom() {
 			continue
 		}
-		portalAgentID := h.ResolveAgentID(resolveAgentID(meta), h.DefaultAgentID())
+		portalAgentID := h.ResolveAgentID(resolveAgentID(meta))
 		portalAgentID = normalizeAgentID(portalAgentID)
 		if portalAgentID != targetAgentID {
 			continue
