@@ -607,7 +607,7 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 		}},
 	}
 
-	if err := btc.Client.sendEditViaPortal(ctx, btc.Portal, targetPart.ID, editContent); err != nil {
+	if err := btc.Client.sendEditViaPortalWithTiming(ctx, btc.Portal, targetPart.ID, editContent, time.Now(), 0); err != nil {
 		return "", fmt.Errorf("couldn't edit the message: %w", err)
 	}
 

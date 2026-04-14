@@ -95,7 +95,7 @@ func TestSendViaPortalRejectsInvalidPortal(t *testing.T) {
 }
 
 func TestSendEditViaPortalRejectsMissingBridgeState(t *testing.T) {
-	err := (&AIClient{}).sendEditViaPortal(context.Background(), &bridgev2.Portal{}, networkid.MessageID("msg-1"), &bridgev2.ConvertedEdit{})
+	err := (&AIClient{}).sendEditViaPortalWithTiming(context.Background(), &bridgev2.Portal{}, networkid.MessageID("msg-1"), &bridgev2.ConvertedEdit{}, time.Now(), 0)
 	if err == nil {
 		t.Fatal("expected bridge unavailable error")
 	}
@@ -108,7 +108,7 @@ func TestSendEditViaPortalRejectsInvalidTargetMessage(t *testing.T) {
 	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
 
-	err := oc.sendEditViaPortal(context.Background(), portal, "", &bridgev2.ConvertedEdit{})
+	err := oc.sendEditViaPortalWithTiming(context.Background(), portal, "", &bridgev2.ConvertedEdit{}, time.Now(), 0)
 	if err == nil {
 		t.Fatal("expected invalid target message error")
 	}

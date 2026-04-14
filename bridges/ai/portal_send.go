@@ -105,16 +105,6 @@ func (oc *AIClient) sendViaPortalWithTiming(
 	})
 }
 
-// The targetMsgID is the network message ID of the message to edit.
-func (oc *AIClient) sendEditViaPortal(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	targetMsgID networkid.MessageID,
-	converted *bridgev2.ConvertedEdit,
-) error {
-	return oc.sendEditViaPortalWithTiming(ctx, portal, targetMsgID, converted, time.Now(), 0)
-}
-
 func (oc *AIClient) sendEditViaPortalWithTiming(
 	ctx context.Context,
 	portal *bridgev2.Portal,
