@@ -47,12 +47,3 @@ func ApplyEnv(apiKey, baseURL *string) {
 		*baseURL = stringutil.EnvOr(*baseURL, os.Getenv("EXA_BASE_URL"))
 	}
 }
-
-func ApplyConfigDefaults(baseURL *string, textMaxChars *int, defaultTextMaxChars int) {
-	if baseURL != nil && *baseURL == "" {
-		*baseURL = DefaultBaseURL
-	}
-	if textMaxChars != nil && *textMaxChars <= 0 {
-		*textMaxChars = defaultTextMaxChars
-	}
-}

@@ -89,7 +89,12 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 }
 
 func (c ExaConfig) withSearchDefaults() ExaConfig {
-	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 500)
+	if c.BaseURL == "" {
+		c.BaseURL = exa.DefaultBaseURL
+	}
+	if c.TextMaxCharacters <= 0 {
+		c.TextMaxCharacters = 500
+	}
 	if c.Type == "" {
 		c.Type = "auto"
 	}
@@ -101,7 +106,12 @@ func (c ExaConfig) withSearchDefaults() ExaConfig {
 }
 
 func (c ExaConfig) withFetchDefaults() ExaConfig {
-	exa.ApplyConfigDefaults(&c.BaseURL, &c.TextMaxCharacters, 5_000)
+	if c.BaseURL == "" {
+		c.BaseURL = exa.DefaultBaseURL
+	}
+	if c.TextMaxCharacters <= 0 {
+		c.TextMaxCharacters = 5_000
+	}
 	return c
 }
 

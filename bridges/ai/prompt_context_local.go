@@ -284,10 +284,17 @@ func promptMessageFromChatUser(msg *openai.ChatCompletionUserMessageParam) Promp
 		case part.OfText != nil:
 			pm.Blocks = append(pm.Blocks, PromptBlock{Type: PromptBlockText, Text: part.OfText.Text})
 		case part.OfImageURL != nil:
+			mimeType := ""
+			value := strings.TrimSpace(part.OfImageURL.ImageURL.URL)
+			if rest, ok := strings.CutPrefix(value, "data:"); ok {
+				if idx := strings.Index(rest, ";"); idx > 0 {
+					mimeType = rest[:idx]
+				}
+			}
 			pm.Blocks = append(pm.Blocks, PromptBlock{
 				Type:     PromptBlockImage,
 				ImageURL: part.OfImageURL.ImageURL.URL,
-				MimeType: inferPromptMimeTypeFromDataURL(part.OfImageURL.ImageURL.URL),
+				MimeType: mimeType,
 			})
 		}
 	}
@@ -338,19 +345,6 @@ func promptMessageFromChatTool(msg *openai.ChatCompletionToolMessageParam) Promp
 		pm.Blocks = append(pm.Blocks, PromptBlock{Type: PromptBlockText, Text: part.Text})
 	}
 	return pm
-}
-
-func inferPromptMimeTypeFromDataURL(value string) string {
-	value = strings.TrimSpace(value)
-	rest, ok := strings.CutPrefix(value, "data:")
-	if !ok {
-		return ""
-	}
-	idx := strings.Index(rest, ";")
-	if idx <= 0 {
-		return ""
-	}
-	return rest[:idx]
 }
 
 func hasUnsupportedResponsesPromptContext(ctx PromptContext) bool {

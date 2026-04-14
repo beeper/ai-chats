@@ -203,13 +203,6 @@ func BuildChatInfoWithFallback(metaTitle, portalName, fallbackTitle, portalTopic
 	}
 }
 
-func BuildPortalFallbackChatInfo(portal *bridgev2.Portal, fallbackTitle string) *bridgev2.ChatInfo {
-	if portal == nil {
-		return nil
-	}
-	return BuildChatInfoWithFallback("", portal.Name, fallbackTitle, portal.Topic)
-}
-
 func MessageStatusEventInfo(portal *bridgev2.Portal, evt *event.Event) *bridgev2.MessageStatusEventInfo {
 	if portal == nil || evt == nil {
 		return nil

@@ -965,7 +965,10 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 		if fallbackName == "" {
 			fallbackName = "AI Chat"
 		}
-		return bridgeutil.BuildPortalFallbackChatInfo(portal, fallbackName)
+		if portal == nil {
+			return nil
+		}
+		return bridgeutil.BuildChatInfoWithFallback("", portal.Name, fallbackName, portal.Topic)
 	}
 	modelID := oc.effectiveModel(meta)
 	title := strings.TrimSpace(portal.Name)

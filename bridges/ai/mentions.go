@@ -9,13 +9,6 @@ import (
 
 const mentionBackspaceChar = "\u0008"
 
-func normalizeMentionPattern(pattern string) string {
-	if !strings.Contains(pattern, mentionBackspaceChar) {
-		return pattern
-	}
-	return strings.ReplaceAll(pattern, mentionBackspaceChar, `\b`)
-}
-
 func normalizeMentionPatterns(patterns []string) []string {
 	out := make([]string, 0, len(patterns))
 	for _, p := range patterns {
@@ -23,7 +16,10 @@ func normalizeMentionPatterns(patterns []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		out = append(out, normalizeMentionPattern(trimmed))
+		if strings.Contains(trimmed, mentionBackspaceChar) {
+			trimmed = strings.ReplaceAll(trimmed, mentionBackspaceChar, `\b`)
+		}
+		out = append(out, trimmed)
 	}
 	return out
 }

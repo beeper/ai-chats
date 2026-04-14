@@ -578,7 +578,18 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
-	SendMessageStatus(t.turnCtx, t.conv.portal, t.conv.portal.MXID, id.EventID(t.source.EventID), status, message)
+	if t.conv.portal.Bridge == nil || t.conv.portal.Bridge.Matrix == nil {
+		return
+	}
+	statusContent := bridgev2.MessageStatus{
+		Status:    status,
+		Message:   message,
+		IsCertain: true,
+	}
+	t.conv.portal.Bridge.Matrix.SendMessageStatus(t.turnCtx, &statusContent, &bridgev2.MessageStatusEventInfo{
+		RoomID:        t.conv.portal.MXID,
+		SourceEventID: id.EventID(t.source.EventID),
+	})
 }
 
 func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {
