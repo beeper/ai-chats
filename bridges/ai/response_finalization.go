@@ -18,16 +18,6 @@ import (
 	"github.com/beeper/agentremote/turns"
 )
 
-func buildReplyRelatesTo(replyTarget ReplyTarget) *event.RelatesTo {
-	if replyTarget.ThreadRoot != "" {
-		return (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())
-	}
-	if replyTarget.ReplyTo != "" {
-		return (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
-	}
-	return nil
-}
-
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
 func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing sdk.EventTiming) {
 	if portal == nil || portal.MXID == "" {
@@ -61,7 +51,13 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 			}},
 		},
 	})
-	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
+	var relatesTo *event.RelatesTo
+	if replyTarget.ThreadRoot != "" {
+		relatesTo = (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())
+	} else if replyTarget.ReplyTo != "" {
+		relatesTo = (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
+	}
+	if relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
 		msg.Data.Parts[0].Content.RelatesTo = relatesTo
 	}
 	oc.UserLogin.QueueRemoteEvent(msg)
