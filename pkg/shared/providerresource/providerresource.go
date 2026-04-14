@@ -26,22 +26,3 @@ func Run[P registry.Named, R any](
 	}
 	return providerchain.RunFirst(order, reg.Get, exec, decorate, noProviderErr)
 }
-
-// ApplyEnvDefaults merges environment-derived defaults into a config after the
-// config-specific defaulting has been applied.
-func ApplyEnvDefaults[C any](
-	cfg *C,
-	configFromEnv func() *C,
-	withDefaults func(*C) *C,
-	hasProvider func(*C) bool,
-	hasFallbacks func(*C) bool,
-	merge func(current, env *C, hasProvider, hasFallbacks bool),
-) *C {
-	if cfg == nil {
-		return configFromEnv()
-	}
-	current := withDefaults(cfg)
-	envCfg := configFromEnv()
-	merge(current, envCfg, hasProvider(cfg), hasFallbacks(cfg))
-	return current
-}
