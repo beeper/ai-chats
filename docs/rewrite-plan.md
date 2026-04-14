@@ -238,6 +238,10 @@ base-URL helpers: provider initialization, media understanding, and retrieval
 config now read base URLs straight from provider config or the shared
 service-config map instead of routing through convenience shims.
 
+Recent progress also flattened retrieval provider mutation further:
+`applyLoginTokensToRetrievalConfig(...)` now owns Exa proxy-base/API-key
+mutation directly instead of delegating to `applyExaProxyDefaultsTo(...)`.
+
 Recent progress also pulled natural final-send shaping directly into
 `finalizeStreamingTurn(...)`: the extra `sendFinalAssistantTurn(...)` wrapper
 is gone, and heartbeat skip/early-return branches now terminate directly

@@ -129,9 +129,30 @@ func applyLoginTokensToRetrievalConfig(providerField *string, fallbacks *[]strin
 		*exaBaseURL = services[serviceExa].BaseURL
 	}
 	if provider == ProviderMagicProxy {
-		applyExaProxyDefaultsTo(exaBaseURL, exaAPIKey, provider, loginCfg, connector)
+		proxyRoot := connector.resolveProxyRoot(loginCfg)
+		if proxyRoot != "" {
+			switch trimmed := strings.TrimSpace(*exaBaseURL); {
+			case strings.HasPrefix(trimmed, "/"):
+				*exaBaseURL = joinProxyPath(proxyRoot, trimmed)
+			default:
+				normalized := stringutil.NormalizeBaseURL(*exaBaseURL)
+				if normalized == "" || strings.EqualFold(normalized, "https://api.exa.ai") {
+					if proxyBase := connector.resolveExaProxyBaseURL(loginCfg); proxyBase != "" {
+						*exaBaseURL = proxyBase
+					}
+				}
+			}
+		}
+		if exaAPIKey != nil && *exaAPIKey == "" {
+			if token := loginCredentialAPIKey(loginCfg); token != "" {
+				*exaAPIKey = token
+			}
+		}
 	}
-	if provider == ProviderMagicProxy || (strings.TrimSpace(*exaAPIKey) != "" && isCustomExaEndpoint(*exaBaseURL)) {
+	normalizedExaBase := stringutil.NormalizeBaseURL(*exaBaseURL)
+	if provider == ProviderMagicProxy || (strings.TrimSpace(*exaAPIKey) != "" &&
+		normalizedExaBase != "" &&
+		!strings.EqualFold(normalizedExaBase, "https://api.exa.ai")) {
 		if providerField != nil {
 			*providerField = retrieval.ProviderExa
 		}
@@ -139,51 +160,6 @@ func applyLoginTokensToRetrievalConfig(providerField *string, fallbacks *[]strin
 			*fallbacks = []string{retrieval.ProviderExa}
 		}
 	}
-}
-
-func isCustomExaEndpoint(baseURL string) bool {
-	trimmed := stringutil.NormalizeBaseURL(baseURL)
-	if trimmed == "" {
-		return false
-	}
-	return !strings.EqualFold(trimmed, "https://api.exa.ai")
-}
-
-func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
-	if connector == nil {
-		return
-	}
-	proxyRoot := connector.resolveProxyRoot(loginCfg)
-	if proxyRoot == "" {
-		return
-	}
-	if isRelativePath(*baseURL) {
-		*baseURL = joinProxyPath(proxyRoot, *baseURL)
-	} else if shouldUseExaProxyBase(*baseURL) {
-		if proxyBase := connector.resolveExaProxyBaseURL(loginCfg); proxyBase != "" {
-			*baseURL = proxyBase
-		}
-	}
-	if *apiKey == "" {
-		if provider == ProviderMagicProxy {
-			if token := loginCredentialAPIKey(loginCfg); token != "" {
-				*apiKey = token
-			}
-		}
-	}
-}
-
-func shouldUseExaProxyBase(baseURL string) bool {
-	trimmed := stringutil.NormalizeBaseURL(baseURL)
-	if trimmed == "" {
-		return true
-	}
-	return strings.EqualFold(trimmed, "https://api.exa.ai")
-}
-
-func isRelativePath(value string) bool {
-	trimmed := strings.TrimSpace(value)
-	return strings.HasPrefix(trimmed, "/")
 }
 
 func mapSearchConfig(src *SearchConfig) *retrieval.SearchConfig {

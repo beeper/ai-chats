@@ -202,6 +202,9 @@ Why this still violates the goal:
 - media prompt building and OpenRouter image-input preparation no longer route
   through single-callsite wrapper helpers; the remaining provider/media debt is
   policy branching, not those local adapter shells
+- retrieval Exa proxy defaults no longer bounce through a second helper layer:
+  `applyLoginTokensToRetrievalConfig(...)` now owns proxy-base/API-key mutation
+  directly instead of routing through `applyExaProxyDefaultsTo(...)`
 - provider initialization, media understanding, and retrieval config no longer
   route through provider-specific OpenAI / OpenRouter base-URL shims
 - media provider capability, auth-header shape, env-key lookup, and optional
