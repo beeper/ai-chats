@@ -243,7 +243,12 @@ func (oc *AIClient) initIntegrations() {
 	host := newRuntimeIntegrationHost(oc)
 	modules := []integrationruntime.ModuleHooks{
 		integrationcron.NewWithScheduler(host, oc.scheduler),
-		integrationmemory.New(host),
+		integrationmemory.NewWithDeps(host, integrationmemory.IntegrationDeps{
+			StateDB:      oc.bridgeDB(),
+			BridgeID:     canonicalLoginBridgeID(oc.UserLogin),
+			LoginID:      canonicalLoginID(oc.UserLogin),
+			WorkspaceDir: "/",
+		}),
 	}
 	for _, module := range modules {
 		if module == nil {

@@ -209,6 +209,10 @@ Recent progress also removed the one-message `promptTail(...)` wrapper from
 prompt canonicalization: callers now slice the final prompt message directly at
 the persistence boundary.
 
+Recent progress also removed memory-specific DB/login/workspace identity from
+the shared integration host surface: memory now takes explicit constructor deps
+for that state instead of type-asserting the host.
+
 ## Execution Order
 
 ### Phase 1: Streaming Terminalizer

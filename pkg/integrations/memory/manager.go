@@ -45,6 +45,7 @@ type MemorySearchManager struct {
 	loginID      string
 	agentID      string
 	cfg          *memorycore.ResolvedConfig
+	workspaceDir string
 	status       memorycore.ProviderStatus
 	indexGen     string
 	ftsAvailable bool
@@ -111,22 +112,11 @@ var memoryManagerCache = struct {
 	managers: make(map[string]*MemorySearchManager),
 }
 
-func resolveStateDB(host iruntime.Host) *dbutil.Database {
-	if host == nil {
-		return nil
-	}
-	provider, ok := host.(stateDBProvider)
-	if !ok {
-		return nil
-	}
-	return provider.MemoryStateDB()
-}
-
-func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchManager, string) {
+func GetMemorySearchManager(host iruntime.Host, deps IntegrationDeps, agentID string) (*MemorySearchManager, string) {
 	if host == nil {
 		return nil, "memory search unavailable"
 	}
-	db := resolveStateDB(host)
+	db := deps.StateDB
 	if db == nil {
 		return nil, "memory search unavailable"
 	}
@@ -138,8 +128,8 @@ func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchMa
 		return nil, "memory search disabled"
 	}
 
-	bridgeID := host.BridgeID()
-	loginID := host.LoginID()
+	bridgeID := deps.BridgeID
+	loginID := deps.LoginID
 	if agentID == "" {
 		agentID = "default"
 	}
@@ -153,12 +143,13 @@ func GetMemorySearchManager(host iruntime.Host, agentID string) (*MemorySearchMa
 	}
 
 	manager := &MemorySearchManager{
-		host:     host,
-		db:       db,
-		bridgeID: bridgeID,
-		loginID:  loginID,
-		agentID:  agentID,
-		cfg:      cfg,
+		host:         host,
+		db:           db,
+		bridgeID:     bridgeID,
+		loginID:      loginID,
+		agentID:      agentID,
+		cfg:          cfg,
+		workspaceDir: deps.WorkspaceDir,
 		status: memorycore.ProviderStatus{
 			Provider: "builtin",
 			Model:    "lexical",
@@ -240,10 +231,7 @@ func (m *MemorySearchManager) StatusDetails(ctx context.Context) (*MemorySearchS
 	indexGen := m.indexGen
 	m.mu.Unlock()
 
-	workspaceDir := ""
-	if m.host != nil {
-		workspaceDir = m.host.ResolveWorkspaceDir()
-	}
+	workspaceDir := m.workspaceDir
 	status := &MemorySearchStatus{
 		Dirty:        dirty,
 		WorkspaceDir: workspaceDir,

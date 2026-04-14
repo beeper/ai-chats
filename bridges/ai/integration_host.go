@@ -9,7 +9,6 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -506,13 +505,6 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, loginID str
 	return out, nil
 }
 
-func (h *runtimeIntegrationHost) MemoryStateDB() *dbutil.Database {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return h.client.bridgeDB()
-}
-
 func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope integrationruntime.ToolScope, name string, rawArgsJSON string) (string, error) {
 	if h == nil || h.client == nil {
 		return "", fmt.Errorf("missing client")
@@ -528,24 +520,6 @@ func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope i
 		Meta:   meta,
 	})
 	return h.client.executeBuiltinTool(toolCtx, portal, name, rawArgsJSON)
-}
-
-func (h *runtimeIntegrationHost) ResolveWorkspaceDir() string {
-	return "/"
-}
-
-func (h *runtimeIntegrationHost) BridgeID() string {
-	if h == nil || h.client == nil {
-		return ""
-	}
-	return canonicalLoginBridgeID(h.client.UserLogin)
-}
-
-func (h *runtimeIntegrationHost) LoginID() string {
-	if h == nil || h.client == nil || h.client.UserLogin == nil {
-		return ""
-	}
-	return string(h.client.UserLogin.ID)
 }
 
 // ---- Logger ----

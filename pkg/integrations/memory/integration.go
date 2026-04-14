@@ -26,6 +26,13 @@ type FallbackStatus = memorycore.FallbackStatus
 type ProviderStatus = memorycore.ProviderStatus
 type ResolvedConfig = memorycore.ResolvedConfig
 
+type IntegrationDeps struct {
+	StateDB      *dbutil.Database
+	BridgeID     string
+	LoginID      string
+	WorkspaceDir string
+}
+
 // Integration is the self-owned memory integration module.
 // It implements ToolIntegration, CommandIntegration, EventIntegration,
 // LoginPurgeIntegration, and LoginLifecycleIntegration
@@ -33,15 +40,16 @@ type ResolvedConfig = memorycore.ResolvedConfig
 // capability interfaces.
 type Integration struct {
 	host iruntime.Host
-}
-
-type stateDBProvider interface {
-	MemoryStateDB() *dbutil.Database
+	deps IntegrationDeps
 }
 
 func New(host iruntime.Host) iruntime.ModuleHooks {
+	return NewWithDeps(host, IntegrationDeps{})
+}
+
+func NewWithDeps(host iruntime.Host, deps IntegrationDeps) iruntime.ModuleHooks {
 	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
-		return &Integration{host: host}
+		return &Integration{host: host, deps: deps}
 	})
 }
 
@@ -159,7 +167,7 @@ func (i *Integration) StopForLogin(bridgeID, loginID string) {
 
 func (i *Integration) PurgeForLogin(ctx context.Context, scope iruntime.LoginScope) error {
 	StopManagersForLogin(scope.BridgeID, scope.LoginID)
-	db := i.resolveStateDB()
+	db := i.deps.StateDB
 	if db == nil {
 		return nil
 	}
@@ -307,7 +315,7 @@ func (i *Integration) readMemoryPromptSection(ctx context.Context, meta iruntime
 }
 
 func (i *Integration) getManager(agentID string) (*MemorySearchManager, string) {
-	manager, errMsg := GetMemorySearchManager(i.host, agentID)
+	manager, errMsg := GetMemorySearchManager(i.host, i.deps, agentID)
 	if manager == nil {
 		if errMsg == "" {
 			errMsg = "memory search unavailable"
@@ -431,17 +439,6 @@ func (i *Integration) agentIDFromEventMeta(meta iruntime.Meta) string {
 		rawAgentID = meta.AgentID()
 	}
 	return i.host.ResolveAgentID(rawAgentID, i.host.DefaultAgentID())
-}
-
-func (i *Integration) resolveStateDB() *dbutil.Database {
-	if i == nil || i.host == nil {
-		return nil
-	}
-	provider, ok := i.host.(stateDBProvider)
-	if !ok {
-		return nil
-	}
-	return provider.MemoryStateDB()
 }
 
 // splitQuotedArgs parses a raw argument string into tokens, respecting quoted segments.
