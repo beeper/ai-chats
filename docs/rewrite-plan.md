@@ -71,44 +71,15 @@ The repo has already shed a large amount of duplicate ownership. The important c
 - AI internal room bootstrap now has one create-or-materialize path for scheduler and integration host flows.
 - AI agent/default-chat portal configuration now has one owner.
 - AI welcome/bootstrap no longer splits between direct post-create sends and provisioning polling; one portal-based room-created bootstrap path now owns welcome delivery and auto-greeting kickoff.
+- `aichats_portal_state` now stores turn/reset ownership only; the leftover reset timestamp sidecar field is gone.
+- AI internal-room setup no longer hides durable portal writes behind `MutatePortal` / `SaveBefore`; scheduler and integration host now mutate and save portals explicitly before materialization.
 - Shared DM portal bootstrap/materialization moved down to `pkg/shared/bridgeutil` where it was truly generic.
 
 ## Remaining High-Value Targets
 
 These are the remaining rewrite targets that still matter for SDK + AI.
 
-### 1. AI storage boundaries
-
-Problem:
-
-- AI persistence still conceptually bleeds across login runtime state, portal metadata, and turn/reset storage
-- `aichats_portal_state` still looks too much like a metadata sidecar even after major cleanup
-
-Target:
-
-- exactly three durable owners:
-- login-scoped runtime/config state
-- portal-scoped metadata/config state
-- portal turn/reset sequencing state
-
-Acceptance rule:
-
-- if a field is not turn/reset sequencing, it should not live in the turn-store table
-
-### 2. Callback-driven portal mutation
-
-Problem:
-
-- AI still carries local mutation callbacks in some room materialization paths
-- those callbacks keep durable state writes implicit and make lifecycle ownership harder to follow
-
-Target:
-
-- prefer explicit pre-save mutation
-- where state is really part of room info/user info transport, move it to `ExtraUpdates`
-- keep callbacks only when there is no cleaner lifecycle hook
-
-### 3. SDK surface tightening
+### 1. SDK surface tightening
 
 Problem:
 
@@ -120,7 +91,7 @@ Target:
 - leave AI-specific policy in `bridges/ai`
 - avoid rebuilding a second framework inside `sdk/`
 
-### 4. AI bridge-local branching
+### 2. AI bridge-local branching
 
 Problem:
 
@@ -176,7 +147,5 @@ Exit condition:
 
 ## Immediate Attack List
 
-1. finish the AI storage audit and remove any metadata-shaped remnants from `aichats_portal_state`
-2. replace the remaining callback-style durable portal mutations with explicit writes or room-info/user-info updates
-3. trim SDK helpers that are no longer meaningfully shared after the deleted bridge experiments are gone
-4. keep deleting any remaining AI entrypoint-specific branches where the behavior is actually the same
+1. trim SDK helpers that are no longer meaningfully shared after the deleted bridge experiments are gone
+2. keep deleting any remaining AI entrypoint-specific branches where the behavior is actually the same

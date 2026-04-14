@@ -211,7 +211,6 @@ CREATE TABLE IF NOT EXISTS aichats_portal_state (
   portal_receiver TEXT NOT NULL,
   context_epoch INTEGER NOT NULL DEFAULT 0,
   next_turn_sequence INTEGER NOT NULL DEFAULT 0,
-  updated_at_ms INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, portal_id, portal_receiver)
 );
 

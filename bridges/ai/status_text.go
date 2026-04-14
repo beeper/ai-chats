@@ -80,11 +80,6 @@ func (oc *AIClient) buildStatusText(
 		sb.WriteString(fmt.Sprintf("Session: %s\n", sessionKey))
 	}
 
-	if record, err := loadAIPortalRecord(ctx, portal); err == nil && record != nil && record.ContextEpoch > 0 && record.UpdatedAt > 0 {
-		ts := time.UnixMilli(record.UpdatedAt).Format(time.RFC3339)
-		sb.WriteString(fmt.Sprintf("Session reset: %s\n", ts))
-	}
-
 	if isGroup {
 		activation := oc.resolveGroupActivation(meta)
 		sb.WriteString(fmt.Sprintf("Group activation: %s\n", activation))

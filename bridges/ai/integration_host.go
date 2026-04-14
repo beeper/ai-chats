@@ -142,22 +142,24 @@ func (h *runtimeIntegrationHost) GetOrCreatePortal(ctx context.Context, portalID
 	}
 	portalKey := portalKeyFromParts(h.client, portalID, receiver)
 	chatName := displayName
-	p, err := h.client.getOrMaterializePortalRoom(ctx, portalKey, &bridgev2.ChatInfo{Name: &chatName}, portalRoomResolveOptions{
-		SkipIfExists: true,
-		Materialize: portalRoomMaterializeOptions{
-			SaveBefore: true,
-			MutatePortal: func(portal *bridgev2.Portal) {
-				meta := &PortalMetadata{}
-				if setupMeta != nil {
-					setupMeta(meta)
-				}
-				portal.Metadata = meta
-				portal.Name = displayName
-				portal.NameSet = true
-			},
-		},
-	})
+	p, err := h.client.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
 	if err != nil {
+		return nil, "", fmt.Errorf("failed to load portal: %w", err)
+	}
+	if p.MXID != "" {
+		return p, p.MXID.String(), nil
+	}
+	meta := &PortalMetadata{}
+	if setupMeta != nil {
+		setupMeta(meta)
+	}
+	p.Metadata = meta
+	p.Name = displayName
+	p.NameSet = true
+	if err := p.Save(ctx); err != nil {
+		return nil, "", fmt.Errorf("failed to save portal: %w", err)
+	}
+	if err := h.client.materializePortalRoom(ctx, p, &bridgev2.ChatInfo{Name: &chatName}, portalRoomMaterializeOptions{}); err != nil {
 		return nil, "", fmt.Errorf("failed to create Matrix room: %w", err)
 	}
 	return p, p.MXID.String(), nil
@@ -913,7 +915,7 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 		return nil, nil
 	}
 	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (*aiTurnRecord, error) {
-		record, err := ensurePortalTurnStateByScope(ctx, scope)
+		record, err := ensureAIPortalRecordByScope(ctx, scope)
 		if err != nil || record == nil {
 			return nil, err
 		}

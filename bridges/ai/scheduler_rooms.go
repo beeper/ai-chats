@@ -54,21 +54,22 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	}
 	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
 	chatName := displayName
-	portal, err := s.client.getOrMaterializePortalRoom(ctx, key, &bridgev2.ChatInfo{Name: &chatName}, portalRoomResolveOptions{
-		Materialize: portalRoomMaterializeOptions{
-			SaveBefore: true,
-			MutatePortal: func(portal *bridgev2.Portal) {
-				meta := portalMeta(portal)
-				if meta == nil {
-					meta = &PortalMetadata{}
-					portal.Metadata = meta
-				}
-				meta.InternalRoomKind = internalRoomKind
-				portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
-				s.client.applyPortalRoomName(ctx, portal, displayName)
-			},
-		},
-	})
+	portal, err := s.client.UserLogin.Bridge.GetPortalByKey(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	meta := portalMeta(portal)
+	if meta == nil {
+		meta = &PortalMetadata{}
+		portal.Metadata = meta
+	}
+	meta.InternalRoomKind = internalRoomKind
+	portal.OtherUserID = s.client.agentUserID(normalizeAgentID(agentID))
+	s.client.applyPortalRoomName(ctx, portal, displayName)
+	if err := portal.Save(ctx); err != nil {
+		return nil, err
+	}
+	err = s.client.materializePortalRoom(ctx, portal, &bridgev2.ChatInfo{Name: &chatName}, portalRoomMaterializeOptions{})
 	if err != nil {
 		return nil, err
 	}

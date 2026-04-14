@@ -28,7 +28,6 @@ const (
 type aiPersistedPortalRecord struct {
 	ContextEpoch     int64
 	NextTurnSequence int64
-	UpdatedAt        int64
 }
 
 type aiTurnRecord struct {
@@ -115,13 +114,12 @@ func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPers
 	}
 	var record aiPersistedPortalRecord
 	err := scope.db.QueryRow(ctx, `
-		SELECT context_epoch, next_turn_sequence, updated_at_ms
+		SELECT context_epoch, next_turn_sequence
 		FROM `+aiPortalStateTable+`
 		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
 	`, scope.bridgeID, scope.portalID, scope.portalReceiver).Scan(
 		&record.ContextEpoch,
 		&record.NextTurnSequence,
-		&record.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -139,13 +137,12 @@ func ensureAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPe
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	nowMs := time.Now().UnixMilli()
 	if _, err := scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
-			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence, updated_at_ms
-		) VALUES ($1, $2, $3, 0, 0, $4)
+			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence
+		) VALUES ($1, $2, $3, 0, 0)
 		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO NOTHING
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs); err != nil {
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver); err != nil {
 		return nil, err
 	}
 	return loadAIPortalRecordByScope(ctx, scope)
@@ -166,10 +163,6 @@ func allocateAITurnSequence(ctx context.Context, scope *portalScope) (contextEpo
 	return contextEpoch, sequence, err
 }
 
-func ensurePortalTurnStateByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
-	return ensureAIPortalRecordByScope(ctx, scope)
-}
-
 func advanceAIPortalContextEpoch(ctx context.Context, portal *bridgev2.Portal) error {
 	return withResolvedPortalScope(ctx, nil, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) error {
 		return advanceAIPortalContextEpochByScope(ctx, scope)
@@ -183,16 +176,14 @@ func advanceAIPortalContextEpochByScope(ctx context.Context, scope *portalScope)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	nowMs := time.Now().UnixMilli()
 	_, err := scope.db.Exec(ctx, `
 		INSERT INTO `+aiPortalStateTable+` (
-			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence, updated_at_ms
-		) VALUES ($1, $2, $3, 1, 0, $4)
+			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence
+		) VALUES ($1, $2, $3, 1, 0)
 		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
 			context_epoch=`+aiPortalStateTable+`.context_epoch + 1,
-			next_turn_sequence=0,
-			updated_at_ms=excluded.updated_at_ms
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, nowMs)
+			next_turn_sequence=0
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver)
 	return err
 }
 
@@ -584,7 +575,7 @@ func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bo
 	if scope == nil {
 		return false
 	}
-	record, err := ensurePortalTurnStateByScope(ctx, scope)
+	record, err := ensureAIPortalRecordByScope(ctx, scope)
 	if err != nil || record == nil {
 		return false
 	}
@@ -637,7 +628,7 @@ func loadAICurrentContextTurnsByScope(ctx context.Context, scope *portalScope, q
 	if scope == nil || query.limit <= 0 {
 		return nil, nil
 	}
-	record, err := ensurePortalTurnStateByScope(ctx, scope)
+	record, err := ensureAIPortalRecordByScope(ctx, scope)
 	if err != nil || record == nil {
 		return nil, err
 	}
