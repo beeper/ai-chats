@@ -150,7 +150,6 @@ type Host interface {
 	Logger() Logger
 	RawLogger() zerolog.Logger
 	Now() time.Time
-	ModuleEnabled(name string) bool
 	ModuleConfig(name string) map[string]any
 	AgentModuleConfig(agentID string, module string) map[string]any
 
