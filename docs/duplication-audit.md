@@ -84,6 +84,10 @@ These wrapper/helper classes are already gone and should not return:
   send/edit wrappers, heartbeat/session routing wrappers, current-turn prompt
   assembly wrappers, contact-resolution wrappers, retrieval token helper
   chains, prompt/state constant shims, and several one-use accessors
+- AI room-info lifecycle side channels: room creation now has one explicit
+  owner, welcome/bootstrap no longer hangs off `ChatInfo.ExtraUpdates`, and
+  the named-room wrapper layer no longer rebuilds a second room materialization
+  path
 - Retrieval env/provider-registration/provider-constructor wrappers, direct
   fetch default wrappers, and the Exa wrapper layer
 - Bridge-local status wrappers in `bridges/ai` and `bridges/codex`

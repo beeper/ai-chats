@@ -431,6 +431,12 @@ Recent progress also centralized login-scoped TextFS store construction:
 tool / bootstrap / heartbeat / agent-display code no longer rebuilds separate
 `textfs.NewStore(...)` paths.
 
+Recent progress also collapsed AI room lifecycle ownership:
+room creation and room refresh now go through one explicit portal-room owner,
+welcome/initial notice delivery no longer hides inside `ChatInfo.ExtraUpdates`,
+and scheduler/internal rooms reuse the same room-sync primitive without
+inheriting end-user bootstrap behavior.
+
 Recent progress also removed the host-side agent-module JSON round-trip:
 `runtimeIntegrationHost.AgentModuleConfig(...)` now uses a typed module
 selector, and memory module config is normalized on agent hydration instead of

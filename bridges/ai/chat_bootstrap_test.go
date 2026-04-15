@@ -2,9 +2,12 @@ package ai
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -95,5 +98,93 @@ func TestEnsureDefaultChatReusesExistingVisibleChat(t *testing.T) {
 	}
 	if defaultPortal != nil {
 		t.Fatalf("expected existing visible chat to be reused instead of creating a new default portal")
+	}
+}
+
+func TestBootstrapPortalRoomSendsInitialWelcomeNotice(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+
+	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
+	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
+	client.UserLogin.Bridge.Bot = matrix.api
+
+	chatResp, err := client.createChat(ctx, chatCreateParams{ModelID: client.effectiveModel(nil)})
+	if err != nil {
+		t.Fatalf("createChat returned error: %v", err)
+	}
+
+	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:            chatResp.Portal,
+		ChatInfo:          chatResp.PortalInfo,
+		SendWelcomeNotice: true,
+	})
+	if err != nil {
+		t.Fatalf("ensurePortalRoom returned error: %v", err)
+	}
+	if portal.MXID == "" {
+		t.Fatal("expected ensurePortalRoom to materialize a Matrix room")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if matrix.api.sentContent != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if matrix.api.sentContent == nil {
+		t.Fatal("expected initial welcome notice to be sent")
+	}
+	if matrix.api.sentRoomID != portal.MXID {
+		t.Fatalf("expected welcome notice in %q, got %q", portal.MXID, matrix.api.sentRoomID)
+	}
+	if matrix.api.sentType != event.EventMessage {
+		t.Fatalf("expected event type %q, got %q", event.EventMessage, matrix.api.sentType)
+	}
+	msg, ok := matrix.api.sentContent.Parsed.(*event.MessageEventContent)
+	if !ok {
+		t.Fatalf("expected parsed message content, got %#v", matrix.api.sentContent.Parsed)
+	}
+	if msg.MsgType != event.MsgNotice {
+		t.Fatalf("expected notice message, got %q", msg.MsgType)
+	}
+	if !strings.Contains(msg.Body, "AI can make mistakes.") {
+		t.Fatalf("expected AI disclaimer, got %q", msg.Body)
+	}
+	if meta := portalMeta(portal); meta == nil || !meta.WelcomeSent {
+		t.Fatalf("expected WelcomeSent to be persisted, got %#v", meta)
+	}
+}
+
+func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+
+	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
+	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
+	client.UserLogin.Bridge.Bot = matrix.api
+
+	chatResp, err := client.createChat(ctx, chatCreateParams{ModelID: client.effectiveModel(nil)})
+	if err != nil {
+		t.Fatalf("createChat returned error: %v", err)
+	}
+
+	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:            chatResp.Portal,
+		ChatInfo:          chatResp.PortalInfo,
+		SendWelcomeNotice: true,
+	})
+	if err != nil {
+		t.Fatalf("first ensurePortalRoom returned error: %v", err)
+	}
+	if _, err = client.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:            portal,
+		SendWelcomeNotice: true,
+	}); err != nil {
+		t.Fatalf("second ensurePortalRoom returned error: %v", err)
+	}
+	if matrix.api.sendCount != 1 {
+		t.Fatalf("expected one initial notice send, got %d", matrix.api.sendCount)
 	}
 }

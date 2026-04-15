@@ -288,43 +288,7 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
-func (oc *AIClient) welcomeBootstrapUpdater() bridgev2.ExtraUpdater[*bridgev2.Portal] {
-	if oc == nil {
-		return nil
-	}
-	return func(ctx context.Context, portal *bridgev2.Portal) bool {
-		oc.queueWelcomeBootstrap(ctx, portal)
-		return false
-	}
-}
-
-// queueWelcomeBootstrap is the single owner for room welcome/bootstrap behavior.
-// It works for both explicit AI room creation and provisioning-created rooms by
-// waiting on the portal's own room-created event instead of polling storage.
-func (oc *AIClient) queueWelcomeBootstrap(ctx context.Context, portal *bridgev2.Portal) {
-	if oc == nil || portal == nil {
-		return
-	}
-	if portal.PortalKey.ID == "" {
-		return
-	}
-	bgCtx := oc.backgroundContext(ctx)
-	go func() {
-		portalID := string(portal.PortalKey.ID)
-		oc.log.Debug().Str("portal_id", portalID).Msg("welcome bootstrap queued")
-		if err := portal.RoomCreated.WaitTimeoutCtx(bgCtx, 45*time.Second); err != nil {
-			oc.log.Debug().Err(err).Str("portal_id", portalID).Msg("welcome bootstrap exiting before room creation")
-			return
-		}
-		if err := oc.sendWelcomeMessage(bgCtx, portal); err != nil {
-			oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", portalID).Msg("Failed to send welcome message")
-			return
-		}
-		oc.log.Debug().Str("portal_id", portalID).Msg("welcome bootstrap completed")
-	}()
-}
-
-func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Portal) error {
+func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.Portal) error {
 	if oc == nil || portal == nil {
 		return nil
 	}
@@ -341,6 +305,9 @@ func (oc *AIClient) sendWelcomeMessage(ctx context.Context, portal *bridgev2.Por
 	}
 	meta := portalMeta(portal)
 	if meta == nil {
+		return nil
+	}
+	if meta.InternalRoom() {
 		return nil
 	}
 	if meta.WelcomeSent {
@@ -440,39 +407,38 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		if meta != nil {
 			meta.TitleGenerated = true
 		}
-		oc.applyPortalRoomName(bgCtx, portal, title)
+		if portal.MXID != "" {
+			portal.UpdateInfo(bgCtx, &bridgev2.ChatInfo{
+				Name:                       &title,
+				ExcludeChangesFromTimeline: true,
+			}, oc.UserLogin, nil, time.Time{})
+		} else {
+			portal.Name = title
+			portal.NameSet = true
+		}
 		if err := oc.savePortal(bgCtx, portal, "room title"); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
 			return
 		}
-		if err := oc.materializePortalRoom(bgCtx, portal, oc.chatInfoFromPortal(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
+		if _, err := oc.syncPortalRoom(bgCtx, portal, oc.chatInfoFromPortal(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
 		}
 	}()
 }
 
 // Priority: UserLoginMetadata.TitleGenerationModel > provider-specific default > current model
-func (oc *AIClient) getTitleGenerationModel() string {
-	provider := loginMetadata(oc.UserLogin).Provider
-	cfg := oc.loginConfigSnapshot(context.Background())
-
-	if provider != ProviderOpenRouter && provider != ProviderMagicProxy {
-		return ""
-	}
-
-	// Use configured title generation model if set
-	if cfg.TitleGenerationModel != "" {
-		return cfg.TitleGenerationModel
-	}
-
-	// Provider-specific default for title generation (only reached for OpenRouter-compatible providers)
-	return "google/gemini-2.5-flash"
-}
-
 // Uses Responses API for OpenRouter compatibility (the PDF plugins middleware adds a 'plugins'
 // field that is only valid for Responses API, not Chat Completions API)
 func (oc *AIClient) generateRoomTitle(ctx context.Context, userMessage, assistantResponse string) (string, error) {
-	model := oc.getTitleGenerationModel()
+	provider := loginMetadata(oc.UserLogin).Provider
+	if provider != ProviderOpenRouter && provider != ProviderMagicProxy {
+		return "", errors.New("title generation disabled for this provider")
+	}
+	cfg := oc.loginConfigSnapshot(context.Background())
+	model := cfg.TitleGenerationModel
+	if model == "" {
+		model = "google/gemini-2.5-flash"
+	}
 	if model == "" {
 		return "", errors.New("title generation disabled for this provider")
 	}

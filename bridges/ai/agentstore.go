@@ -498,15 +498,17 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
 
-	portal, err := b.client.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
-		Portal:     resp.Portal,
-		ChatInfo:   resp.PortalInfo,
-		SaveAction: "room creation",
+	portal, err := b.client.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:            resp.Portal,
+		ChatInfo:          resp.PortalInfo,
+		SaveAction:        "room creation",
+		SendWelcomeNotice: true,
 		Mutate: func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
 			if room.Name == "" {
 				return
 			}
-			b.client.applyPortalRoomName(ctx, portal, room.Name)
+			portal.Name = room.Name
+			portal.NameSet = true
 			if chatInfo != nil {
 				chatInfo.Name = &room.Name
 			}
@@ -531,7 +533,16 @@ func (b *BossStoreAdapter) ModifyRoom(ctx context.Context, roomID string, update
 
 	// Apply updates
 	if updates.Name != "" {
-		b.client.applyPortalRoomName(ctx, portal, updates.Name)
+		name := updates.Name
+		if portal.MXID != "" {
+			portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
+				Name:                       &name,
+				ExcludeChangesFromTimeline: true,
+			}, b.client.UserLogin, nil, time.Time{})
+		} else {
+			portal.Name = name
+			portal.NameSet = true
+		}
 	}
 	if updates.AgentID != "" {
 		// Verify agent exists

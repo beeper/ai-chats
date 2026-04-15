@@ -293,10 +293,11 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 	}
 
 	roomName := resolveSubagentRoomName(label, task)
-	childPortal, err := oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
-		Portal:     chatResp.Portal,
-		ChatInfo:   chatResp.PortalInfo,
-		SaveAction: "subagent room setup",
+	childPortal, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:            chatResp.Portal,
+		ChatInfo:          chatResp.PortalInfo,
+		SaveAction:        "subagent room setup",
+		SendWelcomeNotice: true,
 		Mutate: func(childPortal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
 			childMeta := portalMeta(childPortal)
 			childMeta.SubagentParentRoomID = portal.MXID.String()

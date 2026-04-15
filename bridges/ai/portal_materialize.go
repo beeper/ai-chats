@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
@@ -14,42 +13,44 @@ type portalRoomMaterializeOptions struct {
 	CleanupOnCreateError string
 }
 
-type portalRoomBootstrapParams struct {
+type ensurePortalRoomParams struct {
 	Portal               *bridgev2.Portal
 	ChatInfo             *bridgev2.ChatInfo
 	SaveAction           string
 	Mutate               func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo)
 	CleanupOnCreateError string
+	SendWelcomeNotice    bool
 }
 
-func (oc *AIClient) materializePortalRoom(
+func (oc *AIClient) syncPortalRoom(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	chatInfo *bridgev2.ChatInfo,
 	opts portalRoomMaterializeOptions,
-) error {
+) (bool, error) {
 	if portal == nil {
-		return fmt.Errorf("missing portal")
+		return false, fmt.Errorf("missing portal")
 	}
 	if oc == nil || oc.UserLogin == nil {
-		return fmt.Errorf("AIClient not initialized: missing UserLogin")
+		return false, fmt.Errorf("AIClient not initialized: missing UserLogin")
 	}
-	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
+	created, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
 		Login:    oc.UserLogin,
 		Portal:   portal,
 		ChatInfo: chatInfo,
-	}); err != nil {
+	})
+	if err != nil {
 		if opts.CleanupOnCreateError != "" && portal.MXID == "" {
 			cleanupPortal(ctx, oc, portal, opts.CleanupOnCreateError)
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return created, nil
 }
 
-func (oc *AIClient) bootstrapPortalRoom(
+func (oc *AIClient) ensurePortalRoom(
 	ctx context.Context,
-	params portalRoomBootstrapParams,
+	params ensurePortalRoomParams,
 ) (*bridgev2.Portal, error) {
 	if params.Portal == nil {
 		return nil, fmt.Errorf("missing portal")
@@ -66,46 +67,15 @@ func (oc *AIClient) bootstrapPortalRoom(
 	if chatInfo == nil {
 		chatInfo = oc.chatInfoFromPortal(ctx, params.Portal)
 	}
-	if err := oc.materializePortalRoom(ctx, params.Portal, chatInfo, portalRoomMaterializeOptions{
+	if _, err := oc.syncPortalRoom(ctx, params.Portal, chatInfo, portalRoomMaterializeOptions{
 		CleanupOnCreateError: params.CleanupOnCreateError,
 	}); err != nil {
 		return nil, err
 	}
+	if params.SendWelcomeNotice {
+		if err := oc.sendInitialRoomNotice(ctx, params.Portal); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Stringer("portal", params.Portal.PortalKey).Msg("Failed to send initial room notice")
+		}
+	}
 	return params.Portal, nil
-}
-
-func (oc *AIClient) ensureNamedPortalRoom(
-	ctx context.Context,
-	portalKey networkid.PortalKey,
-	displayName string,
-	mutate func(portal *bridgev2.Portal, meta *PortalMetadata),
-	opts portalRoomMaterializeOptions,
-) (*bridgev2.Portal, error) {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return nil, fmt.Errorf("missing login")
-	}
-	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return nil, err
-	}
-	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
-		Portal:      portal,
-		Title:       displayName,
-		OtherUserID: portal.OtherUserID,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			meta := portalMeta(portal)
-			if mutate != nil {
-				mutate(portal, meta)
-			}
-		},
-		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return oc.savePortal(ctx, portal, "named room setup")
-		},
-	}); err != nil {
-		return nil, err
-	}
-	return oc.bootstrapPortalRoom(ctx, portalRoomBootstrapParams{
-		Portal:               portal,
-		CleanupOnCreateError: opts.CleanupOnCreateError,
-	})
 }

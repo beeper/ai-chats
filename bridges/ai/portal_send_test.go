@@ -16,15 +16,18 @@ import (
 )
 
 type testMatrixAPI struct {
-	joinedRooms []id.RoomID
-	sentRoomID  id.RoomID
-	sentType    event.Type
-	sentContent *event.Content
+	joinedRooms  []id.RoomID
+	sentRoomID   id.RoomID
+	sentType     event.Type
+	sentContent  *event.Content
+	createRoomID id.RoomID
+	sendCount    int
 }
 
 func (tma *testMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
 func (tma *testMatrixAPI) IsDoublePuppet() bool { return false }
 func (tma *testMatrixAPI) SendMessage(_ context.Context, roomID id.RoomID, evtType event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	tma.sendCount++
 	tma.sentRoomID = roomID
 	tma.sentType = evtType
 	tma.sentContent = content
@@ -56,6 +59,9 @@ func (tma *testMatrixAPI) SetDisplayName(context.Context, string) error         
 func (tma *testMatrixAPI) SetAvatarURL(context.Context, id.ContentURIString) error { return nil }
 func (tma *testMatrixAPI) SetExtraProfileMeta(context.Context, any) error          { return nil }
 func (tma *testMatrixAPI) CreateRoom(context.Context, *mautrix.ReqCreateRoom) (id.RoomID, error) {
+	if tma.createRoomID != "" {
+		return tma.createRoomID, nil
+	}
 	return "", nil
 }
 func (tma *testMatrixAPI) DeleteRoom(context.Context, id.RoomID, bool) error { return nil }
