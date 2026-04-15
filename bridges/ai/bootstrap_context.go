@@ -14,19 +14,10 @@ func (oc *AIClient) buildBootstrapContextFiles(ctx context.Context, agentID stri
 	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil
 	}
-	db := oc.bridgeDB()
-	if db == nil {
+	store, err := oc.textFSStoreForAgent(agentID)
+	if err != nil {
 		return nil
 	}
-	if strings.TrimSpace(agentID) == "" {
-		agentID = "default"
-	}
-	store := textfs.NewStore(
-		db,
-		canonicalLoginBridgeID(oc.UserLogin),
-		canonicalLoginID(oc.UserLogin),
-		agentID,
-	)
 
 	skipBootstrap := false
 	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {

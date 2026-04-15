@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 func (oc *AIClient) resolveAgentDisplayName(ctx context.Context, agent *agents.AgentDefinition) string {
@@ -28,19 +27,13 @@ func (oc *AIClient) resolveAgentIdentityName(ctx context.Context, agentID string
 	if agentID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return ""
 	}
-	db := oc.bridgeDB()
-	if db == nil {
-		return ""
-	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	store := textfs.NewStore(
-		db,
-		canonicalLoginBridgeID(oc.UserLogin),
-		canonicalLoginID(oc.UserLogin),
-		agentID,
-	)
+	store, err := oc.textFSStoreForAgent(agentID)
+	if err != nil {
+		return ""
+	}
 	entry, found, err := store.Read(ctx, agents.DefaultIdentityFilename)
 	if err != nil || !found || entry == nil {
 		return ""

@@ -159,6 +159,10 @@ Recent cleanup kept pushing in that direction:
   `PromptContext`, the reverse `turnDataFromUserPromptMessages(...)` adapter is
   gone, and persistence writers reuse the canonical turn record instead of
   rebuilding it from the final user prompt message
+- Login-scoped TextFS storage no longer has branched constructor paths:
+  `AIClient.textFSStoreForAgent(...)` now owns the storage tuple, the host-only
+  `textStoreForAgent(...)` helper is gone, and tools / bootstrap / heartbeat /
+  agent-display reads all delegate to the same store-construction rule
 
 ## Highest-Value Remaining Problems
 

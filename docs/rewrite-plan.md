@@ -359,6 +359,11 @@ Recent progress also deleted the reverse user-prompt adapter:
 directly in `PromptContext`, and persistence writers no longer reconstruct
 canonical turn data from the final user `PromptMessage`.
 
+Recent progress also centralized login-scoped TextFS store construction:
+`AIClient.textFSStoreForAgent(...)` now owns the storage tuple, and host /
+tool / bootstrap / heartbeat / agent-display code no longer rebuilds separate
+`textfs.NewStore(...)` paths.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

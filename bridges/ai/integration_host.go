@@ -16,7 +16,6 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 type runtimeIntegrationHost struct {
@@ -301,9 +300,9 @@ func (h *runtimeIntegrationHost) ReadTextFile(ctx context.Context, agentID strin
 	if h == nil || h.client == nil {
 		return "", "", false, fmt.Errorf("storage unavailable")
 	}
-	store := textStoreForAgent(h.client, agentID)
-	if store == nil {
-		return "", "", false, fmt.Errorf("storage unavailable")
+	store, err := h.client.textFSStoreForAgent(agentID)
+	if err != nil {
+		return "", "", false, err
 	}
 	entry, ok, e := store.Read(ctx, path)
 	if e != nil {
@@ -319,9 +318,9 @@ func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal *brid
 	if h == nil || h.client == nil {
 		return "", fmt.Errorf("storage unavailable")
 	}
-	store := textStoreForAgent(h.client, agentID)
-	if store == nil {
-		return "", fmt.Errorf("storage unavailable")
+	store, err := h.client.textFSStoreForAgent(agentID)
+	if err != nil {
+		return "", err
 	}
 	if len([]byte(content)) > maxBytes {
 		return "", fmt.Errorf("content exceeds %d bytes", maxBytes)
@@ -519,24 +518,6 @@ func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridg
 		return nil, false
 	}
 	return databaseMessageFromAITurn(portal, row), true
-}
-
-// ---- Helpers ----
-
-func textStoreForAgent(client *AIClient, agentID string) *textfs.Store {
-	if client == nil || client.UserLogin == nil || client.UserLogin.Bridge == nil || client.UserLogin.Bridge.DB == nil {
-		return nil
-	}
-	db := client.bridgeDB()
-	if db == nil {
-		return nil
-	}
-	return textfs.NewStore(
-		db,
-		canonicalLoginBridgeID(client.UserLogin),
-		canonicalLoginID(client.UserLogin),
-		agentID,
-	)
 }
 
 // ---- Small helpers used by host sub-adapters ----

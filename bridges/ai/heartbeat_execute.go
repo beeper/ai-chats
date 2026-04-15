@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/textfs"
 )
 
 type heartbeatRunResult struct {
@@ -462,16 +461,13 @@ func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID strin
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {
-	db := oc.bridgeDB()
-	if db == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return true
 	}
-	bridgeID := canonicalLoginBridgeID(oc.UserLogin)
-	loginID := canonicalLoginID(oc.UserLogin)
-	if loginID == "" {
+	store, err := oc.textFSStoreForAgent(agentID)
+	if err != nil {
 		return true
 	}
-	store := textfs.NewStore(db, bridgeID, loginID, normalizeAgentID(agentID))
 	entry, found, err := store.Read(context.Background(), agents.DefaultHeartbeatFilename)
 	if err != nil || !found {
 		return true

@@ -1472,19 +1472,14 @@ func textFSStore(ctx context.Context) (*textfs.Store, error) {
 	}
 	meta := portalMeta(btc.Portal)
 	agentID := resolveAgentID(meta)
-	if agentID == "" {
-		agentID = "default"
-	}
-	db := btc.Client.bridgeDB()
-	if db == nil {
+	store, err := btc.Client.textFSStoreForAgent(agentID)
+	if err != nil {
+		if errors.Is(err, errTextFSLoginIdentityRequired) {
+			return nil, errors.New("file tool login identity unavailable")
+		}
 		return nil, errors.New("file tool database unavailable")
 	}
-	bridgeID := canonicalLoginBridgeID(btc.Client.UserLogin)
-	loginID := canonicalLoginID(btc.Client.UserLogin)
-	if loginID == "" {
-		return nil, errors.New("file tool login identity unavailable")
-	}
-	return textfs.NewStore(db, bridgeID, loginID, agentID), nil
+	return store, nil
 }
 
 func detachedBridgeToolContext(ctx context.Context) context.Context {
