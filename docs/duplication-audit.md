@@ -142,6 +142,11 @@ Recent cleanup kept pushing in that direction:
   `runtimeIntegrationHost.NewCompletion(...)` now reuses
   `AIClient.modelIDForAPI(...)` instead of sending a second raw model string
   path to the provider
+- Web search and fetch config no longer each own their own merge pipeline:
+  connector config, login-derived Exa tokens, env overlays, and defaults now
+  flow through one `applyRetrievalConfigRuntimeDefaults(...)` path instead of
+  being duplicated in both `effectiveSearchConfig(...)` and
+  `effectiveFetchConfig(...)`
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems

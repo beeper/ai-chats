@@ -343,6 +343,11 @@ Recent progress also removed one more provider-model fork from
 `AIClient.modelIDForAPI(...)` instead of keeping a second raw model-string
 path.
 
+Recent progress also collapsed duplicated retrieval-config assembly:
+`effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now share one
+runtime merge path for connector config, login-derived Exa credentials, env
+overlays, and defaults instead of carrying two separate branches.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

@@ -114,3 +114,56 @@ func TestEffectiveSearchConfig_UsesEnvDefaultsWithoutPanicking(t *testing.T) {
 		t.Fatalf("expected non-nil config")
 	}
 }
+
+func TestEffectiveSearchConfig_UsesEnvWhenConfigMissing(t *testing.T) {
+	t.Setenv("SEARCH_PROVIDER", "exa")
+	t.Setenv("SEARCH_FALLBACKS", "exa")
+	t.Setenv("EXA_API_KEY", "env-exa-key")
+	t.Setenv("EXA_BASE_URL", "https://exa-proxy.example")
+
+	oc := &AIClient{connector: &OpenAIConnector{Config: Config{}}}
+	cfg := oc.effectiveSearchConfig(context.Background())
+	if cfg == nil {
+		t.Fatalf("expected non-nil config")
+	}
+	if cfg.Provider != "exa" {
+		t.Fatalf("expected env provider, got %q", cfg.Provider)
+	}
+	if len(cfg.Fallbacks) != 1 || cfg.Fallbacks[0] != "exa" {
+		t.Fatalf("expected env fallbacks, got %#v", cfg.Fallbacks)
+	}
+	if cfg.Exa.APIKey != "env-exa-key" {
+		t.Fatalf("expected env Exa API key, got %q", cfg.Exa.APIKey)
+	}
+	if cfg.Exa.BaseURL != "https://exa-proxy.example" {
+		t.Fatalf("expected env Exa base URL, got %q", cfg.Exa.BaseURL)
+	}
+}
+
+func TestEffectiveFetchConfig_UsesEnvWhenConfigMissing(t *testing.T) {
+	t.Setenv("FETCH_PROVIDER", "direct")
+	t.Setenv("FETCH_FALLBACKS", "direct,exa")
+	t.Setenv("EXA_API_KEY", "env-exa-key")
+	t.Setenv("EXA_BASE_URL", "https://exa-proxy.example")
+
+	oc := &AIClient{connector: &OpenAIConnector{Config: Config{}}}
+	cfg := oc.effectiveFetchConfig(context.Background())
+	if cfg == nil {
+		t.Fatalf("expected non-nil config")
+	}
+	if cfg.Provider != "direct" {
+		t.Fatalf("expected env provider, got %q", cfg.Provider)
+	}
+	if len(cfg.Fallbacks) != 2 || cfg.Fallbacks[0] != "direct" || cfg.Fallbacks[1] != "exa" {
+		t.Fatalf("expected env fallbacks, got %#v", cfg.Fallbacks)
+	}
+	if cfg.Exa.APIKey != "env-exa-key" {
+		t.Fatalf("expected env Exa API key, got %q", cfg.Exa.APIKey)
+	}
+	if cfg.Exa.BaseURL != "https://exa-proxy.example" {
+		t.Fatalf("expected env Exa base URL, got %q", cfg.Exa.BaseURL)
+	}
+	if cfg.Direct.TimeoutSecs == 0 {
+		t.Fatalf("expected fetch defaults to remain applied")
+	}
+}
