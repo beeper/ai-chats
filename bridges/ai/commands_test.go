@@ -55,7 +55,7 @@ func TestApplyAgentsEnabledChangeOnlyRequestsChatOnExplicitEnable(t *testing.T) 
 		t.Fatalf("applyAgentsEnabledChange(false) returned error: %v", err)
 	}
 	if shouldCreateDefaultChat {
-		t.Fatalf("expected no default chat request while disabling agents")
+		t.Fatalf("expected no extra work while disabling agents")
 	}
 	if client.agentsEnabledForLogin() {
 		t.Fatalf("expected agents to remain disabled")
@@ -66,7 +66,7 @@ func TestApplyAgentsEnabledChangeOnlyRequestsChatOnExplicitEnable(t *testing.T) 
 		t.Fatalf("applyAgentsEnabledChange(true) returned error: %v", err)
 	}
 	if !shouldCreateDefaultChat {
-		t.Fatalf("expected default chat creation request when enabling agents")
+		t.Fatalf("expected explicit enable transition to be reported")
 	}
 	if !client.agentsEnabledForLogin() {
 		t.Fatalf("expected agents to be enabled")
@@ -77,21 +77,18 @@ func TestApplyAgentsEnabledChangeOnlyRequestsChatOnExplicitEnable(t *testing.T) 
 		t.Fatalf("second applyAgentsEnabledChange(true) returned error: %v", err)
 	}
 	if shouldCreateDefaultChat {
-		t.Fatalf("expected no second default chat request when already enabled")
+		t.Fatalf("expected no second enable transition when already enabled")
 	}
 }
 
-func TestApplyAgentsCommandChangeRollsBackWhenWelcomeChatFails(t *testing.T) {
+func TestApplyAgentsCommandChangeUpdatesConfigWithoutRoomBootstrap(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 	ctx := context.Background()
 
-	err := applyAgentsCommandChange(ctx, client, true, func(context.Context) error {
-		return context.DeadlineExceeded
-	})
-	if err == nil {
-		t.Fatalf("expected welcome chat failure to be returned")
+	if err := applyAgentsCommandChange(ctx, client, true); err != nil {
+		t.Fatalf("applyAgentsCommandChange returned error: %v", err)
 	}
-	if client.agentsEnabledForLogin() {
-		t.Fatalf("expected agents enablement to roll back on welcome chat failure")
+	if !client.agentsEnabledForLogin() {
+		t.Fatalf("expected agents to be enabled")
 	}
 }

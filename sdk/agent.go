@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"strings"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -72,22 +71,6 @@ type AgentCatalog interface {
 	DefaultAgent(ctx context.Context, login *bridgev2.UserLogin) (*Agent, error)
 	ListAgents(ctx context.Context, login *bridgev2.UserLogin) ([]*Agent, error)
 	ResolveAgent(ctx context.Context, login *bridgev2.UserLogin, identifier string) (*Agent, error)
-}
-
-// EnsureGhost ensures the ghost user exists in the bridge database.
-func (a *Agent) EnsureGhost(ctx context.Context, login *bridgev2.UserLogin) error {
-	if a == nil || login == nil || login.Bridge == nil || strings.TrimSpace(a.ID) == "" {
-		return nil
-	}
-	ghost, err := login.Bridge.GetGhostByID(ctx, networkid.UserID(a.ID))
-	if err != nil {
-		return err
-	}
-	if ghost == nil {
-		return nil
-	}
-	ghost.UpdateInfo(ctx, a.UserInfo())
-	return nil
 }
 
 // EventSender returns the bridgev2.EventSender for this agent.

@@ -579,11 +579,16 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if !cc.acquireRoomIfQueueEmpty(roomID) {
-		bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
-			Status:    event.MessageStatusPending,
-			Message:   "Queued — waiting for current turn to finish...",
-			IsCertain: true,
-		})
+		if portal != nil && portal.Bridge != nil {
+			if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+				status := bridgev2.MessageStatus{
+					Status:    event.MessageStatusPending,
+					Message:   "Queued — waiting for current turn to finish...",
+					IsCertain: true,
+				}
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+			}
+		}
 		cc.queuePendingCodex(roomID, &codexPendingMessage{
 			event:  msg.Event,
 			portal: portal,
@@ -596,11 +601,16 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		}, nil
 	}
 
-	bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
-		Status:    event.MessageStatusPending,
-		Message:   "Processing...",
-		IsCertain: true,
-	})
+	if portal != nil && portal.Bridge != nil {
+		if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+			status := bridgev2.MessageStatus{
+				Status:    event.MessageStatusPending,
+				Message:   "Processing...",
+				IsCertain: true,
+			}
+			portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+		}
+	}
 
 	go func() {
 		func() {
@@ -677,10 +687,15 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, por
 		turn.EndWithError("Codex turn/start response missing turn id")
 		return
 	}
-	bridgeutil.SendMessageStatus(ctx, portal, sourceEvent, bridgev2.MessageStatus{
-		Status:    event.MessageStatusSuccess,
-		IsCertain: true,
-	})
+	if portal != nil && portal.Bridge != nil {
+		if info := bridgev2.StatusEventInfoFromEvent(sourceEvent); info != nil {
+			status := bridgev2.MessageStatus{
+				Status:    event.MessageStatusSuccess,
+				IsCertain: true,
+			}
+			portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+		}
+	}
 
 	turnCh := cc.subscribeTurn(threadID, turnID)
 	defer cc.unsubscribeTurn(threadID, turnID)

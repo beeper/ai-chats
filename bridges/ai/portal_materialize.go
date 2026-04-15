@@ -50,5 +50,8 @@ func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoo
 	}
 	params.Portal.UpdateBridgeInfo(ctx)
 	params.Portal.UpdateCapabilities(ctx, oc.UserLogin, true)
+	if created {
+		oc.scheduleAutoGreeting(ctx, params.Portal)
+	}
 	return params.Portal, nil
 }

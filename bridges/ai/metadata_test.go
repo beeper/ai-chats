@@ -54,7 +54,7 @@ func TestPortalMetadataMarshalsPersistentPortalState(t *testing.T) {
 		AckReactionRemoveAfter: true,
 		PDFConfig:              &PDFConfig{Engine: "mistral"},
 		Slug:                   "chat-1",
-		WelcomeSent:            true,
+		DisclaimerSent:         true,
 		AutoGreetingSent:       true,
 		InternalRoomKind:       "cron",
 		SubagentParentRoomID:   "!parent:example.com",
@@ -77,7 +77,7 @@ func TestPortalMetadataMarshalsPersistentPortalState(t *testing.T) {
 		"subagent_parent_room_id",
 		"typing_mode",
 		"typing_interval_seconds",
-		"welcome_sent",
+		"disclaimer_sent",
 		"auto_greeting_sent",
 		"internal_room_kind",
 	} {
@@ -94,7 +94,7 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 		PDFConfig:              &PDFConfig{Engine: "mistral"},
 		Slug:                   "chat-7",
 		TitleGenerated:         true,
-		WelcomeSent:            true,
+		DisclaimerSent:         true,
 		AutoGreetingSent:       true,
 		AbortedLastRun:         true,
 		CompactionCount:        9,
@@ -128,7 +128,7 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &restored); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-	if restored.Slug != "chat-7" || !restored.TitleGenerated || !restored.WelcomeSent {
+	if restored.Slug != "chat-7" || !restored.TitleGenerated || !restored.DisclaimerSent {
 		t.Fatalf("expected portal metadata to round-trip, got %#v", restored)
 	}
 	if restored.SessionBootstrapByAgent["beeper"] != 789 {

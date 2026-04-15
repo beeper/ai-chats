@@ -9,8 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -174,7 +172,11 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 				if f.testSendMessageStatus != nil {
 					f.testSendMessageStatus(ctx, msg.Portal, msg.Event, status)
 				} else {
-					bridgeutil.SendMessageStatus(ctx, msg.Portal, msg.Event, status)
+					if msg.Portal != nil && msg.Portal.Bridge != nil {
+						if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+							msg.Portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+						}
+					}
 				}
 				f.redactSingleReaction(msg)
 				return true
@@ -309,7 +311,11 @@ func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
 	if f.testSendMessageStatus != nil {
 		f.testSendMessageStatus(ctx, portal, evt, status)
 	} else {
-		bridgeutil.SendMessageStatus(ctx, portal, evt, status)
+		if portal != nil && portal.Bridge != nil {
+			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+			}
+		}
 	}
 	if reaction != nil {
 		f.redactSingleReaction(reaction)

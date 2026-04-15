@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/rs/xid"
@@ -49,13 +48,6 @@ func providerSlug(provider string) string {
 func portalKeyForChat(loginID networkid.UserLoginID) networkid.PortalKey {
 	return networkid.PortalKey{
 		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:%s", loginID, xid.New().String())),
-		Receiver: loginID,
-	}
-}
-
-func defaultChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKey {
-	return networkid.PortalKey{
-		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:default-chat", loginID)),
 		Receiver: loginID,
 	}
 }
@@ -220,13 +212,4 @@ func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
 
 func formatChatSlug(index int) string {
 	return fmt.Sprintf("chat-%d", index)
-}
-
-func parseChatSlug(slug string) (int, bool) {
-	if suffix, ok := strings.CutPrefix(slug, "chat-"); ok {
-		if idx, err := strconv.Atoi(suffix); err == nil {
-			return idx, true
-		}
-	}
-	return 0, false
 }

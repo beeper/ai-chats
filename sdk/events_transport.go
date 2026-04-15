@@ -141,17 +141,23 @@ func SendSystemMessage(
 	if body == "" {
 		return nil
 	}
-	content := &event.Content{
-		Parsed: &event.MessageEventContent{
-			MsgType:  event.MsgNotice,
-			Body:     body,
-			Mentions: &event.Mentions{},
+	_, _, err := SendViaPortal(SendViaPortalParams{
+		Login:    login,
+		Portal:   portal,
+		Sender:   sender,
+		IDPrefix: "system",
+		LogKey:   "system_notice_id",
+		Converted: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:   networkid.PartID("0"),
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType:  event.MsgNotice,
+					Body:     body,
+					Mentions: &event.Mentions{},
+				},
+			}},
 		},
-	}
-	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return fmt.Errorf("intent resolution failed")
-	}
-	_, err := intent.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
+	})
 	return err
 }

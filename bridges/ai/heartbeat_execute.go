@@ -330,18 +330,18 @@ func (oc *AIClient) resolveHeartbeatRoute(agentID string, heartbeat *HeartbeatCo
 		return route, nil
 	}
 	if explicitTo != "" {
-		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTo, "", "")
+		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTo, "")
 		return route, nil
 	}
 	if explicitTarget != "" && !strings.EqualFold(explicitTarget, "last") {
-		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTarget, "", "")
+		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTarget, "")
 		return route, nil
 	}
 	sessionDeliveryRoom := ""
 	if strings.HasPrefix(hbSession.SessionKey, "!") {
 		sessionDeliveryRoom = hbSession.SessionKey
 	}
-	route.Delivery = oc.resolveHeartbeatDelivery(agentID, sessionDeliveryRoom, "last-active", "default-chat")
+	route.Delivery = oc.resolveHeartbeatDelivery(agentID, sessionDeliveryRoom, "last-active")
 	return route, nil
 }
 
@@ -399,9 +399,6 @@ func (oc *AIClient) firstHeartbeatPortal(agentID string, roomIDs ...string) *bri
 	if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
 		return portal
 	}
-	if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
-		return portal
-	}
 	return nil
 }
 
@@ -421,7 +418,7 @@ func (oc *AIClient) heartbeatPortalForAgent(agentID string, roomID string) *brid
 	return portal
 }
 
-func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID string, fallbackReason string, defaultReason string) deliveryTarget {
+func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID string, fallbackReason string) deliveryTarget {
 	candidates := []struct {
 		roomID string
 		reason string
@@ -434,14 +431,6 @@ func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID strin
 				roomID string
 				reason string
 			}{roomID: portal.MXID.String(), reason: fallbackReason})
-		}
-	}
-	if defaultReason != "" {
-		if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
-			candidates = append(candidates, struct {
-				roomID string
-				reason string
-			}{roomID: portal.MXID.String(), reason: defaultReason})
 		}
 	}
 	for _, candidate := range candidates {
@@ -459,7 +448,7 @@ func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID strin
 			Reason:  candidate.reason,
 		}
 	}
-	return deliveryTarget{Reason: "no-target"}
+	return deliveryTarget{Channel: "matrix", Reason: "no-target"}
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

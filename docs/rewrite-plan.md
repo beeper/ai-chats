@@ -260,16 +260,17 @@ Recent progress also removed the generic `effectiveToolConfig[T]` wrapper:
 `effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now read their
 tool config, login-derived overrides, and env/default merge directly.
 
-Recent progress also removed the DM portal helper stack and the hidden welcome
-bootstrap side channel:
+Recent progress also removed the DM portal helper stack and the hidden
+default-room bootstrap side channel:
 bridges now assign/save/materialize DM portals directly with bridgev2
 primitives, `BuildLoginDMChatInfo(...)` is gone, and AI chat bootstrap no
-longer hides room notices behind `ChatInfo.ExtraUpdates`.
+longer creates a synthetic default room on login. Heartbeat/cron routing also
+no longer falls back to an arbitrary oldest chat as a hidden default target.
 
 Recent progress also removed the bridge-bot system-notice bypass:
-SDK room notices now resolve the portal sender intent directly instead of
-special-casing `login.Bridge.Bot`, so the welcome/notice path follows the same
-ownership model as normal room sends.
+SDK room notices now go through the bridgev2 remote-event pipeline instead of
+special-casing `login.Bridge.Bot`, so disclaimer/system notices follow the
+same ownership model as normal room sends.
 
 Recent progress also removed the memory runtime policy helper layer:
 prompt-context injection and citation-mode selection now read the memory
@@ -444,7 +445,8 @@ tool / bootstrap / heartbeat / agent-display code no longer rebuilds separate
 
 Recent progress also collapsed AI room lifecycle ownership:
 room creation and room refresh now go through one explicit portal-room owner,
-welcome/initial notice delivery no longer hides inside `ChatInfo.ExtraUpdates`,
+the synthetic default/welcome room bootstrap path is gone, disclaimer
+delivery is now owned by conversation start instead of room materialization,
 and scheduler/internal rooms reuse the same room-sync primitive without
 inheriting end-user bootstrap behavior.
 

@@ -20,6 +20,22 @@ func cacheHeartbeatTestPortals(t *testing.T, client *AIClient, portals ...*bridg
 		if portal == nil {
 			continue
 		}
+		if client != nil && client.UserLogin != nil && client.UserLogin.Bridge != nil {
+			persisted, err := client.UserLogin.Bridge.GetPortalByKey(context.Background(), portal.PortalKey)
+			if err != nil {
+				t.Fatalf("GetPortalByKey(%v) returned error: %v", portal.PortalKey, err)
+			}
+			persisted.Receiver = portal.Receiver
+			persisted.OtherUserID = portal.OtherUserID
+			persisted.MXID = portal.MXID
+			persisted.Name = portal.Name
+			persisted.Topic = portal.Topic
+			persisted.Metadata = portal.Metadata
+			if err = persisted.Save(context.Background()); err != nil {
+				t.Fatalf("Save(%v) returned error: %v", portal.PortalKey, err)
+			}
+			portal = persisted
+		}
 		byKey[portal.PortalKey] = portal
 		if portal.MXID != "" {
 			byMXID[portal.MXID] = portal
@@ -49,8 +65,8 @@ func TestResolveHeartbeatDeliveryTargetFallsBackFromMismatchedSessionRoom(t *tes
 	if err != nil {
 		t.Fatalf("expected heartbeat route, got error: %v", err)
 	}
-	if route.Delivery.Portal != lastPortal {
-		t.Fatalf("expected last active portal fallback, got %#v", route.Delivery.Portal)
+	if route.Delivery.Portal == nil || route.Delivery.Portal.MXID != lastPortal.MXID {
+		t.Fatalf("expected last active portal fallback to %q, got %#v", lastPortal.MXID, route.Delivery.Portal)
 	}
 	if route.Delivery.RoomID != lastPortal.MXID {
 		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.Delivery.RoomID)
@@ -79,35 +95,30 @@ func TestResolveHeartbeatRouteFallsBackFromMismatchedExplicitSessionRoom(t *test
 	if err != nil {
 		t.Fatalf("expected fallback session portal, got error: %v", err)
 	}
-	if route.SessionPortal != lastPortal {
-		t.Fatalf("expected last active portal fallback, got %#v", route.SessionPortal)
+	if route.SessionPortal == nil || route.SessionPortal.MXID != lastPortal.MXID {
+		t.Fatalf("expected last active portal fallback to %q, got %#v", lastPortal.MXID, route.SessionPortal)
 	}
 	if route.SessionPortal.MXID != lastPortal.MXID {
 		t.Fatalf("expected last active room %q, got %q", lastPortal.MXID, route.SessionPortal.MXID)
 	}
 }
 
-func TestResolveHeartbeatDeliveryTargetFallsBackToDefaultChat(t *testing.T) {
+func TestResolveHeartbeatDeliveryTargetReturnsNoTargetWithoutHistory(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	client.SetLoggedIn(true)
 
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	defaultPortal := testAgentPortal("default", "!default:example.com", agentID, &PortalMetadata{
+	idlePortal := testAgentPortal("default", "!default:example.com", agentID, &PortalMetadata{
 		ResolvedTarget: &ResolvedTarget{AgentID: agentID},
 	})
-	cacheHeartbeatTestPortals(t, client, defaultPortal)
-	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", map[networkid.PortalKey]*bridgev2.Portal{
-		defaultChatPortalKey(client.UserLogin.ID): defaultPortal,
-	})
+	idlePortal.Receiver = client.UserLogin.ID
+	cacheHeartbeatTestPortals(t, client, idlePortal)
 
 	route, err := client.resolveHeartbeatRoute(agentID, nil)
-	if err != nil {
-		t.Fatalf("expected heartbeat route, got error: %v", err)
+	if err == nil {
+		t.Fatalf("expected no session error, got route %#v", route)
 	}
-	if route.Delivery.Portal != defaultPortal {
-		t.Fatalf("expected default chat portal fallback, got %#v", route.Delivery.Portal)
-	}
-	if route.Delivery.Reason != "default-chat" {
-		t.Fatalf("expected default-chat reason, got %q", route.Delivery.Reason)
+	if route.Delivery.Portal != nil {
+		t.Fatalf("expected no delivery portal, got %#v", route.Delivery.Portal)
 	}
 }

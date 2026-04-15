@@ -51,25 +51,3 @@ func (oc *AIClient) lastActivePortal(agentID string) *bridgev2.Portal {
 	}
 	return portal
 }
-
-func (oc *AIClient) defaultChatPortal() *bridgev2.Portal {
-	if oc == nil || oc.UserLogin == nil {
-		return nil
-	}
-	ctx := oc.backgroundContext(context.Background())
-	if portal, err := oc.UserLogin.Bridge.GetExistingPortalByKey(ctx, defaultChatPortalKey(oc.UserLogin.ID)); err == nil && portal != nil {
-		return portal
-	}
-	if portals, err := oc.listAllChatPortals(ctx); err == nil {
-		for _, portal := range portals {
-			if portal == nil {
-				continue
-			}
-			if shouldExcludeModelVisiblePortal(portalMeta(portal)) {
-				continue
-			}
-			return portal
-		}
-	}
-	return nil
-}

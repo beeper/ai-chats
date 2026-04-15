@@ -10,8 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 type stopPlanKind string
@@ -153,7 +151,11 @@ func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendi
 			WithIsCertain(true).
 			WithSendNotice(false)
 		for _, statusEvt := range queueStatusEvents(item.pending.Event, item.pending.StatusEvents) {
-			bridgeutil.SendMessageStatus(ctx, item.pending.Portal, statusEvt, msgStatus)
+			if item.pending.Portal != nil && item.pending.Portal.Bridge != nil {
+				if info := bridgev2.StatusEventInfoFromEvent(statusEvt); info != nil {
+					item.pending.Portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+				}
+			}
 		}
 	}
 	return len(items)

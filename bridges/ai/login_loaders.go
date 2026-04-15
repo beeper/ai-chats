@@ -111,7 +111,6 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 		existing.UserLogin = login
 		existing.ClientBase.SetUserLogin(login)
 		login.Client = existing
-		existing.scheduleBootstrap()
 		return nil
 	}
 
@@ -126,7 +125,6 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 			existing.UserLogin = login
 			existing.ClientBase.SetUserLogin(login)
 			login.Client = existing
-			existing.scheduleBootstrap()
 			return nil
 		}
 		login.Client = newBrokenLoginClient(login, initLoginClientError)
@@ -138,7 +136,6 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 		chosen.UserLogin = login
 		chosen.ClientBase.SetUserLogin(login)
 		login.Client = chosen
-		chosen.scheduleBootstrap()
 	}
 	return nil
 }

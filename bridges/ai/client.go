@@ -269,7 +269,6 @@ type AIClient struct {
 	provider *OpenAIProvider
 
 	chatLock      sync.Mutex
-	bootstrapOnce sync.Once // Ensures bootstrap only runs once per client instance
 	loginStateMu  sync.Mutex
 	loginState    *loginRuntimeState
 	loginConfigMu sync.Mutex

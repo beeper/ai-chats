@@ -219,7 +219,7 @@ type PortalMetadata struct {
 
 	Slug             string `json:"slug,omitempty"`
 	TitleGenerated   bool   `json:"title_generated,omitempty"`
-	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
+	DisclaimerSent   bool   `json:"disclaimer_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
 	AbortedLastRun                 bool                            `json:"aborted_last_run,omitempty"`

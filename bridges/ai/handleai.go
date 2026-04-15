@@ -15,8 +15,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
@@ -45,10 +43,18 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
-		bridgeutil.SendMessageStatus(ctx, portal, evt, msgStatus)
+		if portal != nil && portal.Bridge != nil {
+			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+			}
+		}
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
-				bridgeutil.SendMessageStatus(ctx, portal, extra, msgStatus)
+				if portal != nil && portal.Bridge != nil {
+					if info := bridgev2.StatusEventInfoFromEvent(extra); info != nil {
+						portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+					}
+				}
 			}
 		}
 	}
@@ -288,30 +294,7 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
-func (oc *AIClient) scheduleChatBootstrap(ctx context.Context, portal *bridgev2.Portal) {
-	if oc == nil || portal == nil || portal.PortalKey.ID == "" {
-		return
-	}
-	if portal.MXID != "" {
-		return
-	}
-	bgCtx := oc.backgroundContext(ctx)
-	go func() {
-		portalID := string(portal.PortalKey.ID)
-		oc.log.Debug().Str("portal_id", portalID).Msg("initial room notice queued")
-		if err := portal.RoomCreated.WaitTimeoutCtx(bgCtx, 45*time.Second); err != nil {
-			oc.log.Debug().Err(err).Str("portal_id", portalID).Msg("initial room notice exiting before room creation")
-			return
-		}
-		if err := oc.sendInitialRoomNotice(bgCtx, portal); err != nil {
-			oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", portalID).Msg("Failed to send initial room notice")
-			return
-		}
-		oc.log.Debug().Str("portal_id", portalID).Msg("initial room notice completed")
-	}()
-}
-
-func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.Portal) error {
+func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.Portal) error {
 	if oc == nil || portal == nil {
 		return nil
 	}
@@ -319,7 +302,7 @@ func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.
 	if err != nil {
 		return err
 	}
-	// We can't send a room notice (or schedule greeting timers) until the Matrix room exists.
+	// We can't send a disclaimer until the Matrix room exists.
 	if portal.MXID == "" {
 		return nil
 	}
@@ -333,40 +316,35 @@ func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.
 	if meta.InternalRoom() {
 		return nil
 	}
-	if meta.WelcomeSent {
-		oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Initial room notice already sent")
+	if meta.DisclaimerSent {
 		return nil
 	}
 
-	// Mark as sent BEFORE queuing to prevent duplicate welcome messages on race.
-	// Use a background context so "new chat" UX isn't sensitive to request cancellation/timeouts.
-	meta.WelcomeSent = true
+	meta.DisclaimerSent = true
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
-	if err := oc.savePortal(bgCtx, portal, "welcome message state"); err != nil {
-		return fmt.Errorf("persist welcome message state: %w", err)
+	if err := oc.savePortal(bgCtx, portal, "disclaimer state"); err != nil {
+		return fmt.Errorf("persist disclaimer state: %w", err)
 	}
 
-	var welcomeMessage string
+	var disclaimer string
 	if resolveAgentID(meta) == "" {
 		modelID := oc.effectiveModel(meta)
 		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
-		welcomeMessage = fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName)
+		disclaimer = fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName)
 	} else {
-		welcomeMessage = "AI can make mistakes."
+		disclaimer = "AI can make mistakes."
 	}
-	oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sending initial room notice")
-	if err := oc.sendSystemNoticeMessage(bgCtx, portal, welcomeMessage); err != nil {
-		meta.WelcomeSent = false
-		if saveErr := oc.savePortal(bgCtx, portal, "welcome message rollback"); saveErr != nil {
-			oc.loggerForContext(ctx).Warn().Err(saveErr).Msg("Failed to roll back welcome message state")
+	oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sending disclaimer notice")
+	if err := oc.sendSystemNoticeMessage(bgCtx, portal, disclaimer); err != nil {
+		meta.DisclaimerSent = false
+		if saveErr := oc.savePortal(bgCtx, portal, "disclaimer rollback"); saveErr != nil {
+			oc.loggerForContext(ctx).Warn().Err(saveErr).Msg("Failed to roll back disclaimer state")
 		}
-		return fmt.Errorf("send welcome message: %w", err)
+		return fmt.Errorf("send disclaimer: %w", err)
 	}
 
 	portal.UpdateCapabilities(bgCtx, oc.UserLogin, true)
-
-	oc.scheduleAutoGreeting(bgCtx, portal)
 	return nil
 }
 

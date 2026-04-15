@@ -37,8 +37,12 @@ func (dc *DummyBridgeConnector) onConnect(ctx context.Context, info *sdk.LoginIn
 	}
 	login := info.Login
 	log := dc.loggerForLogin(login).With().Str("login_id", string(login.ID)).Logger()
-	if err := dummySDKAgent().EnsureGhost(ctx, login); err != nil {
+	ghost, err := login.Bridge.GetGhostByID(ctx, networkid.UserID(dummySDKAgent().ID))
+	if err != nil {
 		return nil, fmt.Errorf("ensure ghost: %w", err)
+	}
+	if ghost != nil {
+		ghost.UpdateInfo(ctx, dummySDKAgent().UserInfo())
 	}
 	if err := dc.ensureInitialRoom(ctx, login); err != nil {
 		return nil, err

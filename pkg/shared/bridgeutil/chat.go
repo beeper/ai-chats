@@ -1,8 +1,6 @@
 package bridgeutil
 
 import (
-	"context"
-
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -75,21 +73,4 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 			},
 		},
 	}
-}
-
-func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
-	if portal == nil || portal.Bridge == nil {
-		return
-	}
-	if evt == nil {
-		return
-	}
-	info := bridgev2.StatusEventInfoFromEvent(evt)
-	if info == nil {
-		return
-	}
-	if info.RoomID == "" && portal.MXID != "" {
-		info.RoomID = portal.MXID
-	}
-	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 }

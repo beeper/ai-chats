@@ -15,7 +15,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -65,6 +64,9 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
+	if err := oc.sendDisclaimerNotice(ctx, portal); err != nil {
+		logCtx.Warn().Err(err).Msg("Failed to send disclaimer notice")
+	}
 
 	// Normalize sticker events to image handling
 	msgType := msg.Content.MsgType
@@ -89,11 +91,16 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
 			oc.inboundDebouncer.flush(debounceKey)
 		}
-		bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
-			Status:    event.MessageStatusPending,
-			Message:   "Processing...",
-			IsCertain: true,
-		})
+		if portal != nil && portal.Bridge != nil {
+			if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+				status := bridgev2.MessageStatus{
+					Status:    event.MessageStatusPending,
+					Message:   "Processing...",
+					IsCertain: true,
+				}
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+			}
+		}
 		pendingSent := true
 		return oc.handleMediaMessage(ctx, msg, portal, meta, msgType, pendingSent)
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
@@ -253,11 +260,16 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 		// Let the client know the message is pending due to debounce.
 		if debounceDelay >= 0 && !pendingSent {
-			bridgeutil.SendMessageStatus(ctx, portal, msg.Event, bridgev2.MessageStatus{
-				Status:    event.MessageStatusPending,
-				Message:   "Combining messages...",
-				IsCertain: true,
-			})
+			if portal != nil && portal.Bridge != nil {
+				if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+					status := bridgev2.MessageStatus{
+						Status:    event.MessageStatusPending,
+						Message:   "Combining messages...",
+						IsCertain: true,
+					}
+					portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+				}
+			}
 			entry.PendingSent = true
 		}
 		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)

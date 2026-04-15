@@ -11,7 +11,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
@@ -172,11 +171,16 @@ func (oc *AIClient) dispatchOrQueueCore(
 		if evt == nil || queueItem.pending.PendingSent {
 			return
 		}
-		bridgeutil.SendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
-			Status:    event.MessageStatusPending,
-			Message:   "Processing...",
-			IsCertain: true,
-		})
+		if portal != nil && portal.Bridge != nil {
+			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+				status := bridgev2.MessageStatus{
+					Status:    event.MessageStatusPending,
+					Message:   "Processing...",
+					IsCertain: true,
+				}
+				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+			}
+		}
 		queueItem.pending.PendingSent = true
 	}
 
@@ -219,17 +223,26 @@ func (oc *AIClient) dispatchOrQueueCore(
 					WithIsCertain(true).
 					WithSendNotice(false)
 				for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-					bridgeutil.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
+					if portal != nil && portal.Bridge != nil {
+						if info := bridgev2.StatusEventInfoFromEvent(statusEvt); info != nil {
+							portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
+						}
+					}
 				}
 			}
 			return false
 		}
 		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
 		for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-			bridgeutil.SendMessageStatus(ctx, portal, statusEvt, bridgev2.MessageStatus{
-				Status:    event.MessageStatusSuccess,
-				IsCertain: true,
-			})
+			if portal != nil && portal.Bridge != nil {
+				if info := bridgev2.StatusEventInfoFromEvent(statusEvt); info != nil {
+					status := bridgev2.MessageStatus{
+						Status:    event.MessageStatusSuccess,
+						IsCertain: true,
+					}
+					portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+				}
+			}
 		}
 	} else if steered {
 		sendPendingStatus()

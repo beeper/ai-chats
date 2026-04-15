@@ -76,7 +76,7 @@ func TestSaveUserMessage_PersistsConversationTurnOutsideBridgeMetadata(t *testin
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
 
-	portalKey := defaultChatPortalKey(client.UserLogin.ID)
+	portalKey := portalKeyForChat(client.UserLogin.ID)
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
 			BridgeID:  client.UserLogin.Bridge.ID,
@@ -944,7 +944,7 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
 	client.UserLogin.Client = client
 
-	portal, err := client.UserLogin.Bridge.GetPortalByKey(ctx, defaultChatPortalKey(client.UserLogin.ID))
+	portal, err := client.UserLogin.Bridge.GetPortalByKey(ctx, portalKeyForChat(client.UserLogin.ID))
 	if err != nil {
 		t.Fatalf("create portal: %v", err)
 	}
@@ -953,7 +953,7 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	meta := &PortalMetadata{
 		Slug:           "chat-1",
 		TitleGenerated: true,
-		WelcomeSent:    true,
+		DisclaimerSent: true,
 	}
 	portal.Metadata = meta
 	if err := portal.Save(ctx); err != nil {
@@ -969,7 +969,7 @@ func TestSaveAIPortalState_DoesNotPersistBridgeRoomName(t *testing.T) {
 	if portalMeta(portal).Slug != "chat-1" {
 		t.Fatalf("expected slug to persist through portal metadata, got %#v", portalMeta(portal))
 	}
-	if loaded == nil || loaded.Slug != "chat-1" || !loaded.TitleGenerated || !loaded.WelcomeSent {
+	if loaded == nil || loaded.Slug != "chat-1" || !loaded.TitleGenerated || !loaded.DisclaimerSent {
 		t.Fatalf("expected AI portal metadata to reload from portal metadata, got %#v", loaded)
 	}
 	if portal.Name != "Bridge Owned Name" {

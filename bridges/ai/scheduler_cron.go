@@ -386,12 +386,6 @@ func (s *schedulerRuntime) resolveCronDeliveryTarget(agentID string, delivery *i
 			}
 			return ""
 		},
-		DefaultChatRoomID: func() string {
-			if portal := s.client.defaultChatPortal(); portal != nil && portal.MXID != "" {
-				return portal.MXID.String()
-			}
-			return ""
-		},
 		ResolvePortalByRoom: func(roomID string) any {
 			return s.client.portalByRoomID(context.Background(), id.RoomID(roomID))
 		},

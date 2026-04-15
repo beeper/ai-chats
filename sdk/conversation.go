@@ -6,9 +6,9 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -305,8 +305,14 @@ func (c *Conversation) EnsureRoomAgent(ctx context.Context, agent *Agent) error 
 	if c == nil || agent == nil {
 		return nil
 	}
-	if err := agent.EnsureGhost(ctx, c.login); err != nil {
-		return err
+	if c.login != nil && c.login.Bridge != nil {
+		ghost, err := c.login.Bridge.GetGhostByID(ctx, networkid.UserID(agent.ID))
+		if err != nil {
+			return err
+		}
+		if ghost != nil {
+			ghost.UpdateInfo(ctx, agent.UserInfo())
+		}
 	}
 	state := c.state()
 	state.RoomAgents.AgentIDs = append(state.RoomAgents.AgentIDs, agent.ID)
@@ -338,55 +344,6 @@ func (c *Conversation) RoomAgents(ctx context.Context) (*RoomAgentSet, error) {
 	return &result, nil
 }
 
-// SetTyping sets the typing indicator for this conversation.
-func (c *Conversation) SetTyping(ctx context.Context, typing bool) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	timeout := 30 * time.Second
-	if !typing {
-		timeout = 0
-	}
-	return intent.MarkTyping(ctx, c.portal.MXID, bridgev2.TypingTypeText, timeout)
-}
-
-// SetRoomName sets the room name.
-func (c *Conversation) SetRoomName(ctx context.Context, name string) error {
-	if c == nil || c.portal == nil || c.login == nil {
-		return fmt.Errorf("no portal or login")
-	}
-	c.portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
-		Name:                       &name,
-		ExcludeChangesFromTimeline: true,
-	}, c.login, nil, time.Time{})
-	return nil
-}
-
-// SetRoomTopic sets the room topic.
-func (c *Conversation) SetRoomTopic(ctx context.Context, topic string) error {
-	if c == nil || c.portal == nil || c.login == nil {
-		return fmt.Errorf("no portal or login")
-	}
-	c.portal.UpdateInfo(ctx, &bridgev2.ChatInfo{
-		Topic:                      &topic,
-		ExcludeChangesFromTimeline: true,
-	}, c.login, nil, time.Time{})
-	return nil
-}
-
-// BroadcastCapabilities computes and sends room capability state events.
-func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
-	if c == nil || c.portal == nil || c.login == nil {
-		return fmt.Errorf("no portal or login")
-	}
-	if c.portal.MXID == "" {
-		return nil
-	}
-	c.portal.UpdateCapabilities(ctx, c.login, true)
-	return nil
-}
-
 // Portal returns the underlying bridgev2.Portal.
 func (c *Conversation) Portal() *bridgev2.Portal { return c.portal }
 
@@ -395,10 +352,3 @@ func (c *Conversation) Login() *bridgev2.UserLogin { return c.login }
 
 // Sender returns the event sender for this conversation.
 func (c *Conversation) Sender() bridgev2.EventSender { return c.sender }
-
-// QueueRemoteEvent queues a remote event for processing.
-func (c *Conversation) QueueRemoteEvent(evt bridgev2.RemoteEvent) {
-	if c.login != nil {
-		c.login.Bridge.QueueRemoteEvent(c.login, evt)
-	}
-}

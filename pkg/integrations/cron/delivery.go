@@ -13,7 +13,6 @@ type DeliveryResolverDeps struct {
 	ResolveLastTarget   func(agentID string) (channel string, target string, ok bool)
 	IsStaleTarget       func(roomID string, agentID string) bool
 	LastActiveRoomID    func(agentID string) string
-	DefaultChatRoomID   func() string
 	ResolvePortalByRoom func(roomID string) any
 	IsLoggedIn          func() bool
 }
@@ -71,11 +70,6 @@ func resolveLastTarget(agentID string, deps DeliveryResolverDeps) string {
 	}
 	if deps.LastActiveRoomID != nil {
 		if target := strings.TrimSpace(deps.LastActiveRoomID(agentID)); target != "" {
-			return target
-		}
-	}
-	if deps.DefaultChatRoomID != nil {
-		if target := strings.TrimSpace(deps.DefaultChatRoomID()); target != "" {
 			return target
 		}
 	}

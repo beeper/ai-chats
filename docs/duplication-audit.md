@@ -85,18 +85,19 @@ These wrapper/helper classes are already gone and should not return:
   assembly wrappers, contact-resolution wrappers, retrieval token helper
   chains, prompt/state constant shims, and several one-use accessors
 - AI room-info lifecycle side channels: room creation now has one explicit
-  owner, welcome/bootstrap no longer hangs off `ChatInfo.ExtraUpdates`, and
-  the named-room wrapper layer no longer rebuilds a second room materialization
-  path
+  owner, the synthetic default/welcome room bootstrap path is gone, the
+  disclaimer no longer rides room creation as a synthetic first remote
+  message, and the named-room wrapper layer no longer rebuilds a second room
+  materialization path
 - Shared DM portal helper stacks are gone:
   `ConfigureDMPortal`, `ConfigureAndPersistDMPortal`,
   `MaterializePortalRoom`, and the login-only `BuildLoginDMChatInfo` wrapper
   were deleted so bridges now mutate/save/materialize portals directly with
   bridgev2 primitives at their real ownership boundaries
 - System notices no longer bypass the room sender through the bridge bot:
-  `sdk.SendSystemMessage(...)` now uses the canonical portal intent resolution
-  path, so welcome notices and SDK notices follow the same sender semantics as
-  the rest of the bridge
+  `sdk.SendSystemMessage(...)` now uses the bridgev2 remote-event path, so
+  disclaimer/system notices follow the same delivery semantics as the rest of
+  the bridge
 - Retrieval env/provider-registration/provider-constructor wrappers, direct
   fetch default wrappers, and the Exa wrapper layer
 - Bridge-local status wrappers in `bridges/ai` and `bridges/codex`
@@ -209,9 +210,9 @@ Recent cleanup kept pushing in that direction:
   wrapper layer:
   approval prompt send, resolved-status emission, and reaction redaction now
   use direct `SendViaPortal(...)`, sender resolution, and
-  `bridgeutil.SendMessageStatus(...)` logic at the real callsites instead of
-  bouncing through `loginOrNil(...)`, `senderOrEmpty(...)`, `send(...)`, and
-  `sendMessageStatus(...)`
+  direct `portal.Bridge.Matrix.SendMessageStatus(...)` calls at the real
+  callsites instead of bouncing through `loginOrNil(...)`,
+  `senderOrEmpty(...)`, `send(...)`, and `sendMessageStatus(...)`
 - Continuation steering prompts no longer have a second Responses serialization
   path:
   continuation input now reuses `promptContextToResponsesInput(...)` for
