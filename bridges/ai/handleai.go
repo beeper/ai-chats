@@ -311,6 +311,7 @@ func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.
 		return nil
 	}
 	if meta.WelcomeSent {
+		oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Initial room notice already sent")
 		return nil
 	}
 
@@ -331,6 +332,7 @@ func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.
 	} else {
 		welcomeMessage = "AI can make mistakes."
 	}
+	oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sending initial room notice")
 	if err := oc.sendSystemNoticeMessage(bgCtx, portal, welcomeMessage); err != nil {
 		meta.WelcomeSent = false
 		if saveErr := oc.savePortal(bgCtx, portal, "welcome message rollback"); saveErr != nil {

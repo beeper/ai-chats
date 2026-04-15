@@ -2,10 +2,13 @@ package ai
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	bridgev2matrix "maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -183,6 +186,40 @@ func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
 		SendWelcomeNotice: true,
 	}); err != nil {
 		t.Fatalf("second ensurePortalRoom returned error: %v", err)
+	}
+	if matrix.api.sendCount != 1 {
+		t.Fatalf("expected one initial notice send, got %d", matrix.api.sendCount)
+	}
+}
+
+func TestCreateChatWithGhostMaterializesProvisionedDM(t *testing.T) {
+	ctx := context.Background()
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+
+	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
+	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!provisioned-ai-chat:example.com")}
+	client.UserLogin.Bridge.Bot = matrix.api
+
+	ghost, err := client.resolveChatGhost(ctx, modelUserID(client.effectiveModel(nil)))
+	if err != nil {
+		t.Fatalf("resolveChatGhost returned error: %v", err)
+	}
+	if ghost == nil {
+		t.Fatal("expected ghost")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/_matrix/provision/v3/create_dm/"+ghost.Intent.GetMXID().String(), nil)
+	provCtx := context.WithValue(ctx, bridgev2matrix.ProvisioningKeyRequest, req)
+
+	resp, err := client.CreateChatWithGhost(provCtx, ghost)
+	if err != nil {
+		t.Fatalf("CreateChatWithGhost returned error: %v", err)
+	}
+	if resp == nil || resp.Portal == nil {
+		t.Fatalf("expected chat response with portal, got %#v", resp)
+	}
+	if resp.Portal.MXID == "" {
+		t.Fatal("expected provisioning path to materialize Matrix room")
 	}
 	if matrix.api.sendCount != 1 {
 		t.Fatalf("expected one initial notice send, got %d", matrix.api.sendCount)
