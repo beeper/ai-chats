@@ -177,6 +177,10 @@ Recent cleanup kept pushing in that direction:
   SDK now owns final payload construction end to end, AI no longer stages a
   mixed top-level map only to unpack it again, and the wrapper helpers around
   default extra packing / finish-reason stamping are gone
+- Memory runtime policy config no longer has duplicated raw-map key reads:
+  `inject_context` and `citations` now flow through one local
+  `resolveRuntimeModuleConfig(...)` parser instead of being plucked
+  independently in multiple memory integration helpers
 
 ## Highest-Value Remaining Problems
 

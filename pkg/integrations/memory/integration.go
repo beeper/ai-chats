@@ -43,6 +43,11 @@ type Integration struct {
 	deps IntegrationDeps
 }
 
+type runtimeModuleConfig struct {
+	InjectContext bool
+	CitationsMode string
+}
+
 func New(host iruntime.Host) iruntime.ModuleHooks {
 	return NewWithDeps(host, IntegrationDeps{})
 }
@@ -249,11 +254,7 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 }
 
 func (i *Integration) shouldInjectMemoryPromptContext(_ *bridgev2.Portal, _ iruntime.Meta) bool {
-	if cfg := i.host.ModuleConfig(moduleName); cfg != nil {
-		inject, _ := cfg["inject_context"].(bool)
-		return inject
-	}
-	return false
+	return resolveRuntimeModuleConfig(i.host.ModuleConfig(moduleName)).InjectContext
 }
 
 func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, meta iruntime.Meta) bool {
@@ -401,11 +402,7 @@ func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 }
 
 func (i *Integration) resolveMemoryCitationsMode() string {
-	if cfg := i.host.ModuleConfig(moduleName); cfg != nil {
-		raw, _ := cfg["citations"].(string)
-		return normalizeCitationsMode(raw)
-	}
-	return "auto"
+	return resolveRuntimeModuleConfig(i.host.ModuleConfig(moduleName)).CitationsMode
 }
 
 func (i *Integration) shouldIncludeMemoryCitations(ctx context.Context, scope iruntime.ToolScope, mode string) bool {
@@ -506,4 +503,18 @@ func mapToMemorySearchConfig(m map[string]any) (*agents.MemorySearchConfig, erro
 		return nil, err
 	}
 	return &out, nil
+}
+
+func resolveRuntimeModuleConfig(raw map[string]any) runtimeModuleConfig {
+	cfg := runtimeModuleConfig{CitationsMode: "auto"}
+	if raw == nil {
+		return cfg
+	}
+	if inject, ok := raw["inject_context"].(bool); ok {
+		cfg.InjectContext = inject
+	}
+	if citations, ok := raw["citations"].(string); ok {
+		cfg.CitationsMode = normalizeCitationsMode(citations)
+	}
+	return cfg
 }

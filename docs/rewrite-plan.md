@@ -379,6 +379,11 @@ SDK now owns payload assembly end to end, AI no longer repacks top-level extra
 into `m.new_content`, and the tiny wrappers for default final-edit extra
 packing and finish-reason stamping are gone.
 
+Recent progress also removed the remaining stringly memory runtime-config
+branch: `inject_context` and `citations` now go through one local parser in
+`pkg/integrations/memory` instead of being read from raw maps in multiple
+helpers.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly
