@@ -655,7 +655,11 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	}
 	fittedPayload, fitDetails, err := FitFinalEditPayload(payload, t.initialEventID)
 	if err != nil {
-		fallbackPayload := BuildTextOnlyFinalEditPayload(payload)
+		fallbackPayload := cloneFinalEditPayload(payload)
+		if fallbackPayload != nil {
+			fallbackPayload.Extra = nil
+			fallbackPayload.TopLevelExtra = nil
+		}
 		fallbackFittedPayload, fallbackFitDetails, fallbackErr := FitFinalEditPayload(fallbackPayload, t.initialEventID)
 		if fallbackErr == nil {
 			fittedPayload = fallbackFittedPayload
@@ -871,21 +875,12 @@ func (t *Turn) Context() context.Context { return t.turnCtx }
 // Source returns the turn's structured source reference.
 func (t *Turn) Source() *SourceRef { return t.source }
 
-// Agent returns the turn's selected agent.
-func (t *Turn) Agent() *Agent { return t.agent }
-
 // SetSender overrides the bridge sender used for turn output. Call before the
 // turn produces visible output.
 func (t *Turn) SetSender(sender bridgev2.EventSender) { t.sender = sender }
 
-// Emitter returns the underlying streamui.Emitter for advanced stream control.
-func (t *Turn) Emitter() *streamui.Emitter { return t.emitter }
-
 // UIState returns the underlying streamui.UIState.
 func (t *Turn) UIState() *streamui.UIState { return t.state }
-
-// Session returns the underlying turns.StreamSession.
-func (t *Turn) Session() *turns.StreamSession { return t.session }
 
 // StreamDescriptor returns the com.beeper.stream descriptor for the turn's placeholder message.
 func (t *Turn) StreamDescriptor(ctx context.Context) (*event.BeeperStreamInfo, error) {

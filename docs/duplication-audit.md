@@ -212,6 +212,11 @@ Recent cleanup kept pushing in that direction:
   `integrationruntime.Host.Now()` and `runtimeIntegrationHost.Now()` are gone,
   and cron now uses `time.Now()` directly instead of forcing a host-surface
   method that had no real ownership value
+- SDK turn/final-edit surface is smaller now:
+  dead exported accessors `Turn.Agent()`, `Turn.Emitter()`, and
+  `Turn.Session()` are gone, and the one-callsite
+  `BuildTextOnlyFinalEditPayload(...)` adapter has been deleted in favor of
+  direct fallback shaping at the real final-edit callsite
 
 ## Highest-Value Remaining Problems
 

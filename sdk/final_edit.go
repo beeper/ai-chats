@@ -318,13 +318,3 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 	}
 	return fitted, details, nil
 }
-
-func BuildTextOnlyFinalEditPayload(payload *FinalEditPayload) *FinalEditPayload {
-	minimal := cloneFinalEditPayload(payload)
-	if minimal == nil {
-		return nil
-	}
-	minimal.Extra = nil
-	minimal.TopLevelExtra = nil
-	return minimal
-}

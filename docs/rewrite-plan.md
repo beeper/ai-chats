@@ -299,6 +299,12 @@ Recent progress also trimmed the integration host surface itself:
 gone, and cron now uses `time.Now()` directly instead of keeping a fake
 host-owned clock wrapper for one caller.
 
+Recent progress also reduced SDK turn/final-edit API surface:
+dead exported turn accessors `Turn.Agent()`, `Turn.Emitter()`, and
+`Turn.Session()` are gone, and the one-callsite
+`BuildTextOnlyFinalEditPayload(...)` wrapper has been deleted in favor of
+direct fallback payload shaping where final edits are actually built.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,
