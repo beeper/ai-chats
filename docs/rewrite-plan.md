@@ -318,6 +318,12 @@ host-only `ExecuteBuiltinTool(...)` wrapper is gone, and assistant-turn waits
 now compare against canonical `aiTurnRecord` rows instead of a second
 checkpoint adapter type.
 
+Recent progress also deleted the dead SDK replay/apply side path:
+`sdk/stream_replay.go`, `sdk/part_apply.go`, `sdk/stream_part_state.go`, and
+unused `sdk/canonical_assistant_metadata.go` had no production callers, so the
+remaining turn-lifecycle work is now concentrated on the live `Turn` /
+snapshot / final-edit owners.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly
@@ -502,7 +508,6 @@ Target files:
 - `sdk/turn_data.go`
 - `sdk/turn_data_builder.go`
 - `sdk/turn_snapshot.go`
-- `sdk/stream_replay.go`
 
 Deliverable:
 

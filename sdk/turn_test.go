@@ -807,17 +807,6 @@ func TestTurnFinalizationContextFallsBackToBridgeBackground(t *testing.T) {
 	}
 }
 
-func TestApplyStreamPartPreservesWhitespaceTextDelta(t *testing.T) {
-	turn := newTurn(context.Background(), nil, nil, nil)
-
-	ApplyStreamPart(turn, map[string]any{"type": "text-delta", "delta": "pretty"}, PartApplyOptions{})
-	ApplyStreamPart(turn, map[string]any{"type": "text-delta", "delta": " good"}, PartApplyOptions{})
-
-	if got := turn.VisibleText(); got != "pretty good" {
-		t.Fatalf("expected visible text to preserve leading whitespace in deltas, got %q", got)
-	}
-}
-
 func TestTurnSuppressFinalEditSkipsAutomaticPayload(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, nil)
 	turn.initialEventID = id.EventID("$event-suppressed")

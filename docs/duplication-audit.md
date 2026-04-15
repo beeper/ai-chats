@@ -126,6 +126,10 @@ Recent cleanup kept pushing in that direction:
   host-only `ExecuteBuiltinTool(...)` wrapper is gone, and assistant-turn
   waiting now reuses `aiTurnRecord` instead of a second checkpoint adapter
   type
+- Dead SDK replay/apply helpers are gone:
+  `sdk/stream_replay.go`, `sdk/part_apply.go`, `sdk/stream_part_state.go`, and
+  the unused `sdk/canonical_assistant_metadata.go` path were all test-only and
+  have been deleted so turn lifecycle work can focus on the live owner paths
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems
@@ -423,12 +427,12 @@ Files:
 - `sdk/turn_data.go`
 - `sdk/turn_data_builder.go`
 - `sdk/turn_snapshot.go`
-- `sdk/stream_replay.go`
 
 Why this still violates the goal:
 
-- start state, persisted turn data, final edit shaping, snapshots, and replay
-  are still split across several overlapping files
+- start state, persisted turn data, final edit shaping, and snapshots are still
+  split across several overlapping files even after the dead replay/apply layer
+  was removed
 
 Desired owner:
 
