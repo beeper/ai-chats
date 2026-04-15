@@ -19,7 +19,6 @@ type ensurePortalRoomParams struct {
 	SaveAction           string
 	Mutate               func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo)
 	CleanupOnCreateError string
-	SendWelcomeNotice    bool
 }
 
 func (oc *AIClient) syncPortalRoom(
@@ -71,11 +70,6 @@ func (oc *AIClient) ensurePortalRoom(
 		CleanupOnCreateError: params.CleanupOnCreateError,
 	}); err != nil {
 		return nil, err
-	}
-	if params.SendWelcomeNotice {
-		if err := oc.sendInitialRoomNotice(ctx, params.Portal); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Stringer("portal", params.Portal.PortalKey).Msg("Failed to send initial room notice")
-		}
 	}
 	return params.Portal, nil
 }

@@ -288,6 +288,36 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
+func (oc *AIClient) initialRoomNoticeUpdater() bridgev2.ExtraUpdater[*bridgev2.Portal] {
+	if oc == nil {
+		return nil
+	}
+	return func(ctx context.Context, portal *bridgev2.Portal) bool {
+		oc.queueInitialRoomNotice(ctx, portal)
+		return false
+	}
+}
+
+func (oc *AIClient) queueInitialRoomNotice(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil || portal.PortalKey.ID == "" {
+		return
+	}
+	bgCtx := oc.backgroundContext(ctx)
+	go func() {
+		portalID := string(portal.PortalKey.ID)
+		oc.log.Debug().Str("portal_id", portalID).Msg("initial room notice queued")
+		if err := portal.RoomCreated.WaitTimeoutCtx(bgCtx, 45*time.Second); err != nil {
+			oc.log.Debug().Err(err).Str("portal_id", portalID).Msg("initial room notice exiting before room creation")
+			return
+		}
+		if err := oc.sendInitialRoomNotice(bgCtx, portal); err != nil {
+			oc.loggerForContext(bgCtx).Warn().Err(err).Str("portal_id", portalID).Msg("Failed to send initial room notice")
+			return
+		}
+		oc.log.Debug().Str("portal_id", portalID).Msg("initial room notice completed")
+	}()
+}
+
 func (oc *AIClient) sendInitialRoomNotice(ctx context.Context, portal *bridgev2.Portal) error {
 	if oc == nil || portal == nil {
 		return nil

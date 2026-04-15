@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	bridgev2matrix "maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -541,9 +539,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
 			}
-			if err = oc.ensureProvisionedChatRoom(ctx, chatResp); err != nil {
-				return nil, fmt.Errorf("failed to create chat room: %w", err)
-			}
 		}
 		return &bridgev2.ResolveIdentifierResponse{
 			UserID:   userID,
@@ -567,9 +562,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
-			}
-			if err = oc.ensureProvisionedChatRoom(ctx, chatResp); err != nil {
-				return nil, fmt.Errorf("failed to create chat room: %w", err)
 			}
 		}
 
@@ -595,22 +587,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 	default:
 		return nil, bridgev2.WrapRespErr(errors.New("identifier target is required"), mautrix.MInvalidParam)
 	}
-}
-
-func (oc *AIClient) ensureProvisionedChatRoom(ctx context.Context, resp *bridgev2.CreateChatResponse) error {
-	if oc == nil || resp == nil || resp.Portal == nil || resp.Portal.MXID != "" {
-		return nil
-	}
-	req, ok := ctx.Value(bridgev2matrix.ProvisioningKeyRequest).(*http.Request)
-	if !ok || req == nil || !strings.Contains(req.URL.Path, "/create_dm/") {
-		return nil
-	}
-	_, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            resp.Portal,
-		ChatInfo:          resp.PortalInfo,
-		SendWelcomeNotice: true,
-	})
-	return err
 }
 
 func (oc *AIClient) resolveChatGhost(ctx context.Context, userID networkid.UserID) (*bridgev2.Ghost, error) {
@@ -865,9 +841,8 @@ func (oc *AIClient) handleNewChat(
 	}
 
 	newPortal, err := oc.ensurePortalRoom(runCtx, ensurePortalRoomParams{
-		Portal:            chatResp.Portal,
-		ChatInfo:          chatResp.PortalInfo,
-		SendWelcomeNotice: true,
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
 	})
 	if err != nil {
 		oc.sendSystemNotice(runCtx, portal, "Couldn't create the room: "+err.Error())
@@ -1083,6 +1058,7 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 		BotDisplayName: modelName,
 		CanBackfill:    true,
 	})
+	chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, oc.initialRoomNoticeUpdater())
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
 	return chatInfo
@@ -1210,7 +1186,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			return nil
 		}
 		oc.loggerForContext(ctx).Info().Stringer("portal", portal.PortalKey).Msg("Default chat missing MXID; creating Matrix room")
-		if _, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{Portal: portal, SendWelcomeNotice: true}); err != nil {
+		if _, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{Portal: portal}); err != nil {
 			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")
 			return err
 		}
@@ -1226,7 +1202,7 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 			return nil
 		}
 		oc.loggerForContext(ctx).Info().Stringer("portal", existing.PortalKey).Msg("Existing AI chat missing MXID; creating Matrix room")
-		if _, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{Portal: existing, SendWelcomeNotice: true}); err != nil {
+		if _, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{Portal: existing}); err != nil {
 			oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for existing AI chat")
 			return err
 		}
@@ -1257,9 +1233,8 @@ func (oc *AIClient) ensureDefaultChat(ctx context.Context) error {
 	}
 
 	portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            chatResp.Portal,
-		ChatInfo:          chatResp.PortalInfo,
-		SendWelcomeNotice: true,
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
 	})
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to create Matrix room for default chat")

@@ -499,10 +499,9 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 	}
 
 	portal, err := b.client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            resp.Portal,
-		ChatInfo:          resp.PortalInfo,
-		SaveAction:        "room creation",
-		SendWelcomeNotice: true,
+		Portal:     resp.Portal,
+		ChatInfo:   resp.PortalInfo,
+		SaveAction: "room creation",
 		Mutate: func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
 			if room.Name == "" {
 				return

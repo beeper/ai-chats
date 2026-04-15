@@ -2,14 +2,12 @@ package ai
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	bridgev2matrix "maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/provisionutil"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -118,9 +116,8 @@ func TestBootstrapPortalRoomSendsInitialWelcomeNotice(t *testing.T) {
 	}
 
 	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            chatResp.Portal,
-		ChatInfo:          chatResp.PortalInfo,
-		SendWelcomeNotice: true,
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
 	})
 	if err != nil {
 		t.Fatalf("ensurePortalRoom returned error: %v", err)
@@ -174,16 +171,14 @@ func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
 	}
 
 	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            chatResp.Portal,
-		ChatInfo:          chatResp.PortalInfo,
-		SendWelcomeNotice: true,
+		Portal:   chatResp.Portal,
+		ChatInfo: chatResp.PortalInfo,
 	})
 	if err != nil {
 		t.Fatalf("first ensurePortalRoom returned error: %v", err)
 	}
 	if _, err = client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:            portal,
-		SendWelcomeNotice: true,
+		Portal: portal,
 	}); err != nil {
 		t.Fatalf("second ensurePortalRoom returned error: %v", err)
 	}
@@ -192,9 +187,10 @@ func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
 	}
 }
 
-func TestCreateChatWithGhostMaterializesProvisionedDM(t *testing.T) {
+func TestProvisionResolveIdentifierSendsInitialWelcomeNotice(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	client.UserLogin.Client = client
 
 	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
 	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!provisioned-ai-chat:example.com")}
@@ -208,12 +204,9 @@ func TestCreateChatWithGhostMaterializesProvisionedDM(t *testing.T) {
 		t.Fatal("expected ghost")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/_matrix/provision/v3/create_dm/"+ghost.Intent.GetMXID().String(), nil)
-	provCtx := context.WithValue(ctx, bridgev2matrix.ProvisioningKeyRequest, req)
-
-	resp, err := client.CreateChatWithGhost(provCtx, ghost)
+	resp, err := provisionutil.ResolveIdentifier(ctx, client.UserLogin, string(ghost.ID), true)
 	if err != nil {
-		t.Fatalf("CreateChatWithGhost returned error: %v", err)
+		t.Fatalf("ResolveIdentifier returned error: %v", err)
 	}
 	if resp == nil || resp.Portal == nil {
 		t.Fatalf("expected chat response with portal, got %#v", resp)
