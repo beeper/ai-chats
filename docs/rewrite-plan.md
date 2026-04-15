@@ -316,6 +316,12 @@ Recent progress also deleted a dead prompt-serialization parameter:
 `supportsVideoURL` flag, so chat-completions and compaction paths now share
 one direct serializer signature.
 
+Recent progress also collapsed user prompt projection into one canonical path:
+prompt builder, regenerate/rewrite context assembly, and transcript user-edit
+repair now all derive the bridge-local user `PromptMessage` and canonical
+`CurrentTurnData` from the same `buildUserPromptTurn(...)` projection instead
+of assembling one shape by hand and the other separately.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

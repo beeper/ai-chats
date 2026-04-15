@@ -1621,13 +1621,13 @@ func (oc *AIClient) buildContextUpToMessage(
 	base.Messages = append(base.Messages, historyMessages...)
 	body := strings.TrimSpace(newBody)
 	body = airuntime.SanitizeChatMessageForDisplay(body, true)
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: body,
-		}},
-	})
+	if userMessage, turnData, ok := buildUserPromptTurn([]PromptBlock{{
+		Type: PromptBlockText,
+		Text: body,
+	}}); ok {
+		base.Messages = append(base.Messages, userMessage)
+		base.CurrentTurnData = turnData
+	}
 	return base, nil
 }
 

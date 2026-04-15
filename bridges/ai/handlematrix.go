@@ -397,7 +397,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		role = strings.TrimSpace(msgMeta.Role)
 	}
 	if role == "user" {
-		if turnData, ok := buildUserTurnDataFromPromptBlocks([]PromptBlock{{
+		if _, turnData, ok := buildUserPromptTurn([]PromptBlock{{
 			Type: PromptBlockText,
 			Text: newBody,
 		}}); ok {
@@ -1188,12 +1188,12 @@ func (oc *AIClient) buildContextForRegenerate(
 		return PromptContext{}, err
 	}
 	base.Messages = append(base.Messages, historyMessages...)
-	base.Messages = append(base.Messages, PromptMessage{
-		Role: PromptRoleUser,
-		Blocks: []PromptBlock{{
-			Type: PromptBlockText,
-			Text: latestUserBody,
-		}},
-	})
+	if userMessage, turnData, ok := buildUserPromptTurn([]PromptBlock{{
+		Type: PromptBlockText,
+		Text: latestUserBody,
+	}}); ok {
+		base.Messages = append(base.Messages, userMessage)
+		base.CurrentTurnData = turnData
+	}
 	return base, nil
 }

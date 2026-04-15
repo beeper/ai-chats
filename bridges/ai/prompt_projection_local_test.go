@@ -26,6 +26,29 @@ func TestPromptMessagesFromTurnDataPreservesJSONStringToolArguments(t *testing.T
 	}
 }
 
+func TestBuildUserPromptTurnKeepsPromptBlocksAndTurnDataInSync(t *testing.T) {
+	msg, td, ok := buildUserPromptTurn([]PromptBlock{
+		{Type: PromptBlockText, Text: "hello"},
+		{Type: PromptBlockImage, ImageB64: "aGVsbG8=", MimeType: "image/png"},
+		{Type: PromptBlockText, Text: "   "},
+	})
+	if !ok {
+		t.Fatal("expected canonical user prompt turn")
+	}
+	if msg.Role != PromptRoleUser {
+		t.Fatalf("expected user role, got %#v", msg.Role)
+	}
+	if len(msg.Blocks) != 2 {
+		t.Fatalf("expected filtered user prompt blocks, got %#v", msg.Blocks)
+	}
+	if got := sdk.TurnText(td); got != "hello" {
+		t.Fatalf("expected canonical user text hello, got %q", got)
+	}
+	if len(td.Parts) != 2 || td.Parts[1].Type != "image" {
+		t.Fatalf("expected synced turn parts, got %#v", td.Parts)
+	}
+}
+
 func testPromptAssistantToolTurnData(input any) sdk.TurnData {
 	return sdk.TurnData{
 		Role: "assistant",

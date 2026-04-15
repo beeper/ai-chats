@@ -247,28 +247,35 @@ func (oc *AIClient) buildPromptContextForTurn(
 	if strings.TrimSpace(text) != "" {
 		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: text})
 	}
-	currentTurnData, _ := buildUserTurnDataFromPromptBlocks(blocks)
-	base.Messages = append(base.Messages, PromptMessage{
-		Role:   PromptRoleUser,
-		Blocks: blocks,
-	})
-	base.CurrentTurnData = currentTurnData
+	if userMessage, currentTurnData, ok := buildUserPromptTurn(blocks); ok {
+		base.Messages = append(base.Messages, userMessage)
+		base.CurrentTurnData = currentTurnData
+	}
 	return base, nil
 }
 
-func buildUserTurnDataFromPromptBlocks(blocks []PromptBlock) (sdk.TurnData, bool) {
+func buildUserPromptTurn(blocks []PromptBlock) (PromptMessage, sdk.TurnData, bool) {
+	msg := PromptMessage{Role: PromptRoleUser}
 	td := sdk.TurnData{Role: "user"}
+	msg.Blocks = make([]PromptBlock, 0, len(blocks))
 	td.Parts = make([]sdk.TurnPart, 0, len(blocks))
 	for _, block := range blocks {
 		switch block.Type {
 		case PromptBlockText:
 			if strings.TrimSpace(block.Text) != "" {
+				msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockText, Text: block.Text})
 				td.Parts = append(td.Parts, sdk.TurnPart{Type: "text", Text: block.Text})
 			}
 		case PromptBlockImage:
 			if strings.TrimSpace(block.ImageURL) == "" && strings.TrimSpace(block.ImageB64) == "" {
 				continue
 			}
+			msg.Blocks = append(msg.Blocks, PromptBlock{
+				Type:     PromptBlockImage,
+				ImageURL: block.ImageURL,
+				ImageB64: block.ImageB64,
+				MimeType: block.MimeType,
+			})
 			part := sdk.TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType}
 			if strings.TrimSpace(block.ImageB64) != "" {
 				part.Extra = map[string]any{"imageB64": block.ImageB64}
@@ -276,5 +283,5 @@ func buildUserTurnDataFromPromptBlocks(blocks []PromptBlock) (sdk.TurnData, bool
 			td.Parts = append(td.Parts, part)
 		}
 	}
-	return td, len(td.Parts) > 0
+	return msg, td, len(td.Parts) > 0
 }

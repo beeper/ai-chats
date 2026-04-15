@@ -227,6 +227,11 @@ Recent cleanup kept pushing in that direction:
   the unused `supportsVideoURL` parameter has been deleted from
   `promptContextToChatCompletionMessages(...)`, and its callers now use the
   one canonical serializer signature
+- User prompt projection no longer splits prompt-message and turn-data owners:
+  regenerate, rewrite, prompt-builder, and transcript-edit paths now all use
+  one `buildUserPromptTurn(...)` projection so the bridge-local user
+  `PromptMessage` and canonical `CurrentTurnData` are derived from the same
+  filtered block list instead of being assembled separately
 
 ## Highest-Value Remaining Problems
 
