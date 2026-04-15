@@ -94,7 +94,7 @@ func (oc *AIClient) buildPromptContextForPendingMessage(
 			},
 		})
 	case pendingTypeRegenerate:
-		return oc.buildContextForRegenerate(ctx, pending.Portal, metaSnapshot, pending.MessageBody, pending.SourceEventID)
+		return oc.buildContextForRegenerate(ctx, pending.Portal, metaSnapshot, pending.MessageBody)
 	case pendingTypeEditRegenerate:
 		return oc.buildContextUpToMessage(ctx, pending.Portal, metaSnapshot, pending.TargetMsgID, pending.MessageBody)
 	default:

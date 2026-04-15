@@ -322,6 +322,11 @@ repair now all derive the bridge-local user `PromptMessage` and canonical
 `CurrentTurnData` from the same `buildUserPromptTurn(...)` projection instead
 of assembling one shape by hand and the other separately.
 
+Recent progress also removed stale regenerate-path API shape:
+`buildContextForRegenerate(...)` no longer accepts an unused `latestUserID`
+parameter, so queued regenerate dispatch only passes the prompt data that the
+builder actually consumes.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

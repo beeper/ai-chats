@@ -232,6 +232,10 @@ Recent cleanup kept pushing in that direction:
   one `buildUserPromptTurn(...)` projection so the bridge-local user
   `PromptMessage` and canonical `CurrentTurnData` are derived from the same
   filtered block list instead of being assembled separately
+- Regenerate prompt assembly no longer carries dead request shape:
+  `buildContextForRegenerate(...)` dropped its unused `latestUserID` parameter,
+  so queued regenerate dispatch no longer threads stale source-event data
+  through a prompt builder that never consumed it
 
 ## Highest-Value Remaining Problems
 

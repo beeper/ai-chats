@@ -1178,7 +1178,6 @@ func (oc *AIClient) buildContextForRegenerate(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	latestUserBody string,
-	latestUserID id.EventID,
 ) (PromptContext, error) {
 	base := PromptContext{
 		SystemPrompt: oc.buildConversationSystemPromptText(ctx, portal, meta, false),
