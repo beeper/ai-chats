@@ -1836,8 +1836,8 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		Timestamp: sdk.MatrixEventTimestamp(last.Event),
 	}
 	if len(promptContext.Messages) > 0 {
-		if turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:]); ok {
-			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = turnData.ToMap()
+		if promptContext.CurrentTurnData.Role != "" {
+			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 		}
 	}
 

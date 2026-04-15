@@ -11,6 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 type historyReplayMode string
@@ -245,9 +247,34 @@ func (oc *AIClient) buildPromptContextForTurn(
 	if strings.TrimSpace(text) != "" {
 		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: text})
 	}
+	currentTurnData, _ := buildUserTurnDataFromPromptBlocks(blocks)
 	base.Messages = append(base.Messages, PromptMessage{
 		Role:   PromptRoleUser,
 		Blocks: blocks,
 	})
+	base.CurrentTurnData = currentTurnData
 	return base, nil
+}
+
+func buildUserTurnDataFromPromptBlocks(blocks []PromptBlock) (sdk.TurnData, bool) {
+	td := sdk.TurnData{Role: "user"}
+	td.Parts = make([]sdk.TurnPart, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Type {
+		case PromptBlockText:
+			if strings.TrimSpace(block.Text) != "" {
+				td.Parts = append(td.Parts, sdk.TurnPart{Type: "text", Text: block.Text})
+			}
+		case PromptBlockImage:
+			if strings.TrimSpace(block.ImageURL) == "" && strings.TrimSpace(block.ImageB64) == "" {
+				continue
+			}
+			part := sdk.TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType}
+			if strings.TrimSpace(block.ImageB64) != "" {
+				part.Extra = map[string]any{"imageB64": block.ImageB64}
+			}
+			td.Parts = append(td.Parts, part)
+		}
+	}
+	return td, len(td.Parts) > 0
 }

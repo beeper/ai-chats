@@ -158,38 +158,6 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 	}
 }
 
-// turnDataFromUserPromptMessages intentionally projects only the latest user
-// message because callers pass the final user-message slice directly.
-func turnDataFromUserPromptMessages(messages []PromptMessage) (sdk.TurnData, bool) {
-	if len(messages) == 0 {
-		return sdk.TurnData{}, false
-	}
-	msg := messages[0]
-	if msg.Role != PromptRoleUser {
-		return sdk.TurnData{}, false
-	}
-	td := sdk.TurnData{Role: "user"}
-	td.Parts = make([]sdk.TurnPart, 0, len(msg.Blocks))
-	for _, block := range msg.Blocks {
-		switch block.Type {
-		case PromptBlockText:
-			if strings.TrimSpace(block.Text) != "" {
-				td.Parts = append(td.Parts, sdk.TurnPart{Type: "text", Text: block.Text})
-			}
-		case PromptBlockImage:
-			if strings.TrimSpace(block.ImageURL) == "" && strings.TrimSpace(block.ImageB64) == "" {
-				continue
-			}
-			part := sdk.TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType}
-			if strings.TrimSpace(block.ImageB64) != "" {
-				part.Extra = map[string]any{"imageB64": block.ImageB64}
-			}
-			td.Parts = append(td.Parts, part)
-		}
-	}
-	return td, len(td.Parts) > 0
-}
-
 func normalizePromptTurnPartType(partType string) string {
 	if partType == "dynamic-tool" {
 		return "tool"

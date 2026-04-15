@@ -1,6 +1,10 @@
 package ai
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/agentremote/sdk"
+)
 
 type PromptRole string
 
@@ -77,7 +81,8 @@ func (m PromptMessage) VisibleText() string {
 
 // PromptContext is the bridge-local prompt envelope used throughout bridges/ai.
 type PromptContext struct {
-	SystemPrompt string
-	Messages     []PromptMessage
-	Tools        []ToolDefinition
+	SystemPrompt    string
+	Messages        []PromptMessage
+	Tools           []ToolDefinition
+	CurrentTurnData sdk.TurnData
 }

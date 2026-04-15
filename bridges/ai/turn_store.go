@@ -448,14 +448,13 @@ func (oc *AIClient) persistAIInternalPromptTurn(
 		if portal == nil || eventID == "" || len(promptContext.Messages) == 0 {
 			return nil
 		}
-		turnData, ok := turnDataFromUserPromptMessages(promptContext.Messages[len(promptContext.Messages)-1:])
-		if !ok {
+		if promptContext.CurrentTurnData.Role == "" {
 			return nil
 		}
 		meta := &MessageMetadata{}
-		meta.CanonicalTurnData = turnData.ToMap()
+		meta.CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 		entry := aiTurnUpsert{
-			TurnID:           strings.TrimSpace(turnData.ID),
+			TurnID:           strings.TrimSpace(promptContext.CurrentTurnData.ID),
 			Kind:             aiTurnKindInternal,
 			Source:           source,
 			MessageID:        sdk.MatrixMessageID(eventID),
@@ -463,7 +462,7 @@ func (oc *AIClient) persistAIInternalPromptTurn(
 			SenderID:         humanUserID(networkid.UserLoginID(portal.PortalKey.Receiver)),
 			IncludeInHistory: !excludeFromHistory,
 			Timestamp:        timestamp,
-			TurnData:         turnData,
+			TurnData:         promptContext.CurrentTurnData,
 			Metadata:         meta,
 		}
 		return upsertAITurnByScope(ctx, scope, portal, entry)

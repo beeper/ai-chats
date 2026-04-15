@@ -354,6 +354,11 @@ assistant message metadata now derives directly from canonical `TurnData`,
 AI / Codex metadata writers no longer build transient snapshot wrappers just to
 flatten them back into metadata.
 
+Recent progress also deleted the reverse user-prompt adapter:
+`buildPromptContextForTurn(...)` now carries current-user `sdk.TurnData`
+directly in `PromptContext`, and persistence writers no longer reconstruct
+canonical turn data from the final user `PromptMessage`.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

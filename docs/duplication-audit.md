@@ -153,6 +153,12 @@ Recent cleanup kept pushing in that direction:
   directly, `sdk.BuildTurnSnapshot(...)` / `sdk.SnapshotFromTurnData(...)` are
   gone, and the AI / Codex / SDK final-metadata paths no longer build extra UI
   message projections just to flatten them back into message metadata
+- Current-user prompt persistence no longer reparses prompt messages back into
+  canonical turn data:
+  `buildPromptContextForTurn(...)` now carries user `sdk.TurnData` directly in
+  `PromptContext`, the reverse `turnDataFromUserPromptMessages(...)` adapter is
+  gone, and persistence writers reuse the canonical turn record instead of
+  rebuilding it from the final user prompt message
 
 ## Highest-Value Remaining Problems
 
