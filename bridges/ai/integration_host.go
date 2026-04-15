@@ -30,8 +30,6 @@ func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
 	return h
 }
 
-func (h *runtimeIntegrationHost) Now() time.Time { return time.Now() }
-
 func (h *runtimeIntegrationHost) ModuleConfig(name string) map[string]any {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return nil

@@ -294,6 +294,11 @@ Recent progress also deleted a one-use portal-key helper from the AI bridge:
 scheduled internal-room creation now constructs its `networkid.PortalKey`
 inline, and the dead `portalKeyFromParts(...)` adapter is gone.
 
+Recent progress also trimmed the integration host surface itself:
+`integrationruntime.Host.Now()` and the matching bridge-host implementation are
+gone, and cron now uses `time.Now()` directly instead of keeping a fake
+host-owned clock wrapper for one caller.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

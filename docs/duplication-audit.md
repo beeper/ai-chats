@@ -207,6 +207,11 @@ Recent cleanup kept pushing in that direction:
   key helper:
   `scheduler_rooms.go` now constructs the `networkid.PortalKey` directly and
   the dead `portalKeyFromParts(...)` wrapper is gone
+- The integration runtime host no longer exposes a fake clock abstraction for
+  one caller:
+  `integrationruntime.Host.Now()` and `runtimeIntegrationHost.Now()` are gone,
+  and cron now uses `time.Now()` directly instead of forcing a host-surface
+  method that had no real ownership value
 
 ## Highest-Value Remaining Problems
 

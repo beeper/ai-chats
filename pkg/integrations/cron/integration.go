@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
@@ -221,7 +222,7 @@ func (i *Integration) executeCronCommand(ctx context.Context, call iruntime.Comm
 
 func (i *Integration) buildToolExecDeps(ctx context.Context, scope iruntime.ToolScope) ToolExecDeps {
 	deps := ToolExecDeps{
-		NowMs: func() int64 { return i.host.Now().UnixMilli() },
+		NowMs: func() int64 { return time.Now().UnixMilli() },
 		ResolveCreateContext: func() ToolCreateContext {
 			agentID := agents.DefaultAgentID
 			if scope.Meta != nil {
