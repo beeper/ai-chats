@@ -203,12 +203,8 @@ func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.P
 		return nil
 	}
 
-	meta.DisclaimerSent = true
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
-	if err := oc.savePortal(bgCtx, portal, "disclaimer state"); err != nil {
-		return fmt.Errorf("persist disclaimer state: %w", err)
-	}
 
 	var disclaimer string
 	if resolveAgentID(meta) == "" {
@@ -220,11 +216,11 @@ func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.P
 	}
 	oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sending disclaimer notice")
 	if err := oc.sendSystemNoticeMessage(bgCtx, portal, disclaimer); err != nil {
-		meta.DisclaimerSent = false
-		if saveErr := oc.savePortal(bgCtx, portal, "disclaimer rollback"); saveErr != nil {
-			oc.loggerForContext(ctx).Warn().Err(saveErr).Msg("Failed to roll back disclaimer state")
-		}
 		return fmt.Errorf("send disclaimer: %w", err)
+	}
+	meta.DisclaimerSent = true
+	if err := oc.savePortal(bgCtx, portal, "disclaimer state"); err != nil {
+		return fmt.Errorf("persist disclaimer state: %w", err)
 	}
 
 	portal.UpdateCapabilities(bgCtx, oc.UserLogin, true)

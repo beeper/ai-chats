@@ -62,9 +62,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		logCtx.Debug().Msg("Ignoring bot message")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	if err := oc.sendDisclaimerNotice(ctx, portal); err != nil {
-		logCtx.Warn().Err(err).Msg("Failed to send disclaimer notice")
-	}
 
 	// Normalize sticker events to image handling
 	msgType := msg.Content.MsgType

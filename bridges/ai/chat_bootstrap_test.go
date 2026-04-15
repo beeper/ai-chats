@@ -13,7 +13,7 @@ import (
 func waitForNoticeSend(t *testing.T, ghostAPI *testMatrixAPI) *event.MessageEventContent {
 	t.Helper()
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		if ghostAPI.sentContent != nil {
 			msg, ok := ghostAPI.sentContent.Parsed.(*event.MessageEventContent)
@@ -48,7 +48,7 @@ func TestAgentsEnabledForLogin_DefaultsDisabledAndConfigControlsEnablement(t *te
 	}
 }
 
-func TestCreateChatDoesNotSendDisclaimerOnMaterialization(t *testing.T) {
+func TestCreateChatSendsDisclaimerOnMaterialization(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
@@ -68,19 +68,22 @@ func TestCreateChatDoesNotSendDisclaimerOnMaterialization(t *testing.T) {
 		t.Fatal("expected createChat to materialize a Matrix room")
 	}
 
-	time.Sleep(50 * time.Millisecond)
-	if ghostAPI.sendCount != 0 {
-		t.Fatalf("expected no disclaimer send during materialization, got %d sends", ghostAPI.sendCount)
+	msg := waitForNoticeSend(t, ghostAPI)
+	if msg.MsgType != event.MsgNotice {
+		t.Fatalf("expected notice message, got %q", msg.MsgType)
+	}
+	if !strings.Contains(msg.Body, "AI can make mistakes.") {
+		t.Fatalf("expected AI disclaimer, got %q", msg.Body)
 	}
 	if botAPI.sendCount != 0 {
-		t.Fatalf("expected no bridge bot sends, got %d", botAPI.sendCount)
+		t.Fatalf("expected no bot sends, got %d", botAPI.sendCount)
 	}
-	if meta := portalMeta(portal); meta != nil && meta.DisclaimerSent {
-		t.Fatalf("expected disclaimer state to remain false after materialization, got %#v", meta)
+	if meta := portalMeta(portal); meta == nil || !meta.DisclaimerSent {
+		t.Fatalf("expected disclaimer state to be persisted after materialization, got %#v", meta)
 	}
 }
 
-func TestSendDisclaimerNoticeSendsOnce(t *testing.T) {
+func TestSendDisclaimerNoticeIsIdempotentAfterCreateChat(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
@@ -96,19 +99,7 @@ func TestSendDisclaimerNoticeSendsOnce(t *testing.T) {
 	}
 
 	portal := chatResp.Portal
-	if err := client.sendDisclaimerNotice(ctx, portal); err != nil {
-		t.Fatalf("sendDisclaimerNotice returned error: %v", err)
-	}
-	msg := waitForNoticeSend(t, ghostAPI)
-	if msg.MsgType != event.MsgNotice {
-		t.Fatalf("expected notice message, got %q", msg.MsgType)
-	}
-	if !strings.Contains(msg.Body, "AI can make mistakes.") {
-		t.Fatalf("expected AI disclaimer, got %q", msg.Body)
-	}
-	if meta := portalMeta(portal); meta == nil || !meta.DisclaimerSent {
-		t.Fatalf("expected DisclaimerSent to be persisted, got %#v", meta)
-	}
+	_ = waitForNoticeSend(t, ghostAPI)
 
 	if err := client.sendDisclaimerNotice(ctx, portal); err != nil {
 		t.Fatalf("second sendDisclaimerNotice returned error: %v", err)
@@ -118,11 +109,11 @@ func TestSendDisclaimerNoticeSendsOnce(t *testing.T) {
 		t.Fatalf("expected one disclaimer send, got %d", ghostAPI.sendCount)
 	}
 	if botAPI.sendCount != 0 {
-		t.Fatalf("expected no bridge bot sends, got %d", botAPI.sendCount)
+		t.Fatalf("expected no bot sends, got %d", botAPI.sendCount)
 	}
 }
 
-func TestCreateChatWithGhostDoesNotSendDisclaimerDuringMaterialization(t *testing.T) {
+func TestCreateChatWithGhostSendsDisclaimerOnMaterialization(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
@@ -151,11 +142,14 @@ func TestCreateChatWithGhostDoesNotSendDisclaimerDuringMaterialization(t *testin
 		t.Fatal("expected CreateChatWithGhost to materialize a Matrix room")
 	}
 
-	time.Sleep(50 * time.Millisecond)
-	if ghostAPI.sendCount != 0 {
-		t.Fatalf("expected no disclaimer send during materialization, got %d sends", ghostAPI.sendCount)
+	msg := waitForNoticeSend(t, ghostAPI)
+	if msg.MsgType != event.MsgNotice {
+		t.Fatalf("expected notice message, got %q", msg.MsgType)
+	}
+	if !strings.Contains(msg.Body, "AI can make mistakes.") {
+		t.Fatalf("expected AI disclaimer, got %q", msg.Body)
 	}
 	if botAPI.sendCount != 0 {
-		t.Fatalf("expected no bridge bot sends, got %d", botAPI.sendCount)
+		t.Fatalf("expected no bot sends, got %d", botAPI.sendCount)
 	}
 }

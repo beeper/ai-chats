@@ -706,6 +706,9 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 	if err != nil {
 		return nil, fmt.Errorf("failed to materialize chat room: %w", err)
 	}
+	if err := oc.sendDisclaimerNotice(ctx, portal); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("portal", portal.PortalKey).Msg("Failed to send initial disclaimer after chat creation")
+	}
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
@@ -1142,11 +1145,26 @@ func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
 	}
-	return sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message)
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return fmt.Errorf("intent resolution failed")
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		return fmt.Errorf("ensure joined failed: %w", err)
+	}
+	_, err = intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
+		Parsed: &event.MessageEventContent{
+			MsgType:  event.MsgNotice,
+			Body:     message,
+			Mentions: &event.Mentions{},
+		},
+	}, nil)
+	return err
 }
 
-// sendSystemNotice sends an informational notice through the canonical bridgev2
-// portal sender path so it behaves like other bridges and like normal AI output.
+// sendSystemNotice sends a bridge-authored notice via the portal's canonical
+// remote sender intent so it lands like other AI-authored output in the room.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
 	if err := oc.sendSystemNoticeMessage(ctx, portal, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")

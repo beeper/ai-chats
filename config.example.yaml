@@ -35,7 +35,13 @@ metrics:
 
 encryption:
   allow: true
-  default: false
+  default: true
+  require: true
+  allow_key_sharing: true
+  verification_levels:
+    receive: unverified
+    send: unverified
+    share: cross-signed-tofu
   delete_keys:
     ratchet_on_decrypt: false
 
