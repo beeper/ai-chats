@@ -41,21 +41,8 @@ func (oc *AIClient) buildContinuationParams(
 		if prompt != nil && len(steeringMessages) > 0 {
 			prompt.Messages = append(prompt.Messages, steeringMessages...)
 		}
-		for _, steerPrompt := range steerPrompts {
-			steerPrompt = strings.TrimSpace(steerPrompt)
-			if steerPrompt == "" {
-				continue
-			}
-			input = append(input, responses.ResponseInputItemUnionParam{
-				OfMessage: &responses.EasyInputMessageParam{
-					Role: responses.EasyInputMessageRoleUser,
-					Content: responses.EasyInputMessageContentUnionParam{
-						OfInputItemContentList: []responses.ResponseInputContentUnionParam{{
-							OfInputText: &responses.ResponseInputTextParam{Text: steerPrompt},
-						}},
-					},
-				},
-			})
+		if len(steeringMessages) > 0 {
+			input = append(input, promptContextToResponsesInput(PromptContext{Messages: steeringMessages})...)
 		}
 	}
 	systemPrompt := ""

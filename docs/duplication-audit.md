@@ -192,6 +192,21 @@ Recent cleanup kept pushing in that direction:
 - SDK visible text no longer reimplements turn-text projection:
   `Turn.VisibleText()` now falls back to canonical `TurnText(td)` instead of
   rebuilding text-part concatenation in a second place
+- SDK approval flow no longer carries a private send/login/sender/status
+  wrapper layer:
+  approval prompt send, resolved-status emission, and reaction redaction now
+  use direct `SendViaPortal(...)`, sender resolution, and
+  `bridgeutil.SendMessageStatus(...)` logic at the real callsites instead of
+  bouncing through `loginOrNil(...)`, `senderOrEmpty(...)`, `send(...)`, and
+  `sendMessageStatus(...)`
+- Continuation steering prompts no longer have a second Responses serialization
+  path:
+  continuation input now reuses `promptContextToResponsesInput(...)` for
+  steering prompts instead of manually rebuilding user text items inline
+- Scheduled internal-room creation no longer routes through a one-use portal
+  key helper:
+  `scheduler_rooms.go` now constructs the `networkid.PortalKey` directly and
+  the dead `portalKeyFromParts(...)` wrapper is gone
 
 ## Highest-Value Remaining Problems
 

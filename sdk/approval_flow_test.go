@@ -178,31 +178,6 @@ func TestIsApprovalPlaceholderReaction_ExcludesUserReaction(t *testing.T) {
 	}
 }
 
-func TestApprovalFlow_ReactionRedactionSenderUsesEmptySenderWithoutPortal(t *testing.T) {
-	flow := newTestApprovalFlow(t, ApprovalFlowConfig[*testApprovalFlowData]{
-		Login: func() *bridgev2.UserLogin {
-			return &bridgev2.UserLogin{
-				UserLogin: &database.UserLogin{ID: networkid.UserLoginID("login")},
-			}
-		},
-		Sender: func(*bridgev2.Portal) bridgev2.EventSender {
-			return bridgev2.EventSender{Sender: networkid.UserID("ghost:approval")}
-		},
-	})
-
-	sender := flow.reactionRedactionSender(&bridgev2.MatrixReaction{
-		MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
-			Event: &event.Event{Sender: id.UserID("@owner:example.com")},
-		},
-	})
-	if sender.Sender != "" {
-		t.Fatalf("expected empty sender, got %q", sender.Sender)
-	}
-	if sender.SenderLogin != "" {
-		t.Fatalf("expected sender login to be empty, got %q", sender.SenderLogin)
-	}
-}
-
 func TestApprovalFlow_HandleReaction_DeliveryErrorKeepsPending(t *testing.T) {
 	a := newTestApprovalActors()
 	owner, roomID, portal, login := a.owner, a.roomID, a.portal, a.login

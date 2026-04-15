@@ -36,7 +36,10 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		return
 	}
 	f.ensureReaperRunning()
-	login := f.loginOrNil()
+	if f.login == nil {
+		return
+	}
+	login := f.login()
 	if login == nil {
 		return
 	}
@@ -46,7 +49,10 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 	}
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
-	sender := f.senderOrEmpty(portal)
+	sender := bridgev2.EventSender{}
+	if f.sender != nil {
+		sender = f.sender(portal)
+	}
 	reactionTargetMessageID := resolveApprovalReactionTargetMessageID(ctx, login, portal, params.ReplyToEventID)
 
 	f.mu.Lock()
@@ -91,7 +97,14 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		}},
 	}
 
-	_, msgID, err := f.send(ctx, portal, converted)
+	_, msgID, err := SendViaPortal(SendViaPortalParams{
+		Login:     login,
+		Portal:    portal,
+		Sender:    sender,
+		IDPrefix:  f.idPrefix,
+		LogKey:    f.logKey,
+		Converted: converted,
+	})
 	if err != nil {
 		f.mu.Lock()
 		f.dropPromptLocked(approvalID)
@@ -152,12 +165,17 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 		match = f.matchFallbackReaction(msg.Portal.MXID, msg.Event.Sender, rc.Emoji, now)
 		if !match.KnownPrompt {
 			if isApprovalReactionKey(rc.Emoji) && f.hasPendingApprovalForOwner(msg.Portal.MXID, msg.Event.Sender, now) {
-				f.sendMessageStatus(ctx, msg.Portal, msg.Event, bridgev2.MessageStatus{
+				status := bridgev2.MessageStatus{
 					Status:      event.MessageStatusFail,
 					ErrorReason: event.MessageStatusGenericError,
 					Message:     approvalWrongTargetMSSMessage,
 					IsCertain:   true,
-				})
+				}
+				if f.testSendMessageStatus != nil {
+					f.testSendMessageStatus(ctx, msg.Portal, msg.Event, status)
+				} else {
+					bridgeutil.SendMessageStatus(ctx, msg.Portal, msg.Event, status)
+				}
 				f.redactSingleReaction(msg)
 				return true
 			}
@@ -282,12 +300,17 @@ func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
 	if _, ok := f.resolvedPromptByTarget(targetMessageID); !ok {
 		return false
 	}
-	f.sendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+	status := bridgev2.MessageStatus{
 		Status:      event.MessageStatusFail,
 		ErrorReason: event.MessageStatusGenericError,
 		Message:     approvalResolvedMSSMessage,
 		IsCertain:   true,
-	})
+	}
+	if f.testSendMessageStatus != nil {
+		f.testSendMessageStatus(ctx, portal, evt, status)
+	} else {
+		bridgeutil.SendMessageStatus(ctx, portal, evt, status)
+	}
 	if reaction != nil {
 		f.redactSingleReaction(reaction)
 	}
@@ -299,8 +322,14 @@ func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 		f.testRedactSingleReaction(msg)
 		return
 	}
-	login := f.loginOrNil()
-	sender := f.reactionRedactionSender(msg)
+	var login *bridgev2.UserLogin
+	if f != nil && f.login != nil {
+		login = f.login()
+	}
+	sender := bridgev2.EventSender{}
+	if msg != nil && msg.Portal != nil && f != nil && f.sender != nil {
+		sender = f.sender(msg.Portal)
+	}
 	triggerID := msg.Event.ID
 	portal := msg.Portal
 	go func() {
@@ -312,55 +341,14 @@ func (f *ApprovalFlow[D]) redactSingleReaction(msg *bridgev2.MatrixReaction) {
 	}()
 }
 
-func (f *ApprovalFlow[D]) reactionRedactionSender(msg *bridgev2.MatrixReaction) bridgev2.EventSender {
-	if msg != nil && msg.Portal != nil {
-		return f.senderOrEmpty(msg.Portal)
-	}
-	return bridgev2.EventSender{}
-}
-
-func (f *ApprovalFlow[D]) sendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
-	if f.testSendMessageStatus != nil {
-		f.testSendMessageStatus(ctx, portal, evt, status)
-		return
-	}
-	bridgeutil.SendMessageStatus(ctx, portal, evt, status)
-}
-
-func (f *ApprovalFlow[D]) senderOrEmpty(portal *bridgev2.Portal) bridgev2.EventSender {
-	if f.sender != nil {
-		return f.sender(portal)
-	}
-	return bridgev2.EventSender{}
-}
-
-func (f *ApprovalFlow[D]) loginOrNil() *bridgev2.UserLogin {
-	if f == nil || f.login == nil {
-		return nil
-	}
-	return f.login()
-}
-
-func (f *ApprovalFlow[D]) send(_ context.Context, portal *bridgev2.Portal, converted *bridgev2.ConvertedMessage) (id.EventID, networkid.MessageID, error) {
-	login := f.loginOrNil()
-	if login == nil {
-		return "", "", nil
-	}
-	return SendViaPortal(SendViaPortalParams{
-		Login:     login,
-		Portal:    portal,
-		Sender:    f.senderOrEmpty(portal),
-		IDPrefix:  f.idPrefix,
-		LogKey:    f.logKey,
-		Converted: converted,
-	})
-}
-
 func (f *ApprovalFlow[D]) sendPrefillReactions(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, targetMessageID networkid.MessageID, options []ApprovalOption) {
 	if login == nil || portal == nil || targetMessageID == "" {
 		return
 	}
-	sender := f.senderOrEmpty(portal)
+	sender := bridgev2.EventSender{}
+	if f.sender != nil {
+		sender = f.sender(portal)
+	}
 	logger := loggerForLogin(ctx, login)
 	now := time.Now()
 	seen := map[string]struct{}{}

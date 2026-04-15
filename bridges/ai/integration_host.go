@@ -499,15 +499,3 @@ func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridg
 	}
 	return databaseMessageFromAITurn(portal, row), true
 }
-
-// ---- Small helpers used by host sub-adapters ----
-
-func portalKeyFromParts(client *AIClient, portalID string, receiver string) networkid.PortalKey {
-	key := networkid.PortalKey{ID: networkid.PortalID(portalID)}
-	if receiver != "" {
-		key.Receiver = networkid.UserLoginID(receiver)
-	} else if client != nil && client.UserLogin != nil {
-		key.Receiver = client.UserLogin.ID
-	}
-	return key
-}

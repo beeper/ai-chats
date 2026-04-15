@@ -917,9 +917,17 @@ func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *Final
 	if t == nil {
 		return nil
 	}
-	body := strings.TrimSpace(t.VisibleText())
+	uiMessage := streamui.SnapshotUIMessage(t.state)
+	t.mu.Lock()
+	body := strings.TrimSpace(t.visibleText.String())
+	t.mu.Unlock()
+	if body == "" {
+		if td, ok := TurnDataFromUIMessage(uiMessage); ok {
+			body = TurnText(td)
+		}
+	}
 	fallbackBody = strings.TrimSpace(fallbackBody)
-	uiMessage := BuildCompactFinalUIMessage(streamui.SnapshotUIMessage(t.state))
+	uiMessage = BuildCompactFinalUIMessage(uiMessage)
 	if body == "" && fallbackBody == "" && !hasMeaningfulFinalUIMessage(uiMessage) {
 		return nil
 	}

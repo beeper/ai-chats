@@ -2,8 +2,10 @@ package ai
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
@@ -294,8 +296,8 @@ func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t
 		prompt := PromptContext{}
 
 		params := oc.buildContinuationParams(context.Background(), &prompt, state, nil, nil, nil)
-		if len(params.Input.OfInputItemList) == 0 {
-			t.Fatal("expected continuation input to include stored steering prompt")
+		if count := countResponseInputText(params.Input.OfInputItemList, "pending steer"); count != 1 {
+			t.Fatalf("expected continuation input to include exactly one stored steering prompt, got %d", count)
 		}
 		if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
 			t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
@@ -314,8 +316,8 @@ func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t
 		state.addPendingSteeringPrompts([]string{"pending steer"})
 
 		params := oc.buildContinuationParams(context.Background(), nil, state, nil, nil, nil)
-		if len(params.Input.OfInputItemList) == 0 {
-			t.Fatal("expected continuation input to include stored steering prompt")
+		if count := countResponseInputText(params.Input.OfInputItemList, "pending steer"); count != 1 {
+			t.Fatalf("expected continuation input to include exactly one stored steering prompt, got %d", count)
 		}
 		if pending := state.consumePendingSteeringPrompts(); len(pending) != 0 {
 			t.Fatalf("expected pending steering prompts to be consumed, got %#v", pending)
@@ -324,4 +326,24 @@ func TestBuildContinuationParams_UsesPendingSteeringPromptsBeforeDrainingQueue(t
 			t.Fatalf("expected queued steering item to remain available, got %#v", snapshot)
 		}
 	})
+}
+
+func countResponseInputText(items []responses.ResponseInputItemUnionParam, want string) int {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		return 0
+	}
+	count := 0
+	for _, item := range items {
+		msg := item.OfMessage
+		if msg == nil {
+			continue
+		}
+		for _, part := range msg.Content.OfInputItemContentList {
+			if part.OfInputText != nil && strings.TrimSpace(part.OfInputText.Text) == want {
+				count++
+			}
+		}
+	}
+	return count
 }

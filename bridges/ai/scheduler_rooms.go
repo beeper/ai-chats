@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 func (s *schedulerRuntime) ensureScheduledRoomLocked(
@@ -52,7 +53,10 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if s == nil || s.client == nil || s.client.UserLogin == nil || s.client.UserLogin.Bridge == nil {
 		return nil, errors.New("scheduler client is not available")
 	}
-	key := portalKeyFromParts(s.client, portalID, string(s.client.UserLogin.ID))
+	key := networkid.PortalKey{
+		ID:       networkid.PortalID(portalID),
+		Receiver: s.client.UserLogin.ID,
+	}
 	return s.client.ensureNamedPortalRoom(ctx, key, displayName, func(portal *bridgev2.Portal, meta *PortalMetadata) {
 		meta.InternalRoomKind = internalRoomKind
 		setPortalResolvedTarget(portal, meta, s.client.agentUserID(normalizeAgentID(agentID)))

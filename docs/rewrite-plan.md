@@ -279,6 +279,21 @@ Recent progress also removed a second SDK visible-text projection:
 `Turn.VisibleText()` now reuses canonical `TurnText(td)` rather than keeping a
 separate fallback loop over text parts.
 
+Recent progress also deleted the SDK approval-flow helper shell:
+approval prompt send, resolved-status emission, and reaction redaction now
+perform direct login/sender/send/status work at the real callsites instead of
+flowing through `loginOrNil(...)`, `senderOrEmpty(...)`, `send(...)`, and
+`sendMessageStatus(...)`.
+
+Recent progress also removed a second continuation-input builder:
+steering prompts now reuse `promptContextToResponsesInput(...)` for Responses
+serialization instead of manually rebuilding the same user text items inside
+continuation assembly.
+
+Recent progress also deleted a one-use portal-key helper from the AI bridge:
+scheduled internal-room creation now constructs its `networkid.PortalKey`
+inline, and the dead `portalKeyFromParts(...)` adapter is gone.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

@@ -33,7 +33,10 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 	if reactionKey == "" {
 		return
 	}
-	login := f.loginOrNil()
+	if f == nil || f.login == nil {
+		return
+	}
+	login := f.login()
 	if login == nil || login.Bridge == nil {
 		return
 	}
@@ -41,7 +44,10 @@ func (f *ApprovalFlow[D]) mirrorRemoteDecisionReaction(ctx context.Context, prom
 	if err != nil || portal == nil || portal.MXID == "" {
 		return
 	}
-	sender := f.senderOrEmpty(portal)
+	sender := bridgev2.EventSender{}
+	if f.sender != nil {
+		sender = f.sender(portal)
+	}
 	if f.testMirrorRemoteDecisionReaction != nil {
 		f.testMirrorRemoteDecisionReaction(ctx, login, portal, sender, prompt, reactionKey)
 		return
@@ -94,7 +100,10 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 	if prompt == nil {
 		return true
 	}
-	login := f.loginOrNil()
+	if f.login == nil {
+		return true
+	}
+	login := f.login()
 	if login == nil || login.Bridge == nil {
 		return true
 	}
@@ -107,7 +116,10 @@ func (f *ApprovalFlow[D]) finalizeWithPromptVersion(approvalID string, decision 
 		if err != nil || portal == nil || portal.MXID == "" {
 			return
 		}
-		sender := f.senderOrEmpty(portal)
+		sender := bridgev2.EventSender{}
+		if f.sender != nil {
+			sender = f.sender(portal)
+		}
 		if prompt.PromptSenderID != "" {
 			sender.Sender = prompt.PromptSenderID
 		}
