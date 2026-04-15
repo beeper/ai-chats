@@ -61,13 +61,13 @@ func TestTurnDataFromStreamingStatePrefersVisibleText(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-visible", "delta": "Visible reply"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-visible"})
 
-	td := turnDataFromStreamingState(state, streamui.SnapshotUIMessage(state.turn.UIState()))
+	td := buildCanonicalTurnData(state, nil)
 	if len(td.Parts) == 0 || td.Parts[0].Text != "Visible reply" {
 		t.Fatalf("expected visible turn text in first part, got %#v", td.Parts)
 	}
 }
 
-func TestBuildTurnDataMetadataUsesResponderSnapshot(t *testing.T) {
+func TestCurrentStreamingTurnMetadataUsesResponderSnapshot(t *testing.T) {
 	state := testStreamingState("turn-metadata")
 	state.respondingAgentID = "agent-1"
 	state.respondingModelID = "openai/gpt-5.2"
@@ -77,12 +77,7 @@ func TestBuildTurnDataMetadataUsesResponderSnapshot(t *testing.T) {
 	state.reasoningTokens = 5
 	state.totalTokens = 155
 
-	meta := buildTurnDataMetadata(state, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			ModelID: "openai/gpt-4.1",
-		},
-	})
+	meta := currentStreamingTurnMetadata(state)
 
 	if got := meta["model"]; got != "openai/gpt-5.2" {
 		t.Fatalf("expected turn snapshot model, got %#v", got)

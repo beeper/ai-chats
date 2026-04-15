@@ -130,6 +130,10 @@ Recent cleanup kept pushing in that direction:
   `sdk/stream_replay.go`, `sdk/part_apply.go`, `sdk/stream_part_state.go`, and
   the unused `sdk/canonical_assistant_metadata.go` path were all test-only and
   have been deleted so turn lifecycle work can focus on the live owner paths
+- AI turn canonicalization no longer round-trips through a second projection:
+  `buildCanonicalTurnData(...)` now uses one `BuildTurnDataFromUIMessage(...)`
+  pass with the full assistant metadata/file/artifact inputs, and the extra
+  merge helper path is gone
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems

@@ -324,6 +324,11 @@ unused `sdk/canonical_assistant_metadata.go` had no production callers, so the
 remaining turn-lifecycle work is now concentrated on the live `Turn` /
 snapshot / final-edit owners.
 
+Recent progress also collapsed AI bridge turn canonicalization to one pass:
+`buildCanonicalTurnData(...)` no longer bounces through
+`UIMessageFromTurnData(...)` and a second merge step, and the extra
+`turnDataFromStreamingState(...)` detour is gone.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

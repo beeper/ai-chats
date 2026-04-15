@@ -25,7 +25,7 @@ func displayStreamingText(state *streamingState) string {
 }
 
 func (oc *AIClient) buildUIMessageMetadata(state *streamingState, meta *PortalMetadata, includeUsage bool) map[string]any {
-	td := buildCanonicalTurnData(state, meta, nil)
+	td := buildCanonicalTurnData(state, nil)
 	metadata := td.Metadata
 	if !includeUsage && len(metadata) > 0 {
 		metadata = maps.Clone(metadata)
@@ -41,6 +41,6 @@ func (oc *AIClient) buildStreamUIMessage(state *streamingState, meta *PortalMeta
 		return nil
 	}
 	linkPreviewParts := buildSourceParts(nil, nil, linkPreviews)
-	turnData := buildCanonicalTurnData(state, meta, linkPreviewParts)
+	turnData := buildCanonicalTurnData(state, linkPreviewParts)
 	return sdk.UIMessageFromTurnData(turnData)
 }

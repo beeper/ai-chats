@@ -28,7 +28,7 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	}
 	snapshot := sdk.TurnSnapshot{}
 	if turn != nil {
-		snapshot = sdk.SnapshotFromTurnData(buildCanonicalTurnData(state, meta, nil), "ai")
+		snapshot = sdk.SnapshotFromTurnData(buildCanonicalTurnData(state, nil), "ai")
 	} else {
 		snapshot = sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
 			ID:             turnID,
