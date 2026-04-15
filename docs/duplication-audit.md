@@ -110,6 +110,11 @@ Recent cleanup kept pushing in that direction:
 - Queue admission now has one flatter accepted tail inside
   `dispatchOrQueueCore(...)`: direct-run, steer-only, and queue branches no
   longer each carry their own save/notify return path
+- Heartbeat no longer owns a global inflight gate:
+  `hasInflightRequests()` is gone, and heartbeat now checks and locks only the
+  specific session/delivery rooms it would touch
+  `dispatchOrQueueCore(...)`: direct-run, steer-only, and queue branches no
+  longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems
 
@@ -315,9 +320,10 @@ Why this still violates the goal:
   (`withAgentLoopInactivityTimeout(...)` + `runAgentLoopWithRetry(...)`), and
   queued/immediate Matrix inputs now rebuild prompts from the same
   `pendingMessage` owner instead of carrying a second queue-only raw-event copy
-- the remaining duplication is in run admission and accepted-path branching:
-  immediate run, steer-accepted, queued, and heartbeat preflight still form
-  adjacent partial runtimes instead of one obvious execution pipeline
+- heartbeat no longer blocks on unrelated work in other rooms; it now uses the
+  same room-scoped busy/lock primitives as queue/runtime admission
+- the remaining duplication is in how heartbeat still performs its own preflight
+  and launch wiring instead of entering one canonical execution path
 
 Desired owner:
 

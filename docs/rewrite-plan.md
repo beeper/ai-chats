@@ -275,6 +275,10 @@ Recent progress also flattened queue acceptance inside
 share one post-accept tail for persistence/session mutation instead of three
 separate return shapes.
 
+Recent progress also removed heartbeat's global inflight admission branch:
+`hasInflightRequests()` is gone, and heartbeat now checks and locks only the
+specific session/delivery rooms it would touch before launch.
+
 Recent progress also removed the one-callsite
 `resolveOpenRouterMediaConfig(...)` wrapper: `generateWithOpenRouter(...)` now
 owns its auth/header/base-URL/pdf-engine shaping directly, and tests assert

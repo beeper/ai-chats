@@ -18,34 +18,6 @@ func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
 	return oc.getRoomRun(roomID) != nil
 }
 
-func (oc *AIClient) hasInflightRequests() bool {
-	if oc == nil {
-		return false
-	}
-
-	oc.activeRoomRunsMu.Lock()
-	active := false
-	for _, run := range oc.activeRoomRuns {
-		if run != nil {
-			active = true
-			break
-		}
-	}
-	oc.activeRoomRunsMu.Unlock()
-	if active {
-		return true
-	}
-
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	for _, queue := range oc.pendingQueues {
-		if queue != nil && (len(queue.items) > 0 || queue.droppedCount > 0) {
-			return true
-		}
-	}
-	return false
-}
-
 func (oc *AIClient) acquireRoom(roomID id.RoomID) bool {
 	oc.roomLocksMu.Lock()
 	defer oc.roomLocksMu.Unlock()

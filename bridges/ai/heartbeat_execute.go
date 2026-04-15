@@ -71,11 +71,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		return heartbeatRunResult{Status: "skipped", Reason: "quiet-hours"}
 	}
 
-	if oc.hasInflightRequests() {
-		oc.log.Debug().Str("agent_id", agentID).Msg("Heartbeat skipped: requests in flight")
-		return heartbeatRunResult{Status: "skipped", Reason: "requests-in-flight"}
-	}
-
 	route, err := oc.resolveHeartbeatRoute(agentID, heartbeat)
 	if err != nil || route.SessionPortal == nil || route.SessionPortal.MXID == "" {
 		oc.log.Warn().Str("agent_id", agentID).Err(err).Msg("Heartbeat skipped: no session portal")
@@ -108,6 +103,16 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	deliveryRoom := delivery.RoomID
 	deliveryReason := delivery.Reason
 	channel := delivery.Channel
+	busyRooms := []id.RoomID{sessionPortal.MXID}
+	if deliveryPortal != nil && deliveryPortal.MXID != "" && deliveryPortal.MXID != sessionPortal.MXID {
+		busyRooms = append(busyRooms, deliveryPortal.MXID)
+	}
+	for _, roomID := range busyRooms {
+		if oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID) {
+			oc.log.Debug().Str("agent_id", agentID).Stringer("room_id", roomID).Msg("Heartbeat skipped: target room busy")
+			return heartbeatRunResult{Status: "skipped", Reason: "room-busy"}
+		}
+	}
 	visibility := defaultHeartbeatVisibility
 	if channel != "" {
 		visibility = resolveHeartbeatVisibility(cfg, channel)
@@ -219,7 +224,23 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	if deliveryPortal != nil && deliveryPortal.MXID != "" {
 		sendPortal = deliveryPortal
 	}
+	lockedRooms := make([]id.RoomID, 0, len(busyRooms))
+	for _, roomID := range busyRooms {
+		if !oc.acquireRoom(roomID) {
+			for i := len(lockedRooms) - 1; i >= 0; i-- {
+				oc.releaseRoom(lockedRooms[i])
+			}
+			oc.log.Debug().Str("agent_id", agentID).Stringer("room_id", roomID).Msg("Heartbeat skipped: target room locked")
+			return heartbeatRunResult{Status: "skipped", Reason: "room-busy"}
+		}
+		lockedRooms = append(lockedRooms, roomID)
+	}
 	go func() {
+		defer func() {
+			for i := len(lockedRooms) - 1; i >= 0; i-- {
+				oc.releaseRoom(lockedRooms[i])
+			}
+		}()
 		completionCtx, completionCancel := oc.withAgentLoopInactivityTimeout(runCtx)
 		defer completionCancel()
 		oc.runAgentLoopWithRetry(completionCtx, nil, sendPortal, promptMeta, promptContext)
