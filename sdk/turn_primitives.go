@@ -1,8 +1,6 @@
 package sdk
 
 import (
-	"strings"
-
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -77,13 +75,7 @@ func (t *Turn) VisibleText() string {
 	if !ok {
 		return ""
 	}
-	var visible strings.Builder
-	for _, part := range td.Parts {
-		if part.Type == "text" {
-			visible.WriteString(part.Text)
-		}
-	}
-	return visible.String()
+	return TurnText(td)
 }
 
 // Emitter returns the underlying stream emitter for advanced stream control.

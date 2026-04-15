@@ -177,10 +177,21 @@ Recent cleanup kept pushing in that direction:
   SDK now owns final payload construction end to end, AI no longer stages a
   mixed top-level map only to unpack it again, and the wrapper helpers around
   default extra packing / finish-reason stamping are gone
-- Memory runtime policy config no longer has duplicated raw-map key reads:
-  `inject_context` and `citations` now flow through one local
-  `resolveRuntimeModuleConfig(...)` parser instead of being plucked
-  independently in multiple memory integration helpers
+- Memory runtime policy config no longer bounces through helper wrappers:
+  prompt-context injection and citation-mode wiring now read
+  `host.ModuleConfig("memory")` directly at the real callsites instead of
+  staging another local parser / accessor layer first
+- Matrix session lookup no longer has two separate resolver branches:
+  `sessions_history` and `sessions_send` now both use
+  `resolveMatrixSessionTarget(...)` for `"main"`, room-id, and portal-id
+  resolution instead of each open-coding the same Matrix-session search rules
+- Chat ghost-target lookup no longer repeats agent-vs-model branching:
+  identifier and ghost resolution now both reuse
+  `resolveParsedChatGhostTarget(...)` so parsed ghost IDs go through one model /
+  agent resolver and one `model not found` error-shaping path
+- SDK visible text no longer reimplements turn-text projection:
+  `Turn.VisibleText()` now falls back to canonical `TurnText(td)` instead of
+  rebuilding text-part concatenation in a second place
 
 ## Highest-Value Remaining Problems
 

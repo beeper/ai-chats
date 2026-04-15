@@ -27,7 +27,7 @@ type execManager interface {
 type ToolExecDeps struct {
 	GetManager             func(scope iruntime.ToolScope) (execManager, string)
 	ResolveSessionKey      func(scope iruntime.ToolScope) string
-	ResolveCitationsMode   func(scope iruntime.ToolScope) string
+	CitationsMode          string
 	ShouldIncludeCitations func(ctx context.Context, scope iruntime.ToolScope, mode string) bool
 }
 
@@ -117,9 +117,9 @@ func executeSearchTool(ctx context.Context, scope iruntime.ToolScope, args map[s
 		}), nil
 	}
 
-	modeSetting := "auto"
-	if deps.ResolveCitationsMode != nil {
-		modeSetting = normalizeCitationsMode(deps.ResolveCitationsMode(scope))
+	modeSetting := normalizeCitationsMode(deps.CitationsMode)
+	if modeSetting == "" {
+		modeSetting = "auto"
 	}
 	includeCitations := true
 	if deps.ShouldIncludeCitations != nil {

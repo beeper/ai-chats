@@ -260,6 +260,25 @@ Recent progress also removed the generic `effectiveToolConfig[T]` wrapper:
 `effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now read their
 tool config, login-derived overrides, and env/default merge directly.
 
+Recent progress also removed the memory runtime policy helper layer:
+prompt-context injection and citation-mode selection now read the memory
+module config directly at the real wiring points instead of routing through
+local wrapper/parsing helpers first.
+
+Recent progress also collapsed Matrix session lookup into one owner:
+`resolveMatrixSessionTarget(...)` now owns `"main"` / room-id / portal-id
+resolution for both `sessions_history` and `sessions_send`, so session tools
+no longer carry two copies of the same Matrix-session branch.
+
+Recent progress also collapsed parsed chat ghost target resolution:
+identifier and ghost lookup now share `resolveParsedChatGhostTarget(...)`
+instead of each re-spelling the same parsed model-vs-agent branching and
+model-not-found shaping.
+
+Recent progress also removed a second SDK visible-text projection:
+`Turn.VisibleText()` now reuses canonical `TurnText(td)` rather than keeping a
+separate fallback loop over text parts.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

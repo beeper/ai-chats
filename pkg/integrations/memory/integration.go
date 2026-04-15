@@ -43,11 +43,6 @@ type Integration struct {
 	deps IntegrationDeps
 }
 
-type runtimeModuleConfig struct {
-	InjectContext bool
-	CitationsMode string
-}
-
 func New(host iruntime.Host) iruntime.ModuleHooks {
 	return NewWithDeps(host, IntegrationDeps{})
 }
@@ -97,8 +92,10 @@ func (i *Integration) ToolAvailability(_ context.Context, scope iruntime.ToolSco
 }
 
 func (i *Integration) PromptContextText(ctx context.Context, scope iruntime.PromptScope) string {
+	moduleCfg := i.host.ModuleConfig(moduleName)
+	injectContext, _ := moduleCfg["inject_context"].(bool)
 	return BuildPromptContextText(ctx, scope.Portal, scope.Meta, PromptContextDeps{
-		ShouldInjectContext:   i.shouldInjectMemoryPromptContext,
+		InjectContext:         injectContext,
 		ShouldBootstrap:       i.shouldBootstrapMemoryPromptContext,
 		ResolveBootstrapPaths: i.resolveMemoryBootstrapPaths,
 		MarkBootstrapped:      i.markMemoryPromptBootstrapped,
@@ -192,10 +189,12 @@ func (i *Integration) sessionKeyForScope(scope iruntime.ToolScope) string {
 }
 
 func (i *Integration) buildToolExecDeps() ToolExecDeps {
+	moduleCfg := i.host.ModuleConfig(moduleName)
+	citationsMode, _ := moduleCfg["citations"].(string)
 	return ToolExecDeps{
 		GetManager:             i.managerForScope,
 		ResolveSessionKey:      i.sessionKeyForScope,
-		ResolveCitationsMode:   func(_ iruntime.ToolScope) string { return i.resolveMemoryCitationsMode() },
+		CitationsMode:          citationsMode,
 		ShouldIncludeCitations: i.shouldIncludeMemoryCitations,
 	}
 }
@@ -251,10 +250,6 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			i.host.Logger().Warn("overflow flush failed", map[string]any{"error": err.Error()})
 		},
 	}
-}
-
-func (i *Integration) shouldInjectMemoryPromptContext(_ *bridgev2.Portal, _ iruntime.Meta) bool {
-	return resolveRuntimeModuleConfig(i.host.ModuleConfig(moduleName)).InjectContext
 }
 
 func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, meta iruntime.Meta) bool {
@@ -401,10 +396,6 @@ func (i *Integration) resolveOverflowFlushSettings() *FlushSettings {
 	)
 }
 
-func (i *Integration) resolveMemoryCitationsMode() string {
-	return resolveRuntimeModuleConfig(i.host.ModuleConfig(moduleName)).CitationsMode
-}
-
 func (i *Integration) shouldIncludeMemoryCitations(ctx context.Context, scope iruntime.ToolScope, mode string) bool {
 	switch mode {
 	case "on":
@@ -503,18 +494,4 @@ func mapToMemorySearchConfig(m map[string]any) (*agents.MemorySearchConfig, erro
 		return nil, err
 	}
 	return &out, nil
-}
-
-func resolveRuntimeModuleConfig(raw map[string]any) runtimeModuleConfig {
-	cfg := runtimeModuleConfig{CitationsMode: "auto"}
-	if raw == nil {
-		return cfg
-	}
-	if inject, ok := raw["inject_context"].(bool); ok {
-		cfg.InjectContext = inject
-	}
-	if citations, ok := raw["citations"].(string); ok {
-		cfg.CitationsMode = normalizeCitationsMode(citations)
-	}
-	return cfg
 }

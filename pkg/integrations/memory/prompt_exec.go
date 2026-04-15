@@ -10,7 +10,7 @@ import (
 )
 
 type PromptContextDeps struct {
-	ShouldInjectContext   func(portal *bridgev2.Portal, meta iruntime.Meta) bool
+	InjectContext         bool
 	ShouldBootstrap       func(portal *bridgev2.Portal, meta iruntime.Meta) bool
 	ResolveBootstrapPaths func(portal *bridgev2.Portal, meta iruntime.Meta) []string
 	MarkBootstrapped      func(ctx context.Context, portal *bridgev2.Portal, meta iruntime.Meta)
@@ -23,7 +23,7 @@ func BuildPromptContextText(
 	meta iruntime.Meta,
 	deps PromptContextDeps,
 ) string {
-	if deps.ShouldInjectContext == nil || !deps.ShouldInjectContext(portal, meta) {
+	if !deps.InjectContext {
 		return ""
 	}
 	if deps.ReadSection == nil {

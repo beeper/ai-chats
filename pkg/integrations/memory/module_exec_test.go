@@ -176,23 +176,14 @@ func TestFormatStatusLines_UnlimitedCacheOutput(t *testing.T) {
 	}
 }
 
-func TestResolveRuntimeModuleConfigDefaultsAndNormalization(t *testing.T) {
-	cfg := resolveRuntimeModuleConfig(nil)
-	if cfg.InjectContext {
-		t.Fatalf("expected inject_context default false, got %#v", cfg)
+func TestNormalizeCitationsMode(t *testing.T) {
+	if got := normalizeCitationsMode(""); got != "auto" {
+		t.Fatalf("expected empty citations mode to normalize to auto, got %q", got)
 	}
-	if cfg.CitationsMode != "auto" {
-		t.Fatalf("expected citations default auto, got %#v", cfg)
+	if got := normalizeCitationsMode("ON"); got != "on" {
+		t.Fatalf("expected ON to normalize to on, got %q", got)
 	}
-
-	cfg = resolveRuntimeModuleConfig(map[string]any{
-		"inject_context": true,
-		"citations":      "ON",
-	})
-	if !cfg.InjectContext {
-		t.Fatalf("expected inject_context=true, got %#v", cfg)
-	}
-	if cfg.CitationsMode != "on" {
-		t.Fatalf("expected normalized citations mode on, got %#v", cfg)
+	if got := normalizeCitationsMode("weird"); got != "auto" {
+		t.Fatalf("expected unknown citations mode to normalize to auto, got %q", got)
 	}
 }

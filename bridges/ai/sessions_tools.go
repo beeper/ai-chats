@@ -22,6 +22,11 @@ type sessionListEntry struct {
 	data      map[string]any
 }
 
+type matrixSessionTarget struct {
+	portal     *bridgev2.Portal
+	displayKey string
+}
+
 func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
 	if meta == nil {
 		return false
@@ -30,6 +35,51 @@ func shouldExcludeModelVisiblePortal(meta *PortalMetadata) bool {
 		return true
 	}
 	return strings.TrimSpace(meta.SubagentParentRoomID) != ""
+}
+
+func (oc *AIClient) resolveMatrixSessionTarget(ctx context.Context, currentPortal *bridgev2.Portal, sessionKey string) (*matrixSessionTarget, error) {
+	trimmedSessionKey := strings.TrimSpace(sessionKey)
+	if trimmedSessionKey == "" {
+		return nil, errors.New("sessionKey is required")
+	}
+	switch {
+	case trimmedSessionKey == "main":
+		if currentPortal == nil || currentPortal.MXID == "" {
+			return nil, errors.New("main session not available")
+		}
+		return &matrixSessionTarget{
+			portal:     currentPortal,
+			displayKey: "main",
+		}, nil
+	case strings.HasPrefix(trimmedSessionKey, "!"):
+		if found := oc.portalByRoomID(ctx, id.RoomID(trimmedSessionKey)); found != nil {
+			return &matrixSessionTarget{
+				portal:     found,
+				displayKey: found.MXID.String(),
+			}, nil
+		}
+	default:
+		portals, err := oc.listAllChatPortals(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range portals {
+			if candidate == nil {
+				continue
+			}
+			if candidate.MXID.String() == trimmedSessionKey || string(candidate.PortalKey.ID) == trimmedSessionKey {
+				displayKey := candidate.MXID.String()
+				if displayKey == "" {
+					displayKey = trimmedSessionKey
+				}
+				return &matrixSessionTarget{
+					portal:     candidate,
+					displayKey: displayKey,
+				}, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("session not found: %s (use the sessionKey from sessions_list)", trimmedSessionKey)
 }
 
 func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Portal, args map[string]any) (*tools.Result, error) {
@@ -275,48 +325,12 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		}), nil
 	}
 
-	trimmedSessionKey := strings.TrimSpace(sessionKey)
-	if trimmedSessionKey == "" {
-		return tools.JSONErrorResult("sessionKey is required"), nil
-	}
-	var resolvedPortal *bridgev2.Portal
-	displayKey := ""
-	switch {
-	case trimmedSessionKey == "main":
-		if portal == nil || portal.MXID == "" {
-			return tools.JSONErrorResult("main session not available"), nil
-		}
-		resolvedPortal = portal
-		displayKey = "main"
-	case strings.HasPrefix(trimmedSessionKey, "!"):
-		if found := oc.portalByRoomID(ctx, id.RoomID(trimmedSessionKey)); found != nil {
-			resolvedPortal = found
-			displayKey = found.MXID.String()
-		}
-	default:
-		portals, err := oc.listAllChatPortals(ctx)
-		if err != nil {
-			return tools.JSONErrorResult(err.Error()), nil
-		}
-		for _, candidate := range portals {
-			if candidate == nil {
-				continue
-			}
-			if candidate.MXID.String() == trimmedSessionKey || string(candidate.PortalKey.ID) == trimmedSessionKey {
-				resolvedPortal = candidate
-				displayKey = candidate.MXID.String()
-				if displayKey == "" {
-					displayKey = trimmedSessionKey
-				}
-				break
-			}
-		}
-	}
-	if resolvedPortal == nil {
-		return tools.JSONErrorResult(fmt.Sprintf("session not found: %s (use the sessionKey from sessions_list)", trimmedSessionKey)), nil
+	target, err := oc.resolveMatrixSessionTarget(ctx, portal, sessionKey)
+	if err != nil {
+		return tools.JSONErrorResult(err.Error()), nil
 	}
 
-	messages, err := oc.getAIHistoryMessages(ctx, resolvedPortal, limit)
+	messages, err := oc.getAIHistoryMessages(ctx, target.portal, limit)
 	if err != nil {
 		return tools.JSONErrorResult(err.Error()), nil
 	}
@@ -330,7 +344,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	}
 
 	return tools.JSONResult(map[string]any{
-		"sessionKey": displayKey,
+		"sessionKey": target.displayKey,
 		"messages":   openClawMessages,
 	}), nil
 }
@@ -384,44 +398,12 @@ func (oc *AIClient) executeSessionsSend(ctx context.Context, portal *bridgev2.Po
 	var targetPortal *bridgev2.Portal
 	var displayKey string
 	if sessionKey != "" {
-		trimmedSessionKey := strings.TrimSpace(sessionKey)
-		if trimmedSessionKey == "" {
-			return tools.JSONErrorResult("sessionKey is required"), nil
+		target, err := oc.resolveMatrixSessionTarget(ctx, portal, sessionKey)
+		if err != nil {
+			return tools.JSONErrorResult(err.Error()), nil
 		}
-		switch {
-		case trimmedSessionKey == "main":
-			if portal == nil || portal.MXID == "" {
-				return tools.JSONErrorResult("main session not available"), nil
-			}
-			targetPortal = portal
-			displayKey = "main"
-		case strings.HasPrefix(trimmedSessionKey, "!"):
-			if found := oc.portalByRoomID(ctx, id.RoomID(trimmedSessionKey)); found != nil {
-				targetPortal = found
-				displayKey = found.MXID.String()
-			}
-		default:
-			portals, err := oc.listAllChatPortals(ctx)
-			if err != nil {
-				return tools.JSONErrorResult(err.Error()), nil
-			}
-			for _, candidate := range portals {
-				if candidate == nil {
-					continue
-				}
-				if candidate.MXID.String() == trimmedSessionKey || string(candidate.PortalKey.ID) == trimmedSessionKey {
-					targetPortal = candidate
-					displayKey = candidate.MXID.String()
-					if displayKey == "" {
-						displayKey = trimmedSessionKey
-					}
-					break
-				}
-			}
-		}
-		if targetPortal == nil {
-			return tools.JSONErrorResult(fmt.Sprintf("session not found: %s (use the sessionKey from sessions_list)", trimmedSessionKey)), nil
-		}
+		targetPortal = target.portal
+		displayKey = target.displayKey
 	} else {
 		if strings.TrimSpace(label) == "" {
 			return tools.JSONErrorResult("sessionKey or label is required"), nil

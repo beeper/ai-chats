@@ -414,22 +414,33 @@ func (oc *AIClient) resolveAgentChatTarget(ctx context.Context, agentID string) 
 	return &chatResolveTarget{agent: agent}, nil
 }
 
+func (oc *AIClient) resolveParsedChatGhostTarget(ctx context.Context, modelID string, agentID string) (*chatResolveTarget, bool, error) {
+	if modelID == "" && agentID == "" {
+		return nil, false, nil
+	}
+	if agentID != "" {
+		target, err := oc.resolveAgentChatTarget(ctx, agentID)
+		return target, true, err
+	}
+	target, err := oc.resolveModelChatTarget(ctx, modelID)
+	if err != nil {
+		return nil, true, err
+	}
+	if target == nil {
+		return nil, true, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
+	}
+	return target, true, nil
+}
+
 func (oc *AIClient) resolveChatTargetFromIdentifier(ctx context.Context, identifier string) (*chatResolveTarget, error) {
 	id := normalizeChatIdentifier(identifier)
 	if id == "" {
 		return nil, bridgev2.WrapRespErr(errors.New("identifier is required"), mautrix.MInvalidParam)
 	}
 	modelID, agentID := parseChatGhostTarget(id)
-	if modelID != "" || agentID != "" {
-		if agentID != "" {
-			return oc.resolveAgentChatTarget(ctx, agentID)
-		}
-		target, err := oc.resolveModelChatTarget(ctx, modelID)
+	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID, agentID); resolved {
 		if err != nil {
 			return nil, err
-		}
-		if target == nil {
-			return nil, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
 		}
 		return target, nil
 	}
@@ -468,16 +479,9 @@ func (oc *AIClient) resolveChatTargetFromGhost(ctx context.Context, ghost *bridg
 	}
 	ghostID := string(ghost.ID)
 	modelID, agentID := parseChatGhostTarget(ghostID)
-	if modelID != "" || agentID != "" {
-		if agentID != "" {
-			return oc.resolveAgentChatTarget(ctx, agentID)
-		}
-		target, err := oc.resolveModelChatTarget(ctx, modelID)
+	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID, agentID); resolved {
 		if err != nil {
 			return nil, err
-		}
-		if target == nil {
-			return nil, bridgev2.WrapRespErr(fmt.Errorf("model '%s' not found", modelID), mautrix.MNotFound)
 		}
 		return target, nil
 	}
