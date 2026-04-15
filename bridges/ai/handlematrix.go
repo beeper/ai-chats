@@ -87,7 +87,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			oc.inboundDebouncer.flush(debounceKey)
 		}
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+			if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
 				status := bridgev2.MessageStatus{
 					Status:    event.MessageStatusPending,
 					Message:   "Processing...",
@@ -256,7 +256,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		// Let the client know the message is pending due to debounce.
 		if debounceDelay >= 0 && !pendingSent {
 			if portal != nil && portal.Bridge != nil {
-				if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+				if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
 					status := bridgev2.MessageStatus{
 						Status:    event.MessageStatusPending,
 						Message:   "Combining messages...",

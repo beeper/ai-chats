@@ -580,7 +580,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 
 	if !cc.acquireRoomIfQueueEmpty(roomID) {
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+			if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
 				status := bridgev2.MessageStatus{
 					Status:    event.MessageStatusPending,
 					Message:   "Queued — waiting for current turn to finish...",
@@ -602,7 +602,7 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	if portal != nil && portal.Bridge != nil {
-		if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+		if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
 			status := bridgev2.MessageStatus{
 				Status:    event.MessageStatusPending,
 				Message:   "Processing...",
@@ -688,7 +688,7 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, por
 		return
 	}
 	if portal != nil && portal.Bridge != nil {
-		if info := bridgev2.StatusEventInfoFromEvent(sourceEvent); info != nil {
+		if info := sdk.StatusEventInfoFromPortalEvent(portal, sourceEvent); info != nil {
 			status := bridgev2.MessageStatus{
 				Status:    event.MessageStatusSuccess,
 				IsCertain: true,

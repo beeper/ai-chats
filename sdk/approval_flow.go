@@ -173,7 +173,7 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 					f.testSendMessageStatus(ctx, msg.Portal, msg.Event, status)
 				} else {
 					if msg.Portal != nil && msg.Portal.Bridge != nil {
-						if info := bridgev2.StatusEventInfoFromEvent(msg.Event); info != nil {
+						if info := StatusEventInfoFromPortalEvent(msg.Portal, msg.Event); info != nil {
 							msg.Portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 						}
 					}
@@ -312,7 +312,7 @@ func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
 		f.testSendMessageStatus(ctx, portal, evt, status)
 	} else {
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+			if info := StatusEventInfoFromPortalEvent(portal, evt); info != nil {
 				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 			}
 		}

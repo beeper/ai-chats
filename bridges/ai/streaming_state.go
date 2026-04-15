@@ -321,7 +321,7 @@ func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2
 			continue
 		}
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(extra); info != nil {
+			if info := sdk.StatusEventInfoFromPortalEvent(portal, extra); info != nil {
 				status := bridgev2.MessageStatus{
 					Status:    event.MessageStatusSuccess,
 					IsCertain: true,

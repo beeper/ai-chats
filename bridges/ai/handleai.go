@@ -15,6 +15,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, err error) {
@@ -44,14 +46,14 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithIsCertain(true).
 			WithSendNotice(true)
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+			if info := sdk.StatusEventInfoFromPortalEvent(portal, evt); info != nil {
 				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
 			}
 		}
 		for _, extra := range statusEventsFromContext(ctx) {
 			if extra != nil {
 				if portal != nil && portal.Bridge != nil {
-					if info := bridgev2.StatusEventInfoFromEvent(extra); info != nil {
+					if info := sdk.StatusEventInfoFromPortalEvent(portal, extra); info != nil {
 						portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
 					}
 				}

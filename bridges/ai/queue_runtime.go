@@ -11,6 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
@@ -172,7 +173,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 			return
 		}
 		if portal != nil && portal.Bridge != nil {
-			if info := bridgev2.StatusEventInfoFromEvent(evt); info != nil {
+			if info := sdk.StatusEventInfoFromPortalEvent(portal, evt); info != nil {
 				status := bridgev2.MessageStatus{
 					Status:    event.MessageStatusPending,
 					Message:   "Processing...",
@@ -224,7 +225,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 					WithSendNotice(false)
 				for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
 					if portal != nil && portal.Bridge != nil {
-						if info := bridgev2.StatusEventInfoFromEvent(statusEvt); info != nil {
+						if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
 							portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
 						}
 					}
@@ -235,7 +236,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
 		for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
 			if portal != nil && portal.Bridge != nil {
-				if info := bridgev2.StatusEventInfoFromEvent(statusEvt); info != nil {
+				if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
 					status := bridgev2.MessageStatus{
 						Status:    event.MessageStatusSuccess,
 						IsCertain: true,
