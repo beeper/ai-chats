@@ -53,13 +53,6 @@ func (oc *AIClient) redactEventViaPortal(ctx context.Context, portal *bridgev2.P
 		return fmt.Errorf("message not found for event %s", eventID)
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return fmt.Errorf("intent resolution failed")
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		return fmt.Errorf("ensure joined failed: %w", err)
-	}
 	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,

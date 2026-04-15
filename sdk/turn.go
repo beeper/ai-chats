@@ -357,10 +357,6 @@ func (t *Turn) defaultStreamPublisher(callCtx context.Context) (bridgev2.BeeperS
 	return publisher, true
 }
 
-func (t *Turn) ensureSenderJoined() error {
-	return t.ensureSenderJoinedWithContext(t.turnCtx)
-}
-
 func (t *Turn) ensureStarted() {
 	t.mu.Lock()
 	if t.started || t.ended {
@@ -379,12 +375,6 @@ func (t *Turn) ensureStarted() {
 	}
 	t.ensureSession()
 	if !t.SuppressSend() {
-		if err := t.ensureSenderJoined(); err != nil && t.startErr == nil {
-			t.startErr = err
-		}
-		if t.startErr != nil {
-			return
-		}
 		if t.sendFunc != nil {
 			evtID, msgID, err := t.sendFunc(t.turnCtx)
 			if err == nil {
@@ -732,9 +722,6 @@ func (t *Turn) sendFinalEdit(ctx context.Context) {
 	if target == "" || edit == nil {
 		return
 	}
-	if err := t.ensureSenderJoinedWithContext(ctx); err != nil && t.conv.login != nil {
-		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to ensure sender joined before final turn edit")
-	}
 	sender := t.resolveSender(ctx)
 	if err := SendEditViaPortal(
 		t.conv.login,
@@ -1078,18 +1065,4 @@ func (t *Turn) finalizationContext() context.Context {
 		return t.conv.login.Bridge.BackgroundCtx
 	}
 	return context.Background()
-}
-
-func (t *Turn) ensureSenderJoinedWithContext(ctx context.Context) error {
-	if t == nil || t.conv == nil || t.conv.portal == nil || t.conv.portal.MXID == "" {
-		return nil
-	}
-	if t.conv.intentOverride == nil && (t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.portal.Bridge == nil) {
-		return nil
-	}
-	intent, err := t.conv.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	return intent.EnsureJoined(ctx, t.conv.portal.MXID)
 }

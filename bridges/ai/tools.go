@@ -502,9 +502,6 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	if !ok || intent == nil {
 		return "", fmt.Errorf("failed to get intent")
 	}
-	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
-		return "", fmt.Errorf("failed to prepare sender: %w", err)
-	}
 
 	uri, file, err := intent.UploadMedia(ctx, btc.Portal.MXID, data, fileName, mimeType)
 	if err != nil {
@@ -624,13 +621,6 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 	}
 
 	sender := btc.Client.senderForPortal(ctx, btc.Portal)
-	intent, ok := btc.Portal.GetIntentFor(ctx, sender, btc.Client.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return "", fmt.Errorf("couldn't resolve edit intent")
-	}
-	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
-		return "", fmt.Errorf("couldn't prepare edit sender: %w", err)
-	}
 	if err := sdk.SendEditViaPortal(btc.Client.UserLogin, btc.Portal, sender, targetPart.ID, time.Now(), 0, "ai_edit_target", editContent); err != nil {
 		return "", fmt.Errorf("couldn't edit the message: %w", err)
 	}
@@ -657,13 +647,6 @@ func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeT
 		return "", fmt.Errorf("couldn't find the message to delete: %s", messageID)
 	}
 	sender := btc.Client.senderForPortal(ctx, btc.Portal)
-	intent, ok := btc.Portal.GetIntentFor(ctx, sender, btc.Client.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return "", fmt.Errorf("couldn't resolve delete intent")
-	}
-	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
-		return "", fmt.Errorf("couldn't prepare delete sender: %w", err)
-	}
 	result := btc.Client.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,

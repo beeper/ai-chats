@@ -2,7 +2,6 @@ package sdk
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -29,8 +28,6 @@ type Conversation struct {
 	store                *conversationStateStore
 	approvalFlow         *ApprovalFlow[*pendingSDKApprovalData]
 	providerIdentity     ProviderIdentity
-
-	intentOverride func(context.Context) (bridgev2.MatrixAPI, error)
 }
 
 func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender) *Conversation {
@@ -94,23 +91,6 @@ func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context
 		}
 	}
 	return conv
-}
-
-func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error) {
-	if c == nil {
-		return nil, fmt.Errorf("conversation is nil")
-	}
-	if c.intentOverride != nil {
-		return c.intentOverride(ctx)
-	}
-	if c.portal == nil || c.login == nil {
-		return nil, fmt.Errorf("no portal or login")
-	}
-	intent, ok := c.portal.GetIntentFor(ctx, c.sender, c.login, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return nil, fmt.Errorf("failed to get intent")
-	}
-	return intent, nil
 }
 
 func (c *Conversation) stateStore() *conversationStateStore {

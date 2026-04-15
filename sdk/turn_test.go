@@ -955,20 +955,15 @@ func TestTurnWriterStartTriggersLazyPlaceholderSend(t *testing.T) {
 	}
 }
 
-func TestTurnWriterStartEnsuresSenderJoinedBeforePlaceholderSend(t *testing.T) {
+func TestTurnWriterStartSendsPlaceholderWithoutSenderPreflight(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
-	intent := &sdkTestMatrixAPI{}
 	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID})
-	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
 	turn := newTurn(context.Background(), conv, nil, nil)
 
 	sendCalls := 0
 	turn.SetSendFunc(func(context.Context) (id.EventID, networkid.MessageID, error) {
 		sendCalls++
-		if len(intent.joinedRooms) != 1 || intent.joinedRooms[0] != portal.MXID {
-			t.Fatalf("expected sender to be joined before placeholder send, got %#v", intent.joinedRooms)
-		}
 		return "", networkid.MessageID("msg-joined"), nil
 	})
 

@@ -270,15 +270,6 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 		return
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		oc.loggerForContext(ctx).Warn().Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to resolve redaction intent for streaming message")
-		return
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to prepare redaction sender for streaming message")
-		return
-	}
 	targetMessageID := state.turn.NetworkMessageID()
 	if targetMessageID == "" {
 		if state.turn.InitialEventID() == "" {

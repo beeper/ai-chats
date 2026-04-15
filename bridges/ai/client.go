@@ -1879,19 +1879,6 @@ func (oc *AIClient) removeAckReactionByID(ctx context.Context, portal *bridgev2.
 		return
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		oc.loggerForContext(ctx).Warn().
-			Stringer("reaction_event", reactionEventID).
-			Msg("Failed to resolve ack reaction sender")
-		return
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Stringer("reaction_event", reactionEventID).
-			Msg("Failed to prepare ack reaction sender")
-		return
-	}
 	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
 		EventMeta: simplevent.EventMeta{
 			Type:      bridgev2.RemoteEventMessageRemove,

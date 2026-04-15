@@ -33,9 +33,6 @@ func (oc *AIClient) sendGeneratedMedia(
 	if !ok || intent == nil {
 		return "", "", fmt.Errorf("intent resolution failed")
 	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		return "", "", fmt.Errorf("ensure joined failed: %w", err)
-	}
 
 	uri, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
 	if err != nil {
