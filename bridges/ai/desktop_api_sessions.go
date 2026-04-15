@@ -67,16 +67,12 @@ var (
 	errDesktopLabelAmbiguous = errors.New("desktop label ambiguous")
 )
 
-func normalizeDesktopInstanceName(name string) string {
-	return sanitizeDesktopInstanceKey(name)
-}
-
 func resolveDesktopInstanceName(instances map[string]DesktopAPIInstance, requested string) (string, error) {
 	if len(instances) == 0 {
 		return "", errors.New("desktop API token is not set")
 	}
 
-	req := normalizeDesktopInstanceName(requested)
+	req := sanitizeDesktopInstanceKey(requested)
 	if req != "" && req != desktopDefaultInstance && req != "desktop" {
 		if _, ok := instances[req]; ok {
 			return req, nil
@@ -113,7 +109,7 @@ func normalizeDesktopSessionKeyWithInstance(instance, chatID string) string {
 	if trimmedChat == "" {
 		return ""
 	}
-	inst := normalizeDesktopInstanceName(instance)
+	inst := sanitizeDesktopInstanceKey(instance)
 	return desktopSessionKeyPrefix + inst + ":" + trimmedChat
 }
 
@@ -145,7 +141,7 @@ func parseDesktopSessionKey(sessionKey string) (string, string, bool) {
 		chatID = strings.TrimSpace(raw)
 		return desktopDefaultInstance, chatID, chatID != ""
 	}
-	instance = normalizeDesktopInstanceName(instance)
+	instance = sanitizeDesktopInstanceKey(instance)
 	chatID = strings.TrimSpace(chatID)
 	if chatID == "" {
 		return "", "", false
@@ -163,7 +159,7 @@ func (oc *AIClient) desktopAPIInstances(ctx context.Context) map[string]DesktopA
 		return instances
 	}
 	for name, instance := range creds.ServiceTokens.DesktopAPIInstances {
-		key := normalizeDesktopInstanceName(name)
+		key := sanitizeDesktopInstanceKey(name)
 		if key == "" {
 			continue
 		}
@@ -184,7 +180,7 @@ func (oc *AIClient) desktopAPIInstances(ctx context.Context) map[string]DesktopA
 
 func (oc *AIClient) desktopAPIInstanceConfig(ctx context.Context, instance string) (DesktopAPIInstance, bool) {
 	instances := oc.desktopAPIInstances(ctx)
-	key := normalizeDesktopInstanceName(instance)
+	key := sanitizeDesktopInstanceKey(instance)
 	config, ok := instances[key]
 	return config, ok
 }

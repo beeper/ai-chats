@@ -218,5 +218,5 @@ func fnAgents(ce *commands.Event) {
 		}
 	}
 
-	ce.Reply("%s", formatSystemAck(reply))
+	ce.Reply("%s", strings.TrimSpace(reply))
 }

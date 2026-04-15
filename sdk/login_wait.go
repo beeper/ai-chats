@@ -12,10 +12,6 @@ type DisplayAndWaitLoopResult struct {
 	Continue bool
 }
 
-func ContinueDisplayAndWaitLoop() *DisplayAndWaitLoopResult {
-	return &DisplayAndWaitLoopResult{Continue: true}
-}
-
 type DisplayAndWaitLoopConfig[Start any, Completion any] struct {
 	Deadline           time.Time
 	PollInterval       time.Duration

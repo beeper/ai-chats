@@ -18,7 +18,7 @@ func (cc *CodexConnector) resolveAppServerLaunch() (appServerLaunch, error) {
 		listen = strings.TrimSpace(cc.Config.Codex.Listen)
 	}
 	if listen == "" {
-		wsURL, err := managedruntime.AllocateLoopbackWebSocketURL()
+		wsURL, err := managedruntime.AllocateLoopbackURL("ws")
 		if err != nil {
 			return appServerLaunch{}, err
 		}

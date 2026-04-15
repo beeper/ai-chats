@@ -19,10 +19,6 @@ func AllocateLoopbackURL(scheme string) (string, error) {
 	return fmt.Sprintf("%s://127.0.0.1:%d", scheme, addr.Port), nil
 }
 
-func AllocateLoopbackWebSocketURL() (string, error) {
-	return AllocateLoopbackURL("ws")
-}
-
 type Process struct {
 	Cmd *exec.Cmd
 }

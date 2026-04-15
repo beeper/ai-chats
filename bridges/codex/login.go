@@ -537,7 +537,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			if err != nil {
 				return nil, err
 			}
-			return sdk.ContinueDisplayAndWaitLoop(), nil
+			return &sdk.DisplayAndWaitLoopResult{Continue: true}, nil
 		},
 		OnCompletionSignal: func(_ context.Context, done codexLoginDone) (*sdk.DisplayAndWaitLoopResult, error) {
 			loginID := cl.getLoginID()
@@ -580,7 +580,7 @@ func (cl *CodexLogin) Wait(ctx context.Context) (*bridgev2.LoginStep, error) {
 			if spec, ok := codexLoginFlowSpecForFlow(cl.FlowID); ok && spec.usesBrowserUI && authURL != "" {
 				return &sdk.DisplayAndWaitLoopResult{Step: cl.displayWaitStep(spec.waitStepID, spec, "Open this URL in a browser and complete login, then wait here.", authURL)}, nil
 			}
-			return sdk.ContinueDisplayAndWaitLoop(), nil
+			return &sdk.DisplayAndWaitLoopResult{Continue: true}, nil
 		},
 		ReturnStep: func() *bridgev2.LoginStep {
 			log.Debug().Str("login_id", cl.getLoginID()).Msg("Codex login still waiting")
