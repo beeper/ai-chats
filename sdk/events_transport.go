@@ -142,37 +142,26 @@ func SendSystemMessage(
 		return nil
 	}
 	msgID := NewMessageID("system")
-	result := login.QueueRemoteEvent(&simplevent.Message[string]{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessage,
-			PortalKey: portal.PortalKey,
-			Sender:    sender,
-			Timestamp: time.Now(),
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str("system_notice_id", string(msgID))
-			},
-		},
-		Data: body,
-		ID:   msgID,
-		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) (*bridgev2.ConvertedMessage, error) {
-			return &bridgev2.ConvertedMessage{
-				Parts: []*bridgev2.ConvertedMessagePart{{
-					ID:   networkid.PartID("0"),
-					Type: event.EventMessage,
-					Content: &event.MessageEventContent{
-						MsgType:  event.MsgNotice,
-						Body:     body,
-						Mentions: &event.Mentions{},
-					},
-				}},
-			}, nil
+	_, _, err := SendViaPortal(SendViaPortalParams{
+		Login:       login,
+		Portal:      portal,
+		Sender:      sender,
+		MsgID:       msgID,
+		IDPrefix:    "system",
+		LogKey:      "system_notice_id",
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted: &bridgev2.ConvertedMessage{
+			Parts: []*bridgev2.ConvertedMessagePart{{
+				ID:   networkid.PartID("0"),
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType:  event.MsgNotice,
+					Body:     body,
+					Mentions: &event.Mentions{},
+				},
+			}},
 		},
 	})
-	if !result.Success {
-		if result.Error != nil {
-			return fmt.Errorf("send failed: %w", result.Error)
-		}
-		return fmt.Errorf("send failed")
-	}
-	return nil
+	return err
 }
