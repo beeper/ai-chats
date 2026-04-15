@@ -291,152 +291,166 @@ func systemEventsOwnerKey(oc *AIClient) string {
 func (oc *AIClient) resolveHeartbeatRoute(agentID string, heartbeat *HeartbeatConfig) (heartbeatRoute, error) {
 	route := heartbeatRoute{}
 	routing := oc.resolveSessionRouting(agentID)
-	normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
-	if normalizedMain == "" {
-		normalizedMain = defaultSessionMainKey
-	}
-	agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
 	session := ""
 	if heartbeat != nil && heartbeat.Session != nil {
 		session = strings.TrimSpace(*heartbeat.Session)
 	}
-	sessionUsesMainKey := session != "" && (strings.EqualFold(session, defaultSessionMainKey) ||
-		strings.EqualFold(session, sessionScopeGlobal) ||
-		strings.EqualFold(session, normalizedMain) ||
-		strings.EqualFold(session, routing.MainKey) ||
-		strings.EqualFold(session, agentMainAlias))
-	hbSession := heartbeatSessionResolution{
-		StoreAgentID: routing.StoreAgentID,
-		SessionKey:   routing.MainKey,
-	}
-	if routing.Scope != sessionScopeGlobal && !sessionUsesMainKey {
-		if strings.HasPrefix(session, "!") {
-			hbSession.SessionKey = session
-		} else {
-			candidate := strings.ToLower(session)
-			if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
-				candidate = routing.MainKey
-			} else if !strings.HasPrefix(candidate, "agent:") {
-				candidate = "agent:" + routing.AgentID + ":" + candidate
-			}
-			candidateUsesMainKey := candidate != "" && (strings.EqualFold(candidate, defaultSessionMainKey) ||
-				strings.EqualFold(candidate, sessionScopeGlobal) ||
-				strings.EqualFold(candidate, normalizedMain) ||
-				strings.EqualFold(candidate, routing.MainKey) ||
-				strings.EqualFold(candidate, agentMainAlias))
-			if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !candidateUsesMainKey {
-				hbSession.SessionKey = candidate
-			}
-		}
-		if hbSession.SessionKey != routing.MainKey {
-			if updatedAt, ok := oc.storedSessionUpdatedAt(context.Background(), routing.StoreAgentID, hbSession.SessionKey); ok {
-				hbSession.UpdatedAt = updatedAt
-			}
-		}
-	}
+	hbSession, explicitSessionRoom := oc.resolveHeartbeatSession(agentID, routing, session)
 	route.Session = hbSession
 	if oc == nil || oc.UserLogin == nil {
 		return route, errors.New("no session")
 	}
-	sessionPortal := (*bridgev2.Portal)(nil)
-	if session != "" && !sessionUsesMainKey && strings.HasPrefix(session, "!") {
-		if portal := oc.portalByRoomID(context.Background(), id.RoomID(session)); portal != nil && portal.MXID != "" {
-			if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-				sessionPortal = portal
-			}
-		}
-	}
-	if sessionPortal == nil && strings.HasPrefix(hbSession.SessionKey, "!") {
-		if portal := oc.portalByRoomID(context.Background(), id.RoomID(hbSession.SessionKey)); portal != nil && portal.MXID != "" {
-			if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-				sessionPortal = portal
-			}
-		}
-	}
-	if sessionPortal == nil {
-		if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
-			sessionPortal = portal
-		} else if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
-			sessionPortal = portal
-		}
-	}
+	sessionPortal := oc.firstHeartbeatPortal(agentID,
+		explicitSessionRoom,
+		hbSession.SessionKey,
+		"",
+		"",
+	)
 	if sessionPortal == nil {
 		return route, errors.New("no session")
 	}
 	route.SessionPortal = sessionPortal
 
-	if heartbeat != nil && heartbeat.Target != nil {
-		if strings.EqualFold(strings.TrimSpace(*heartbeat.Target), "none") {
-			route.Delivery = deliveryTarget{Reason: "target-none"}
-			return route, nil
-		}
+	explicitTo := ""
+	if heartbeat != nil && heartbeat.To != nil {
+		explicitTo = strings.TrimSpace(*heartbeat.To)
 	}
-	if heartbeat != nil && heartbeat.To != nil && strings.TrimSpace(*heartbeat.To) != "" {
-		trimmed := strings.TrimSpace(*heartbeat.To)
-		if strings.HasPrefix(trimmed, "!") {
-			if portal := oc.portalByRoomID(context.Background(), id.RoomID(trimmed)); portal != nil && portal.MXID != "" {
-				if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-					if !oc.IsLoggedIn() {
-						route.Delivery = deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-					} else {
-						route.Delivery = deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
-					}
-					return route, nil
-				}
-			}
-		}
-		route.Delivery = deliveryTarget{Reason: "no-target"}
+	explicitTarget := ""
+	if heartbeat != nil && heartbeat.Target != nil {
+		explicitTarget = strings.TrimSpace(*heartbeat.Target)
+	}
+	if strings.EqualFold(explicitTarget, "none") {
+		route.Delivery = deliveryTarget{Reason: "target-none"}
 		return route, nil
 	}
-	if heartbeat != nil && heartbeat.Target != nil {
-		trimmed := strings.TrimSpace(*heartbeat.Target)
-		if trimmed != "" && !strings.EqualFold(trimmed, "last") {
-			if strings.HasPrefix(trimmed, "!") {
-				if portal := oc.portalByRoomID(context.Background(), id.RoomID(trimmed)); portal != nil && portal.MXID != "" {
-					if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-						if !oc.IsLoggedIn() {
-							route.Delivery = deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-						} else {
-							route.Delivery = deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
-						}
-						return route, nil
-					}
-				}
-			}
-			route.Delivery = deliveryTarget{Reason: "no-target"}
-			return route, nil
+	if explicitTo != "" {
+		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTo, "", "")
+		return route, nil
+	}
+	if explicitTarget != "" && !strings.EqualFold(explicitTarget, "last") {
+		route.Delivery = oc.resolveHeartbeatDelivery(agentID, explicitTarget, "", "")
+		return route, nil
+	}
+	sessionDeliveryRoom := ""
+	if strings.HasPrefix(hbSession.SessionKey, "!") {
+		sessionDeliveryRoom = hbSession.SessionKey
+	}
+	route.Delivery = oc.resolveHeartbeatDelivery(agentID, sessionDeliveryRoom, "last-active", "default-chat")
+	return route, nil
+}
+
+func (oc *AIClient) resolveHeartbeatSession(agentID string, routing sessionRouting, session string) (heartbeatSessionResolution, string) {
+	normalizedMain := strings.ToLower(strings.TrimSpace(routing.MainKey))
+	if normalizedMain == "" {
+		normalizedMain = defaultSessionMainKey
+	}
+	agentMainAlias := "agent:" + routing.AgentID + ":" + defaultSessionMainKey
+	usesMainKey := func(value string) bool {
+		value = strings.TrimSpace(value)
+		return value != "" && (strings.EqualFold(value, defaultSessionMainKey) ||
+			strings.EqualFold(value, sessionScopeGlobal) ||
+			strings.EqualFold(value, normalizedMain) ||
+			strings.EqualFold(value, routing.MainKey) ||
+			strings.EqualFold(value, agentMainAlias))
+	}
+
+	resolution := heartbeatSessionResolution{
+		StoreAgentID: routing.StoreAgentID,
+		SessionKey:   routing.MainKey,
+	}
+	if routing.Scope == sessionScopeGlobal || session == "" || usesMainKey(session) {
+		return resolution, ""
+	}
+	if strings.HasPrefix(session, "!") {
+		resolution.SessionKey = session
+		return resolution, session
+	}
+
+	candidate := strings.ToLower(session)
+	if candidate == "" || strings.EqualFold(candidate, defaultSessionMainKey) {
+		candidate = routing.MainKey
+	} else if !strings.HasPrefix(candidate, "agent:") {
+		candidate = "agent:" + routing.AgentID + ":" + candidate
+	}
+	if strings.HasPrefix(candidate, "agent:"+routing.AgentID+":") && !usesMainKey(candidate) {
+		resolution.SessionKey = candidate
+		if updatedAt, ok := oc.storedSessionUpdatedAt(context.Background(), routing.StoreAgentID, resolution.SessionKey); ok {
+			resolution.UpdatedAt = updatedAt
 		}
 	}
-	if strings.HasPrefix(hbSession.SessionKey, "!") {
-		if portal := oc.portalByRoomID(context.Background(), id.RoomID(hbSession.SessionKey)); portal != nil && portal.MXID != "" {
-			if meta := portalMeta(portal); meta == nil || normalizeAgentID(resolveAgentID(meta)) == normalizeAgentID(agentID) {
-				if !oc.IsLoggedIn() {
-					route.Delivery = deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-				} else {
-					route.Delivery = deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix"}
-				}
-				return route, nil
-			}
+	return resolution, ""
+}
+
+func (oc *AIClient) firstHeartbeatPortal(agentID string, roomIDs ...string) *bridgev2.Portal {
+	for _, roomID := range roomIDs {
+		if portal := oc.heartbeatPortalForAgent(agentID, roomID); portal != nil {
+			return portal
 		}
 	}
 	if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
-		if !oc.IsLoggedIn() {
-			route.Delivery = deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-		} else {
-			route.Delivery = deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix", Reason: "last-active"}
-		}
-		return route, nil
+		return portal
 	}
 	if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
-		if !oc.IsLoggedIn() {
-			route.Delivery = deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
-		} else {
-			route.Delivery = deliveryTarget{Portal: portal, RoomID: portal.MXID, Channel: "matrix", Reason: "default-chat"}
-		}
-		return route, nil
+		return portal
 	}
-	route.Delivery = deliveryTarget{Reason: "no-target"}
-	return route, nil
+	return nil
+}
+
+func (oc *AIClient) heartbeatPortalForAgent(agentID string, roomID string) *bridgev2.Portal {
+	roomID = strings.TrimSpace(roomID)
+	if oc == nil || roomID == "" || !strings.HasPrefix(roomID, "!") {
+		return nil
+	}
+	portal := oc.portalByRoomID(context.Background(), id.RoomID(roomID))
+	if portal == nil || portal.MXID == "" {
+		return nil
+	}
+	meta := portalMeta(portal)
+	if meta != nil && normalizeAgentID(resolveAgentID(meta)) != normalizeAgentID(agentID) {
+		return nil
+	}
+	return portal
+}
+
+func (oc *AIClient) resolveHeartbeatDelivery(agentID string, primaryRoomID string, fallbackReason string, defaultReason string) deliveryTarget {
+	candidates := []struct {
+		roomID string
+		reason string
+	}{
+		{roomID: primaryRoomID},
+	}
+	if fallbackReason != "" {
+		if portal := oc.lastActivePortal(agentID); portal != nil && portal.MXID != "" {
+			candidates = append(candidates, struct {
+				roomID string
+				reason string
+			}{roomID: portal.MXID.String(), reason: fallbackReason})
+		}
+	}
+	if defaultReason != "" {
+		if portal := oc.defaultChatPortal(); portal != nil && portal.MXID != "" {
+			candidates = append(candidates, struct {
+				roomID string
+				reason string
+			}{roomID: portal.MXID.String(), reason: defaultReason})
+		}
+	}
+	for _, candidate := range candidates {
+		portal := oc.heartbeatPortalForAgent(agentID, candidate.roomID)
+		if portal == nil {
+			continue
+		}
+		if !oc.IsLoggedIn() {
+			return deliveryTarget{Channel: "matrix", Reason: "channel-not-ready"}
+		}
+		return deliveryTarget{
+			Portal:  portal,
+			RoomID:  portal.MXID,
+			Channel: "matrix",
+			Reason:  candidate.reason,
+		}
+	}
+	return deliveryTarget{Reason: "no-target"}
 }
 
 func (oc *AIClient) shouldRunHeartbeatForFile(agentID string, reason string) bool {

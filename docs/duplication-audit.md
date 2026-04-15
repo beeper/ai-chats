@@ -340,8 +340,11 @@ Why this still violates the goal:
   same room-scoped busy/lock primitives as queue/runtime admission
 - room occupancy no longer bounces between `roomLocks` and `activeRoomRuns`;
   the run map is now the only room-busy state owner
-- the remaining duplication is in how heartbeat still performs its own preflight
-  and launch wiring instead of entering one canonical execution path
+- heartbeat route selection now walks one session resolver and one delivery
+  resolver instead of repeating portal validation and `channel-not-ready`
+  branches
+- the remaining duplication is now mostly the heartbeat-specific launch/result
+  scaffold around that shared runtime path
 
 Desired owner:
 

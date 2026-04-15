@@ -301,10 +301,10 @@ inside `sendFinalHeartbeatTurn(...)` instead of bouncing through
 `heartbeatSkipParams` / `skipHeartbeatRun(...)`.
 
 Recent progress also flattened heartbeat route selection further:
-`resolveHeartbeatRoute(...)` now keeps main-key alias checks, agent-room
-lookup, fallback-room lookup, and delivery-target shaping inline instead of
-routing through `sessionUsesMainKey(...)`, `resolveAgentPortal(...)`,
-`resolveFallbackPortal(...)`, and `deliveryTargetForPortal(...)`.
+`resolveHeartbeatRoute(...)` now uses one session resolver plus one delivery
+resolver, so agent-room validation and `channel-not-ready` handling no longer
+repeat across explicit target, session-room, last-active, and default-chat
+branches.
 
 Recent progress also removed one more split execution entrypoint: heartbeat now
 uses the same low-level run launch primitive as queued/immediate execution
