@@ -7,9 +7,8 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 )
 
 func (s *schedulerRuntime) ensureScheduledRoomLocked(
@@ -63,19 +62,15 @@ func (s *schedulerRuntime) getOrCreateScheduledPortal(ctx context.Context, porta
 	if err != nil {
 		return nil, err
 	}
-	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
-		Portal:      portal,
-		Title:       displayName,
-		OtherUserID: portal.OtherUserID,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			meta := portalMeta(portal)
-			meta.InternalRoomKind = internalRoomKind
-			setPortalResolvedTarget(portal, meta, s.client.agentUserID(normalizeAgentID(agentID)))
-		},
-		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return s.client.savePortal(ctx, portal, "named room setup")
-		},
-	}); err != nil {
+	meta := portalMeta(portal)
+	meta.InternalRoomKind = internalRoomKind
+	portal.RoomType = database.RoomTypeDM
+	portal.Name = strings.TrimSpace(displayName)
+	portal.NameSet = portal.Name != ""
+	portal.Topic = ""
+	portal.TopicSet = false
+	setPortalResolvedTarget(portal, meta, s.client.agentUserID(normalizeAgentID(agentID)))
+	if err := s.client.savePortal(ctx, portal, "named room setup"); err != nil {
 		return nil, err
 	}
 	return s.client.ensurePortalRoom(ctx, ensurePortalRoomParams{Portal: portal})

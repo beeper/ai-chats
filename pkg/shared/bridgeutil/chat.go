@@ -2,9 +2,6 @@ package bridgeutil
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
@@ -78,122 +75,6 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 			},
 		},
 	}
-}
-
-type LoginDMChatInfoParams struct {
-	Title               string
-	Topic               string
-	Login               *bridgev2.UserLogin
-	HumanUserID         networkid.UserID
-	HumanSender         *bridgev2.EventSender
-	BotUserID           networkid.UserID
-	BotDisplayName      string
-	BotSender           *bridgev2.EventSender
-	BotUserInfo         *bridgev2.UserInfo
-	BotMemberEventExtra map[string]any
-	CanBackfill         bool
-}
-
-func BuildLoginDMChatInfo(p LoginDMChatInfoParams) *bridgev2.ChatInfo {
-	if p.Login == nil {
-		return nil
-	}
-	return BuildDMChatInfo(DMChatInfoParams{
-		Title:               p.Title,
-		Topic:               p.Topic,
-		HumanUserID:         p.HumanUserID,
-		LoginID:             p.Login.ID,
-		HumanSender:         p.HumanSender,
-		BotUserID:           p.BotUserID,
-		BotDisplayName:      p.BotDisplayName,
-		BotSender:           p.BotSender,
-		BotUserInfo:         p.BotUserInfo,
-		BotMemberEventExtra: p.BotMemberEventExtra,
-		CanBackfill:         p.CanBackfill,
-	})
-}
-
-type ConfigureDMPortalParams struct {
-	Portal       *bridgev2.Portal
-	Title        string
-	Topic        string
-	OtherUserID  networkid.UserID
-	Save         bool
-	MutatePortal func(*bridgev2.Portal)
-}
-
-func ConfigureDMPortal(ctx context.Context, p ConfigureDMPortalParams) error {
-	if p.Portal == nil {
-		return fmt.Errorf("missing portal")
-	}
-	p.Portal.RoomType = database.RoomTypeDM
-	p.Portal.OtherUserID = p.OtherUserID
-	p.Portal.Name = strings.TrimSpace(p.Title)
-	p.Portal.NameSet = p.Portal.Name != ""
-	p.Portal.Topic = strings.TrimSpace(p.Topic)
-	p.Portal.TopicSet = p.Portal.Topic != ""
-	if p.MutatePortal != nil {
-		p.MutatePortal(p.Portal)
-	}
-	if !p.Save {
-		return nil
-	}
-	return p.Portal.Save(ctx)
-}
-
-type ConfigureAndPersistDMPortalParams struct {
-	Portal       *bridgev2.Portal
-	Title        string
-	Topic        string
-	OtherUserID  networkid.UserID
-	MutatePortal func(*bridgev2.Portal)
-	Persist      func(context.Context, *bridgev2.Portal) error
-}
-
-func ConfigureAndPersistDMPortal(ctx context.Context, p ConfigureAndPersistDMPortalParams) error {
-	if err := ConfigureDMPortal(ctx, ConfigureDMPortalParams{
-		Portal:       p.Portal,
-		Title:        p.Title,
-		Topic:        p.Topic,
-		OtherUserID:  p.OtherUserID,
-		Save:         false,
-		MutatePortal: p.MutatePortal,
-	}); err != nil {
-		return err
-	}
-	if p.Persist != nil {
-		return p.Persist(ctx, p.Portal)
-	}
-	if p.Portal == nil {
-		return fmt.Errorf("missing portal")
-	}
-	return p.Portal.Save(ctx)
-}
-
-type MaterializePortalRoomParams struct {
-	Login    *bridgev2.UserLogin
-	Portal   *bridgev2.Portal
-	ChatInfo *bridgev2.ChatInfo
-}
-
-func MaterializePortalRoom(ctx context.Context, p MaterializePortalRoomParams) (bool, error) {
-	if p.Login == nil {
-		return false, fmt.Errorf("missing login")
-	}
-	if p.Portal == nil {
-		return false, fmt.Errorf("missing portal")
-	}
-	created := p.Portal.MXID == ""
-	if created {
-		if err := p.Portal.CreateMatrixRoom(ctx, p.Login, p.ChatInfo); err != nil {
-			return false, err
-		}
-	} else if p.ChatInfo != nil {
-		p.Portal.UpdateInfo(ctx, p.ChatInfo, p.Login, nil, time.Time{})
-	}
-	p.Portal.UpdateBridgeInfo(ctx)
-	p.Portal.UpdateCapabilities(ctx, p.Login, true)
-	return created, nil
 }
 
 func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {

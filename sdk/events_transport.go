@@ -148,10 +148,6 @@ func SendSystemMessage(
 			Mentions: &event.Mentions{},
 		},
 	}
-	if login.Bridge.Bot != nil {
-		_, err := login.Bridge.Bot.SendMessage(ctx, portal.MXID, event.EventMessage, content, nil)
-		return err
-	}
 	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage)
 	if !ok || intent == nil {
 		return fmt.Errorf("intent resolution failed")

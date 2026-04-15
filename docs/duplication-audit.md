@@ -88,6 +88,15 @@ These wrapper/helper classes are already gone and should not return:
   owner, welcome/bootstrap no longer hangs off `ChatInfo.ExtraUpdates`, and
   the named-room wrapper layer no longer rebuilds a second room materialization
   path
+- Shared DM portal helper stacks are gone:
+  `ConfigureDMPortal`, `ConfigureAndPersistDMPortal`,
+  `MaterializePortalRoom`, and the login-only `BuildLoginDMChatInfo` wrapper
+  were deleted so bridges now mutate/save/materialize portals directly with
+  bridgev2 primitives at their real ownership boundaries
+- System notices no longer bypass the room sender through the bridge bot:
+  `sdk.SendSystemMessage(...)` now uses the canonical portal intent resolution
+  path, so welcome notices and SDK notices follow the same sender semantics as
+  the rest of the bridge
 - Retrieval env/provider-registration/provider-constructor wrappers, direct
   fetch default wrappers, and the Exa wrapper layer
 - Bridge-local status wrappers in `bridges/ai` and `bridges/codex`

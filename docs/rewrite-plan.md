@@ -260,6 +260,17 @@ Recent progress also removed the generic `effectiveToolConfig[T]` wrapper:
 `effectiveSearchConfig(...)` and `effectiveFetchConfig(...)` now read their
 tool config, login-derived overrides, and env/default merge directly.
 
+Recent progress also removed the DM portal helper stack and the hidden welcome
+bootstrap side channel:
+bridges now assign/save/materialize DM portals directly with bridgev2
+primitives, `BuildLoginDMChatInfo(...)` is gone, and AI chat bootstrap no
+longer hides room notices behind `ChatInfo.ExtraUpdates`.
+
+Recent progress also removed the bridge-bot system-notice bypass:
+SDK room notices now resolve the portal sender intent directly instead of
+special-casing `login.Bridge.Bot`, so the welcome/notice path follows the same
+ownership model as normal room sends.
+
 Recent progress also removed the memory runtime policy helper layer:
 prompt-context injection and citation-mode selection now read the memory
 module config directly at the real wiring points instead of routing through

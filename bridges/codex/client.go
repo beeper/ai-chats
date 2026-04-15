@@ -1573,11 +1573,11 @@ func (cc *CodexClient) composeCodexChatInfo(portal *bridgev2.Portal, portalState
 		}
 		topic = cc.codexTopicForPortal(portal, portalState)
 	}
-	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+	return bridgeutil.BuildDMChatInfo(bridgeutil.DMChatInfoParams{
 		Title:          title,
 		Topic:          topic,
-		Login:          cc.UserLogin,
 		HumanUserID:    humanUserID(cc.UserLogin.ID),
+		LoginID:        cc.UserLogin.ID,
 		BotUserID:      codexGhostID,
 		BotDisplayName: "Codex",
 		CanBackfill:    canBackfill,

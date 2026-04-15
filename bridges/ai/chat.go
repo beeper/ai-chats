@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
@@ -684,6 +683,7 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 	if params.Agent != nil {
 		oc.configureAgentChatPortal(ctx, portal, chatInfo, params.Agent, modelID, params.ApplyModelOverride, "agent config")
 	}
+	oc.scheduleChatBootstrap(ctx, portal)
 
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
@@ -767,29 +767,21 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
-	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
-		Portal:      portal,
-		Title:       title,
-		OtherUserID: modelUserID(modelID),
-		MutatePortal: func(portal *bridgev2.Portal) {
-			portal.Metadata = pmeta
-			setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
-			defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-			if defaultAvatar != "" {
-				portal.AvatarID = networkid.AvatarID(defaultAvatar)
-				portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-			}
-		},
-		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return oc.savePortal(ctx, portal, "chat bootstrap")
-		},
-	}); err != nil {
-		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = modelUserID(modelID)
+	portal.Name = strings.TrimSpace(title)
+	portal.NameSet = portal.Name != ""
+	portal.Topic = ""
+	portal.TopicSet = false
+	portal.Metadata = pmeta
+	setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
+	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
+	if defaultAvatar != "" {
+		portal.AvatarID = networkid.AvatarID(defaultAvatar)
+		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
 	}
-	if portal.MXID != "" {
-		portal.UpdateInfo(ctx, chatInfo, oc.UserLogin, nil, time.Time{})
-		portal.UpdateBridgeInfo(ctx)
-		portal.UpdateCapabilities(ctx, oc.UserLogin, true)
+	if err := oc.savePortal(ctx, portal, "chat bootstrap"); err != nil {
+		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
 	oc.ensureGhostDisplayName(ctx, modelID)
 	return portal, chatInfo, nil
@@ -1049,16 +1041,15 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 	if title == "" {
 		title = modelName
 	}
-	chatInfo := bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+	chatInfo := bridgeutil.BuildDMChatInfo(bridgeutil.DMChatInfoParams{
 		Title:          title,
 		Topic:          "",
-		Login:          oc.UserLogin,
 		HumanUserID:    humanUserID(oc.UserLogin.ID),
+		LoginID:        oc.UserLogin.ID,
 		BotUserID:      modelUserID(modelID),
 		BotDisplayName: modelName,
 		CanBackfill:    true,
 	})
-	chatInfo.ExtraUpdates = bridgev2.MergeExtraUpdaters(chatInfo.ExtraUpdates, oc.initialRoomNoticeUpdater())
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
 	return chatInfo

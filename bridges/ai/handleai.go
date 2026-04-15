@@ -288,18 +288,11 @@ func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.P
 	}()
 }
 
-func (oc *AIClient) initialRoomNoticeUpdater() bridgev2.ExtraUpdater[*bridgev2.Portal] {
-	if oc == nil {
-		return nil
-	}
-	return func(ctx context.Context, portal *bridgev2.Portal) bool {
-		oc.queueInitialRoomNotice(ctx, portal)
-		return false
-	}
-}
-
-func (oc *AIClient) queueInitialRoomNotice(ctx context.Context, portal *bridgev2.Portal) {
+func (oc *AIClient) scheduleChatBootstrap(ctx context.Context, portal *bridgev2.Portal) {
 	if oc == nil || portal == nil || portal.PortalKey.ID == "" {
+		return
+	}
+	if portal.MXID != "" {
 		return
 	}
 	bgCtx := oc.backgroundContext(ctx)
@@ -451,9 +444,6 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		if err := oc.savePortal(bgCtx, portal, "room title"); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
 			return
-		}
-		if _, err := oc.syncPortalRoom(bgCtx, portal, oc.chatInfoFromPortal(bgCtx, portal), portalRoomMaterializeOptions{}); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to sync generated room title to Matrix")
 		}
 	}()
 }

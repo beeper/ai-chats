@@ -107,8 +107,10 @@ func TestBootstrapPortalRoomSendsInitialWelcomeNotice(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
 	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
-	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
-	client.UserLogin.Bridge.Bot = matrix.api
+	ghostAPI := &testMatrixAPI{}
+	botAPI := &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
+	matrix.api = ghostAPI
+	client.UserLogin.Bridge.Bot = botAPI
 
 	chatResp, err := client.createChat(ctx, chatCreateParams{ModelID: client.effectiveModel(nil)})
 	if err != nil {
@@ -128,23 +130,26 @@ func TestBootstrapPortalRoomSendsInitialWelcomeNotice(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if matrix.api.sentContent != nil {
+		if ghostAPI.sentContent != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if matrix.api.sentContent == nil {
+	if ghostAPI.sentContent == nil {
 		t.Fatal("expected initial welcome notice to be sent")
 	}
-	if matrix.api.sentRoomID != portal.MXID {
-		t.Fatalf("expected welcome notice in %q, got %q", portal.MXID, matrix.api.sentRoomID)
+	if botAPI.sendCount != 0 {
+		t.Fatalf("expected welcome notice to avoid bridge bot send path, got %d bot sends", botAPI.sendCount)
 	}
-	if matrix.api.sentType != event.EventMessage {
-		t.Fatalf("expected event type %q, got %q", event.EventMessage, matrix.api.sentType)
+	if ghostAPI.sentRoomID != portal.MXID {
+		t.Fatalf("expected welcome notice in %q, got %q", portal.MXID, ghostAPI.sentRoomID)
 	}
-	msg, ok := matrix.api.sentContent.Parsed.(*event.MessageEventContent)
+	if ghostAPI.sentType != event.EventMessage {
+		t.Fatalf("expected event type %q, got %q", event.EventMessage, ghostAPI.sentType)
+	}
+	msg, ok := ghostAPI.sentContent.Parsed.(*event.MessageEventContent)
 	if !ok {
-		t.Fatalf("expected parsed message content, got %#v", matrix.api.sentContent.Parsed)
+		t.Fatalf("expected parsed message content, got %#v", ghostAPI.sentContent.Parsed)
 	}
 	if msg.MsgType != event.MsgNotice {
 		t.Fatalf("expected notice message, got %q", msg.MsgType)
@@ -162,8 +167,10 @@ func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
 	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
-	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
-	client.UserLogin.Bridge.Bot = matrix.api
+	ghostAPI := &testMatrixAPI{}
+	botAPI := &testMatrixAPI{createRoomID: id.RoomID("!new-ai-chat:example.com")}
+	matrix.api = ghostAPI
+	client.UserLogin.Bridge.Bot = botAPI
 
 	chatResp, err := client.createChat(ctx, chatCreateParams{ModelID: client.effectiveModel(nil)})
 	if err != nil {
@@ -182,8 +189,11 @@ func TestEnsurePortalRoomDoesNotResendInitialWelcomeNotice(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("second ensurePortalRoom returned error: %v", err)
 	}
-	if matrix.api.sendCount != 1 {
-		t.Fatalf("expected one initial notice send, got %d", matrix.api.sendCount)
+	if ghostAPI.sendCount != 1 {
+		t.Fatalf("expected one initial notice send, got %d", ghostAPI.sendCount)
+	}
+	if botAPI.sendCount != 0 {
+		t.Fatalf("expected no bridge bot sends, got %d", botAPI.sendCount)
 	}
 }
 
@@ -193,8 +203,10 @@ func TestProvisionResolveIdentifierSendsInitialWelcomeNotice(t *testing.T) {
 	client.UserLogin.Client = client
 
 	matrix := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
-	matrix.api = &testMatrixAPI{createRoomID: id.RoomID("!provisioned-ai-chat:example.com")}
-	client.UserLogin.Bridge.Bot = matrix.api
+	ghostAPI := &testMatrixAPI{}
+	botAPI := &testMatrixAPI{createRoomID: id.RoomID("!provisioned-ai-chat:example.com")}
+	matrix.api = ghostAPI
+	client.UserLogin.Bridge.Bot = botAPI
 
 	ghost, err := client.resolveChatGhost(ctx, modelUserID(client.effectiveModel(nil)))
 	if err != nil {
@@ -214,7 +226,10 @@ func TestProvisionResolveIdentifierSendsInitialWelcomeNotice(t *testing.T) {
 	if resp.Portal.MXID == "" {
 		t.Fatal("expected provisioning path to materialize Matrix room")
 	}
-	if matrix.api.sendCount != 1 {
-		t.Fatalf("expected one initial notice send, got %d", matrix.api.sendCount)
+	if ghostAPI.sendCount != 1 {
+		t.Fatalf("expected one initial notice send, got %d", ghostAPI.sendCount)
+	}
+	if botAPI.sendCount != 0 {
+		t.Fatalf("expected no bridge bot sends, got %d", botAPI.sendCount)
 	}
 }

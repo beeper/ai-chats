@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
@@ -114,23 +116,26 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 	meta.Topic = dummyPortalTopic
 	meta.ChatIndex = idx
 
-	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
-		Portal:      portal,
-		Title:       title,
-		Topic:       dummyPortalTopic,
-		OtherUserID: dummyAgentUserID,
-	}); err != nil {
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = dummyAgentUserID
+	portal.Name = strings.TrimSpace(title)
+	portal.NameSet = portal.Name != ""
+	portal.Topic = strings.TrimSpace(dummyPortalTopic)
+	portal.TopicSet = portal.Topic != ""
+	if err := portal.Save(ctx); err != nil {
 		return nil, fmt.Errorf("save portal: %w", err)
 	}
 
 	chatInfo := dc.composeChatInfo(login, title)
-	if _, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
-		Login:    login,
-		Portal:   portal,
-		ChatInfo: chatInfo,
-	}); err != nil {
-		return nil, fmt.Errorf("create Matrix room: %w", err)
+	if portal.MXID == "" {
+		if err := portal.CreateMatrixRoom(ctx, login, chatInfo); err != nil {
+			return nil, fmt.Errorf("create Matrix room: %w", err)
+		}
+	} else {
+		portal.UpdateInfo(ctx, chatInfo, login, nil, time.Time{})
 	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, login, true)
 	return &bridgev2.CreateChatResponse{
 		PortalKey:  portal.PortalKey,
 		Portal:     portal,
@@ -139,11 +144,11 @@ func (dc *DummyBridgeConnector) ensureChatForIndexLocked(ctx context.Context, lo
 }
 
 func (dc *DummyBridgeConnector) composeChatInfo(login *bridgev2.UserLogin, title string) *bridgev2.ChatInfo {
-	return bridgeutil.BuildLoginDMChatInfo(bridgeutil.LoginDMChatInfoParams{
+	return bridgeutil.BuildDMChatInfo(bridgeutil.DMChatInfoParams{
 		Title:          title,
 		Topic:          dummyPortalTopic,
-		Login:          login,
 		HumanUserID:    sdk.HumanUserID("dummybridge-user", login.ID),
+		LoginID:        login.ID,
 		BotUserID:      dummyAgentUserID,
 		BotDisplayName: dummyAgentName,
 		BotUserInfo:    dummySDKAgent().UserInfo(),

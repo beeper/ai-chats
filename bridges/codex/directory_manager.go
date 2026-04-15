@@ -7,11 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -133,30 +134,27 @@ func (cc *CodexClient) bootstrapCodexPortal(
 	if portal == nil {
 		return nil, false, fmt.Errorf("missing portal")
 	}
-	if err := bridgeutil.ConfigureAndPersistDMPortal(ctx, bridgeutil.ConfigureAndPersistDMPortalParams{
-		Portal:      portal,
-		Title:       title,
-		OtherUserID: codexGhostID,
-		MutatePortal: func(portal *bridgev2.Portal) {
-			portalMeta(portal).IsCodexRoom = true
-		},
-		Persist: func(ctx context.Context, portal *bridgev2.Portal) error {
-			return saveCodexPortalState(ctx, portal, state)
-		},
-	}); err != nil {
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = codexGhostID
+	portal.Name = strings.TrimSpace(title)
+	portal.NameSet = portal.Name != ""
+	portalMeta(portal).IsCodexRoom = true
+	if err := saveCodexPortalState(ctx, portal, state); err != nil {
 		return nil, false, err
 	}
 	if !createRoom {
 		return portal, false, nil
 	}
-	created, err := bridgeutil.MaterializePortalRoom(ctx, bridgeutil.MaterializePortalRoomParams{
-		Login:    cc.UserLogin,
-		Portal:   portal,
-		ChatInfo: chatInfo,
-	})
-	if err != nil {
-		return nil, false, err
+	created := portal.MXID == ""
+	if created {
+		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, chatInfo); err != nil {
+			return nil, false, err
+		}
+	} else if chatInfo != nil {
+		portal.UpdateInfo(ctx, chatInfo, cc.UserLogin, nil, time.Time{})
 	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, cc.UserLogin, true)
 	return portal, created, nil
 }
 

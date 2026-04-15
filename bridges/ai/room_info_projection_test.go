@@ -41,8 +41,8 @@ func TestGetChatInfoUsesRichProjectionForAgentChats(t *testing.T) {
 	if _, ok := info.Members.MemberMap[modelUserID("openai/gpt-5-mini")]; ok {
 		t.Fatalf("expected agent room projection to replace model ghost member")
 	}
-	if info.ExtraUpdates == nil {
-		t.Fatalf("expected chat projection to preserve bridgev2 room extra updates")
+	if info.ExtraUpdates != nil {
+		t.Fatalf("expected chat projection to avoid hidden room bootstrap side effects")
 	}
 }
 
