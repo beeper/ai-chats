@@ -593,17 +593,17 @@ func (t *Turn) SendStatus(status event.MessageStatus, message string) {
 
 func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {
 	uiMessage := streamui.SnapshotUIMessage(t.state)
-	snapshot := BuildTurnSnapshot(uiMessage, TurnDataBuildOptions{
+	turnData := BuildTurnDataFromUIMessage(uiMessage, TurnDataBuildOptions{
 		ID:   t.turnID,
 		Role: "assistant",
 		Text: strings.TrimSpace(t.VisibleText()),
-	}, "")
+	})
 	var agentID string
 	if t.agent != nil {
 		agentID = t.agent.ID
 	}
 	runtimeMeta := BuildAssistantMetadataBundle(AssistantMetadataBundleParams{
-		Snapshot:      snapshot,
+		TurnData:      turnData,
 		FinishReason:  finishReason,
 		TurnID:        t.turnID,
 		AgentID:       agentID,

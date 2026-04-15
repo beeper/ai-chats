@@ -6,30 +6,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
-type TurnSnapshot struct {
-	TurnData        TurnData
-	UIMessage       map[string]any
-	Body            string
-	ThinkingContent string
-	ToolCalls       []ToolCallMetadata
-	GeneratedFiles  []GeneratedFileRef
-}
-
-func BuildTurnSnapshot(uiMessage map[string]any, opts TurnDataBuildOptions, toolType string) TurnSnapshot {
-	return SnapshotFromTurnData(BuildTurnDataFromUIMessage(uiMessage, opts), toolType)
-}
-
-func SnapshotFromTurnData(td TurnData, toolType string) TurnSnapshot {
-	return TurnSnapshot{
-		TurnData:        td.Clone(),
-		UIMessage:       UIMessageFromTurnData(td),
-		Body:            TurnText(td),
-		ThinkingContent: TurnReasoningText(td),
-		ToolCalls:       TurnToolCalls(td, toolType),
-		GeneratedFiles:  TurnGeneratedFiles(td),
-	}
-}
-
 func TurnText(td TurnData) string {
 	var sb strings.Builder
 	for _, part := range td.Parts {
@@ -72,7 +48,7 @@ func TurnGeneratedFiles(td TurnData) []GeneratedFileRef {
 	return refs
 }
 
-func TurnToolCalls(td TurnData, toolType string) []ToolCallMetadata {
+func TurnToolCalls(td TurnData, defaultToolType string) []ToolCallMetadata {
 	var calls []ToolCallMetadata
 	for _, part := range td.Parts {
 		if normalizeTurnPartType(part.Type) != "tool" {
@@ -85,11 +61,14 @@ func TurnToolCalls(td TurnData, toolType string) []ToolCallMetadata {
 		call := ToolCallMetadata{
 			CallID:       callID,
 			ToolName:     strings.TrimSpace(part.ToolName),
-			ToolType:     strings.TrimSpace(toolType),
+			ToolType:     strings.TrimSpace(part.ToolType),
 			Input:        canonicalJSONObject(part.Input),
 			Output:       canonicalJSONObject(part.Output),
 			Status:       strings.TrimSpace(part.State),
 			ErrorMessage: strings.TrimSpace(part.ErrorText),
+		}
+		if call.ToolType == "" {
+			call.ToolType = strings.TrimSpace(defaultToolType)
 		}
 		switch call.Status {
 		case "output-available":

@@ -26,21 +26,20 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	if len(uiMessage) == 0 && turn != nil {
 		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
 	}
-	snapshot := sdk.TurnSnapshot{}
+	turnData := sdk.TurnData{}
 	if turn != nil {
-		snapshot = sdk.SnapshotFromTurnData(buildCanonicalTurnData(state, nil), "ai")
+		turnData = buildCanonicalTurnData(state, nil)
 	} else {
-		snapshot = sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
+		turnData = sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
 			ID:             turnID,
 			Role:           "assistant",
 			Text:           displayStreamingText(state),
 			Reasoning:      state.reasoning.String(),
 			ToolCalls:      state.toolCalls,
 			GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
-		}, "ai")
+		})
 		if len(uiMessage) == 0 {
-			snapshot.UIMessage = nil
-			snapshot.TurnData = sdk.TurnData{}
+			turnData = sdk.TurnData{}
 		}
 	}
 	modelID := state.respondingModelID
@@ -48,7 +47,8 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 		modelID = oc.effectiveModel(meta)
 	}
 	bundle := sdk.BuildAssistantMetadataBundle(sdk.AssistantMetadataBundleParams{
-		Snapshot:           snapshot,
+		TurnData:           turnData,
+		ToolType:           "ai",
 		FinishReason:       state.finishReason,
 		TurnID:             turnID,
 		AgentID:            state.agentID,

@@ -1958,16 +1958,17 @@ func buildMessageMetadata(state *streamingState, turnID string, model string, fi
 	if state != nil && strings.TrimSpace(state.currentModel) != "" {
 		model = state.currentModel
 	}
-	snapshot := sdk.BuildTurnSnapshot(uiMessage, sdk.TurnDataBuildOptions{
+	turnData := sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
 		ID:             turnID,
 		Role:           "assistant",
 		Text:           state.accumulated.String(),
 		Reasoning:      state.reasoning.String(),
 		ToolCalls:      state.toolCalls,
 		GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
-	}, "codex")
+	})
 	bundle := sdk.BuildAssistantMetadataBundle(sdk.AssistantMetadataBundleParams{
-		Snapshot:           snapshot,
+		TurnData:           turnData,
+		ToolType:           "codex",
 		FinishReason:       finishReason,
 		TurnID:             turnID,
 		AgentID:            state.agentID,

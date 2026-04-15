@@ -147,7 +147,12 @@ Recent cleanup kept pushing in that direction:
   flow through one `applyRetrievalConfigRuntimeDefaults(...)` path instead of
   being duplicated in both `effectiveSearchConfig(...)` and
   `effectiveFetchConfig(...)`
-  longer each carry their own save/notify return path
+- SDK/bridge assistant metadata no longer round-trip through transient
+  snapshots:
+  `sdk.BuildAssistantMetadataBundle(...)` now consumes canonical `TurnData`
+  directly, `sdk.BuildTurnSnapshot(...)` / `sdk.SnapshotFromTurnData(...)` are
+  gone, and the AI / Codex / SDK final-metadata paths no longer build extra UI
+  message projections just to flatten them back into message metadata
 
 ## Highest-Value Remaining Problems
 

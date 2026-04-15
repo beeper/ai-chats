@@ -348,6 +348,12 @@ Recent progress also collapsed duplicated retrieval-config assembly:
 runtime merge path for connector config, login-derived Exa credentials, env
 overlays, and defaults instead of carrying two separate branches.
 
+Recent progress also collapsed the SDK/bridge snapshot-to-metadata path:
+assistant message metadata now derives directly from canonical `TurnData`,
+`BuildTurnSnapshot(...)` / `SnapshotFromTurnData(...)` are gone, and the SDK /
+AI / Codex metadata writers no longer build transient snapshot wrappers just to
+flatten them back into metadata.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

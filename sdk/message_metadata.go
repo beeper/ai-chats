@@ -73,7 +73,8 @@ func CopyFromBaseAndAssistant(base *BaseMessageMetadata, srcBase *BaseMessageMet
 }
 
 type AssistantMetadataBundleParams struct {
-	Snapshot           TurnSnapshot
+	TurnData           TurnData
+	ToolType           string
 	FinishReason       string
 	TurnID             string
 	AgentID            string
@@ -94,76 +95,37 @@ type AssistantMetadataBundle struct {
 }
 
 func BuildAssistantMetadataBundle(p AssistantMetadataBundleParams) AssistantMetadataBundle {
+	turnID := p.TurnID
+	if turnID == "" {
+		turnID = p.TurnData.ID
+	}
+	body := TurnText(p.TurnData)
+	thinkingContent := TurnReasoningText(p.TurnData)
+	toolCalls := TurnToolCalls(p.TurnData, p.ToolType)
+	generatedFiles := TurnGeneratedFiles(p.TurnData)
 	return AssistantMetadataBundle{
 		Base: BuildAssistantBaseMetadata(AssistantMetadataParams{
-			Body:              p.Snapshot.Body,
+			Body:              body,
 			FinishReason:      p.FinishReason,
-			TurnID:            p.TurnID,
+			TurnID:            turnID,
 			AgentID:           p.AgentID,
 			StartedAtMs:       p.StartedAtMs,
 			CompletedAtMs:     p.CompletedAtMs,
-			ThinkingContent:   p.Snapshot.ThinkingContent,
+			ThinkingContent:   thinkingContent,
 			PromptTokens:      p.PromptTokens,
 			CompletionTokens:  p.CompletionTokens,
 			ReasoningTokens:   p.ReasoningTokens,
-			ToolCalls:         p.Snapshot.ToolCalls,
-			GeneratedFiles:    p.Snapshot.GeneratedFiles,
-			CanonicalTurnData: p.Snapshot.TurnData.ToMap(),
+			ToolCalls:         toolCalls,
+			GeneratedFiles:    generatedFiles,
+			CanonicalTurnData: p.TurnData.ToMap(),
 		}),
 		Assistant: AssistantMessageMetadata{
 			CompletionID:       p.CompletionID,
 			Model:              p.Model,
-			HasToolCalls:       len(p.Snapshot.ToolCalls) > 0,
+			HasToolCalls:       len(toolCalls) > 0,
 			FirstTokenAtMs:     p.FirstTokenAtMs,
 			ThinkingTokenCount: p.ThinkingTokenCount,
 		},
-	}
-}
-
-type BaseSnapshotMetadataParams struct {
-	Snapshot           TurnSnapshot
-	Role               string
-	Body               string
-	FinishReason       string
-	TurnID             string
-	AgentID            string
-	StartedAtMs        int64
-	CompletedAtMs      int64
-	PromptTokens       int64
-	CompletionTokens   int64
-	ReasoningTokens    int64
-	ExcludeFromHistory bool
-}
-
-func BuildBaseMetadataFromSnapshot(p BaseSnapshotMetadataParams) BaseMessageMetadata {
-	role := p.Role
-	if role == "" {
-		role = p.Snapshot.TurnData.Role
-	}
-	body := p.Body
-	if body == "" {
-		body = p.Snapshot.Body
-	}
-	turnID := p.TurnID
-	if turnID == "" {
-		turnID = p.Snapshot.TurnData.ID
-	}
-	return BaseMessageMetadata{
-		Role:               role,
-		Body:               body,
-		FinishReason:       p.FinishReason,
-		TurnID:             turnID,
-		AgentID:            p.AgentID,
-		CanonicalTurnData:  p.Snapshot.TurnData.ToMap(),
-		StartedAtMs:        p.StartedAtMs,
-		CompletedAtMs:      p.CompletedAtMs,
-		ThinkingContent:    p.Snapshot.ThinkingContent,
-		ToolCalls:          p.Snapshot.ToolCalls,
-		GeneratedFiles:     p.Snapshot.GeneratedFiles,
-		PromptTokens:       p.PromptTokens,
-		CompletionTokens:   p.CompletionTokens,
-		ReasoningTokens:    p.ReasoningTokens,
-		ExcludeFromHistory: p.ExcludeFromHistory,
 	}
 }
 
