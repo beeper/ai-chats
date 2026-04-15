@@ -173,6 +173,10 @@ Recent cleanup kept pushing in that direction:
   share dedicated `decodeTurnPart(...)` / `encodeTurnPart(...)` helpers and one
   reserved-key list, so new part fields no longer require two separate schema
   edits
+- Final-edit payload assembly no longer has split packaging conventions:
+  SDK now owns final payload construction end to end, AI no longer stages a
+  mixed top-level map only to unpack it again, and the wrapper helpers around
+  default extra packing / finish-reason stamping are gone
 
 ## Highest-Value Remaining Problems
 

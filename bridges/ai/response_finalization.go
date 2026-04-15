@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"maps"
 	"strings"
 	"time"
 
@@ -410,29 +409,6 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	return "..."
 }
 
-func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any) *sdk.FinalEditPayload {
-	content := rendered
-	content.RelatesTo = nil
-	content.BeeperLinkPreviews = nil
-	extra := map[string]any{}
-	cleanTopLevelExtra := maps.Clone(topLevelExtra)
-	if len(cleanTopLevelExtra) > 0 {
-		if uiMessage, ok := cleanTopLevelExtra[BeeperAIKey]; ok {
-			extra[BeeperAIKey] = uiMessage
-			delete(cleanTopLevelExtra, BeeperAIKey)
-		}
-		if previews, ok := cleanTopLevelExtra["com.beeper.linkpreviews"]; ok {
-			extra["com.beeper.linkpreviews"] = previews
-			delete(cleanTopLevelExtra, "com.beeper.linkpreviews")
-		}
-	}
-	return &sdk.FinalEditPayload{
-		Content:       &content,
-		Extra:         extra,
-		TopLevelExtra: cleanTopLevelExtra,
-	}
-}
-
 // sendFinalAssistantTurnContent sends the final assistant content after directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, markdown string, rendered event.MessageEventContent, replyTarget ReplyTarget, mode string) {
 	// Safety-split oversized responses into multiple Matrix events
@@ -453,21 +429,17 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	uiMessage := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
-	topLevelExtra := sdk.BuildDefaultFinalEditTopLevelExtra()
 	if state != nil && state.turn != nil {
-		finalTopLevelExtra := topLevelExtra
-		if len(uiMessage) > 0 || len(linkPreviews) > 0 {
-			finalTopLevelExtra = map[string]any{
-				"com.beeper.dont_render_edited": true,
-			}
-			if len(uiMessage) > 0 {
-				finalTopLevelExtra[BeeperAIKey] = uiMessage
-			}
-			if len(linkPreviews) > 0 {
-				finalTopLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-			}
+		var finishReason string
+		if state != nil {
+			finishReason = state.finishReason
 		}
-		state.turn.SetFinalEditPayload(buildFinalEditPayload(rendered, finalTopLevelExtra))
+		state.turn.SetFinalEditPayload(sdk.BuildFinalEditPayload(
+			rendered,
+			uiMessage,
+			PreviewsToMapSlice(linkPreviews),
+			finishReason,
+		))
 	}
 	oc.recordAgentActivity(ctx, portal, meta)
 	if state != nil && state.turn != nil {

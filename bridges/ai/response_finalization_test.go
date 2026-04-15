@@ -189,7 +189,7 @@ func TestFinalRenderedBodyFallback_UsesVisibleTurnText(t *testing.T) {
 	}
 }
 
-func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
+func TestBuildFinalEditPayloadKeepsOnlyEditMetadataTopLevel(t *testing.T) {
 	uiMessage := map[string]any{
 		"id":   "turn-3",
 		"role": "assistant",
@@ -198,8 +198,12 @@ func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 		MatchedURL: "https://example.com",
 	}}
 
-	extra := sdk.BuildDefaultFinalEditTopLevelExtra()
+	payload := sdk.BuildFinalEditPayload(event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    "done",
+	}, uiMessage, PreviewsToMapSlice(previews), "")
 
+	extra := payload.TopLevelExtra
 	if _, ok := extra["body"]; ok {
 		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])
 	}
@@ -224,13 +228,7 @@ func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 }
 
 func TestBuildFinalEditPayloadMovesCanonicalFieldsIntoNewContent(t *testing.T) {
-	topLevelExtra := map[string]any{
-		"com.beeper.ai":                 map[string]any{"id": "turn-4"},
-		"com.beeper.linkpreviews":       []map[string]any{{"matched_url": "https://example.com"}},
-		"com.beeper.dont_render_edited": true,
-	}
-
-	payload := buildFinalEditPayload(event.MessageEventContent{
+	payload := sdk.BuildFinalEditPayload(event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          "done",
 		Format:        event.FormatHTML,
@@ -239,7 +237,7 @@ func TestBuildFinalEditPayloadMovesCanonicalFieldsIntoNewContent(t *testing.T) {
 		Mentions: &event.Mentions{
 			UserIDs: []id.UserID{"@alice:example.com"},
 		},
-	}, topLevelExtra)
+	}, map[string]any{"id": "turn-4"}, []map[string]any{{"matched_url": "https://example.com"}}, "")
 	if payload == nil || payload.Content == nil {
 		t.Fatalf("expected final edit payload")
 	}

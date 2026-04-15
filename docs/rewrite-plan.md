@@ -374,6 +374,11 @@ Recent progress also centralized SDK turn-part schema mapping:
 dedicated part encode/decode helpers and one reserved-key list instead of
 maintaining the same `TurnPart` field schema twice by hand.
 
+Recent progress also collapsed final-edit payload construction:
+SDK now owns payload assembly end to end, AI no longer repacks top-level extra
+into `m.new_content`, and the tiny wrappers for default final-edit extra
+packing and finish-reason stamping are gone.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

@@ -936,16 +936,11 @@ func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *Final
 			body = "Completed response"
 		}
 	}
-	uiMessage = withFinalEditFinishReason(uiMessage, finishReason)
-	return &FinalEditPayload{
-		Content: &event.MessageEventContent{
-			MsgType:  event.MsgText,
-			Body:     body,
-			Mentions: &event.Mentions{},
-		},
-		Extra:         BuildDefaultFinalEditExtra(uiMessage),
-		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(),
-	}
+	return BuildFinalEditPayload(event.MessageEventContent{
+		MsgType:  event.MsgText,
+		Body:     body,
+		Mentions: &event.Mentions{},
+	}, uiMessage, nil, finishReason)
 }
 
 func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) {
