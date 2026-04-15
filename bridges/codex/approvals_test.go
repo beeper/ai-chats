@@ -518,28 +518,3 @@ func TestCodex_PermissionsApproval_DenyReturnsEmptyTurnScope(t *testing.T) {
 		t.Fatal("timed out waiting for permission approval handler to return")
 	}
 }
-
-func TestCodex_CommandApproval_RejectCrossRoom(t *testing.T) {
-	owner := id.UserID("@owner:example.com")
-	roomID := id.RoomID("!room1:example.com")
-	otherRoom := id.RoomID("!room2:example.com")
-
-	cc := newTestCodexClient(owner)
-	cc.registerToolApproval(roomID, "approval-1", "item-1", "commandExecution", sdk.ApprovalPromptPresentation{
-		Title:       "Codex command execution",
-		AllowAlways: false,
-	}, 2*time.Second)
-
-	// Register the approval in a second room to test cross-room rejection.
-	// The flow's HandleReaction checks room via RoomIDFromData, so we test
-	// that the registered room doesn't match a different room.
-	p := cc.approvalFlow.Get("approval-1")
-	if p == nil {
-		t.Fatalf("expected pending approval to exist")
-	}
-	if p.Data == nil || p.Data.RoomID != roomID {
-		t.Fatalf("expected pending data with RoomID=%s, got %v", roomID, p.Data)
-	}
-	// The RoomIDFromData callback returns roomID, which won't match otherRoom.
-	_ = otherRoom
-}

@@ -27,10 +27,6 @@ type Integration struct {
 	scheduler Scheduler
 }
 
-func New(host iruntime.Host) iruntime.ModuleHooks {
-	return NewWithScheduler(host, nil)
-}
-
 func NewWithScheduler(host iruntime.Host, scheduler Scheduler) iruntime.ModuleHooks {
 	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
 		return &Integration{host: host, scheduler: scheduler}

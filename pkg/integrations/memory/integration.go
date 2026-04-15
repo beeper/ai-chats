@@ -43,10 +43,6 @@ type Integration struct {
 	deps IntegrationDeps
 }
 
-func New(host iruntime.Host) iruntime.ModuleHooks {
-	return NewWithDeps(host, IntegrationDeps{})
-}
-
 func NewWithDeps(host iruntime.Host, deps IntegrationDeps) iruntime.ModuleHooks {
 	return iruntime.ModuleOrNil(host, func(host iruntime.Host) *Integration {
 		return &Integration{host: host, deps: deps}

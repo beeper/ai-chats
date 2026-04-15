@@ -158,22 +158,6 @@ func (cc *CodexClient) requestSDKApproval(
 	}
 }
 
-func (cc *CodexClient) registerToolApproval(
-	roomID id.RoomID,
-	approvalID, toolCallID, toolName string,
-	presentation sdk.ApprovalPromptPresentation,
-	ttl time.Duration,
-) (*sdk.Pending[*pendingToolApprovalDataCodex], bool) {
-	data := &pendingToolApprovalDataCodex{
-		ApprovalID:   strings.TrimSpace(approvalID),
-		RoomID:       roomID,
-		ToolCallID:   strings.TrimSpace(toolCallID),
-		ToolName:     strings.TrimSpace(toolName),
-		Presentation: presentation,
-	}
-	return cc.approvalFlow.Register(approvalID, ttl, data)
-}
-
 func (cc *CodexClient) waitToolApproval(ctx context.Context, approvalID string) (sdk.ApprovalDecisionPayload, bool) {
 	approvalID = strings.TrimSpace(approvalID)
 	decision, _, ok := cc.approvalFlow.WaitAndFinalizeApproval(ctx, approvalID, sdk.WaitApprovalParams[*pendingToolApprovalDataCodex]{
