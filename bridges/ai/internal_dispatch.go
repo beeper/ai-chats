@@ -77,7 +77,7 @@ func (oc *AIClient) dispatchInternalMessage(
 		cfg = &oc.connector.Config
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-	isPending := oc.dispatchOrQueueCore(promptCtx, nil, portal, meta, nil, queueItem, queueSettings, promptContext)
+	err = oc.dispatchOrQueueCore(promptCtx, nil, portal, meta, queueItem, queueSettings, promptContext)
 	oc.notifySessionMutation(ctx, portal, meta, false)
-	return eventID, isPending, nil
+	return eventID, false, err
 }

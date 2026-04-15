@@ -37,30 +37,31 @@ func TestQueueStatusEventsDeduplicates(t *testing.T) {
 	}
 }
 
-func TestMarkMessageSendSuccessSkippedWhenQueueAccepted(t *testing.T) {
+func TestMarkMessageSendSuccessOnlyMarksExplicitStatusEvents(t *testing.T) {
 	oc := &AIClient{}
 	state := &streamingState{}
 	evt := &event.Event{ID: id.EventID("$event")}
 
-	oc.markMessageSendSuccess(context.WithValue(context.Background(), queueAcceptedStatusKey{}, true), nil, evt, state)
+	oc.markMessageSendSuccess(context.Background(), nil, evt, state)
 
 	if state.statusSent {
-		t.Fatalf("expected statusSent=false when queue accepted marker is set")
+		t.Fatalf("expected statusSent=false without explicit status events")
 	}
 	if len(state.statusSentIDs) != 0 {
 		t.Fatalf("expected no status IDs to be tracked, got %d", len(state.statusSentIDs))
 	}
 
-	oc.markMessageSendSuccess(context.Background(), nil, evt, state)
+	statusCtx := context.WithValue(context.Background(), statusEventsKey{}, []*event.Event{evt})
+	oc.markMessageSendSuccess(statusCtx, nil, evt, state)
 	if !state.statusSent {
-		t.Fatalf("expected statusSent=true without queue accepted marker")
+		t.Fatalf("expected statusSent=true with explicit status events")
 	}
 	if len(state.statusSentIDs) != 1 {
 		t.Fatalf("expected 1 tracked status ID, got %d", len(state.statusSentIDs))
 	}
 }
 
-func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
+func TestDispatchOrQueueQueueRejectReturnsError(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
 		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
@@ -84,26 +85,25 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	isPending := oc.dispatchOrQueueCore(
+	err := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,
-		nil,
 		nil,
 		queueItem,
 		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 1, DropPolicy: airuntime.QueueDropNew},
 		PromptContext{},
 	)
 
-	if isPending {
-		t.Fatalf("expected pending=false when queue rejects the message")
+	if err == nil {
+		t.Fatalf("expected error when queue rejects the message")
 	}
 	if got := len(oc.pendingQueues[roomID].items); got != 1 {
 		t.Fatalf("expected queue length to stay 1 after reject, got %d", got)
 	}
 }
 
-func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
+func TestDispatchOrQueueQueueAcceptReturnsNil(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
 		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
@@ -118,19 +118,18 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	isPending := oc.dispatchOrQueueCore(
+	err := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,
-		nil,
 		nil,
 		queueItem,
 		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
 		PromptContext{},
 	)
 
-	if !isPending {
-		t.Fatalf("expected pending=true when queue accepts the message")
+	if err != nil {
+		t.Fatalf("expected nil error when queue accepts the message, got %v", err)
 	}
 	queue := oc.pendingQueues[roomID]
 	if queue == nil {
@@ -165,19 +164,18 @@ func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 		messageID: string(evt.ID),
 	}
 
-	isPending := oc.dispatchOrQueueCore(
+	err := oc.dispatchOrQueueCore(
 		context.Background(),
 		evt,
 		portal,
-		nil,
 		nil,
 		queueItem,
 		airuntime.QueueSettings{Mode: airuntime.QueueModeCollect, Cap: 10, DropPolicy: airuntime.QueueDropOld},
 		PromptContext{},
 	)
 
-	if !isPending {
-		t.Fatalf("expected pending=true when older queued work exists")
+	if err != nil {
+		t.Fatalf("expected nil error when older queued work exists, got %v", err)
 	}
 	queue := oc.pendingQueues[roomID]
 	if queue == nil {

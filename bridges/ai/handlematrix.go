@@ -86,17 +86,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			debounceKey := BuildDebounceKey(portal.MXID, msg.Event.Sender)
 			oc.inboundDebouncer.flush(debounceKey)
 		}
-		if portal != nil && portal.Bridge != nil {
-			if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
-				status := bridgev2.MessageStatus{
-					Status:    event.MessageStatusPending,
-					Message:   "Processing...",
-					IsCertain: true,
-				}
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-			}
-		}
-		pendingSent := true
+		pendingSent := false
 		return oc.handleMediaMessage(ctx, msg, portal, meta, msgType, pendingSent)
 	case event.MsgText, event.MsgNotice, event.MsgEmote:
 		// Continue to text handling below
@@ -330,13 +320,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		summaryLine: rawBodyOriginal,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg := userMessage
-	isPending := oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, userMessage, queueItem, queueSettings, promptContext)
-
-	return &bridgev2.MatrixMessageResponse{
-		DB:      dbMsg,
-		Pending: isPending,
-	}, nil
+	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
+		return nil, err
+	}
+	return oc.buildUserMessageResponse(portal, runMeta, userMessage), nil
 }
 
 // HandleMatrixTyping currently ignores local typing updates.
@@ -521,9 +508,7 @@ func (oc *AIClient) regenerateFromEdit(
 		summaryLine: newBody,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	oc.dispatchOrQueueCore(ctx, pending.Event, portal, meta, nil, queueItem, queueSettings, promptContext)
-
-	return nil
+	return oc.dispatchOrQueueCore(ctx, pending.Event, portal, meta, queueItem, queueSettings, promptContext)
 }
 
 // mediaConfig describes how to handle a specific media type
@@ -713,12 +698,10 @@ func (oc *AIClient) handleMediaMessage(
 			summaryLine: rawBody,
 			enqueuedAt:  time.Now().UnixMilli(),
 		}
-		dbMsg := userMessage
-		isPending := oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, userMessage, queueItem, queueSettings, promptContext)
-		return &bridgev2.MatrixMessageResponse{
-			DB:      dbMsg,
-			Pending: isPending,
-		}, nil
+		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
+			return nil, err
+		}
+		return oc.buildUserMessageResponse(portal, meta, userMessage), nil
 	}
 
 	var understanding *mediaUnderstandingResult
@@ -841,13 +824,10 @@ func (oc *AIClient) handleMediaMessage(
 		summaryLine: rawCaption,
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg := userMessage
-	isPending := oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
-
-	return &bridgev2.MatrixMessageResponse{
-		DB:      dbMsg,
-		Pending: isPending,
-	}, nil
+	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
+		return nil, err
+	}
+	return oc.buildUserMessageResponse(portal, meta, userMessage), nil
 }
 
 func (oc *AIClient) dispatchMediaUnderstandingFallback(
@@ -989,13 +969,10 @@ func (oc *AIClient) handleTextFileMessage(
 		summaryLine: strings.TrimSpace(rawCaption),
 		enqueuedAt:  time.Now().UnixMilli(),
 	}
-	dbMsg := userMessage
-	isPending := oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, userMessage, queueItem, queueSettings, promptContext)
-
-	return &bridgev2.MatrixMessageResponse{
-		DB:      dbMsg,
-		Pending: isPending,
-	}, nil
+	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
+		return nil, err
+	}
+	return oc.buildUserMessageResponse(portal, meta, userMessage), nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

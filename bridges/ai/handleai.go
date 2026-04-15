@@ -35,7 +35,11 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 	// Use FormatUserFacingError for consistent, user-friendly error messages
 	errorMessage := FormatUserFacingError(err)
 
-	if evt != nil {
+	statusEvents := statusEventsFromContext(ctx)
+	if len(statusEvents) == 0 && evt != nil {
+		statusEvents = []*event.Event{evt}
+	}
+	if len(statusEvents) > 0 {
 		status := messageStatusForError(err)
 		reason := messageStatusReasonForError(err)
 
@@ -45,17 +49,10 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
-		if portal != nil && portal.Bridge != nil {
-			if info := sdk.StatusEventInfoFromPortalEvent(portal, evt); info != nil {
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-			}
-		}
-		for _, extra := range statusEventsFromContext(ctx) {
-			if extra != nil {
-				if portal != nil && portal.Bridge != nil {
-					if info := sdk.StatusEventInfoFromPortalEvent(portal, extra); info != nil {
-						portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-					}
+		for _, statusEvt := range statusEvents {
+			if statusEvt != nil && portal != nil && portal.Bridge != nil {
+				if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
+					portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
 				}
 			}
 		}

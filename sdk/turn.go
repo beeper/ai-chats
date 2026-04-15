@@ -271,21 +271,10 @@ func (t *Turn) buildRelatesTo() *event.RelatesTo {
 		if replyTo == "" && t.source != nil && t.source.EventID != "" {
 			replyTo = id.EventID(t.source.EventID)
 		}
-		rel := &event.RelatesTo{
-			Type:          event.RelThread,
-			EventID:       t.threadRoot,
-			IsFallingBack: true,
-		}
-		if replyTo != "" {
-			rel.InReplyTo = &event.InReplyTo{EventID: replyTo}
-		}
-		return rel
+		return (&event.RelatesTo{}).SetThread(t.threadRoot, replyTo)
 	}
 	if t.replyTo != "" {
-		return &event.RelatesTo{InReplyTo: &event.InReplyTo{EventID: t.replyTo}}
-	}
-	if t.source != nil && t.source.EventID != "" {
-		return &event.RelatesTo{EventID: id.EventID(t.source.EventID)}
+		return (&event.RelatesTo{}).SetReplyTo(t.replyTo)
 	}
 	return nil
 }

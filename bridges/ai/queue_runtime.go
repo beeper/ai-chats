@@ -6,12 +6,10 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
@@ -107,12 +105,8 @@ func (oc *AIClient) dispatchPromptRun(
 	roomID id.RoomID,
 	item pendingQueueItem,
 	promptContext PromptContext,
-	queueAccepted bool,
 ) {
 	runCtx := oc.attachRoomRun(oc.backgroundContext(ctx), roomID)
-	if queueAccepted {
-		runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
-	}
 	if len(item.pending.StatusEvents) > 0 {
 		runCtx = context.WithValue(runCtx, statusEventsKey{}, item.pending.StatusEvents)
 	}
@@ -144,61 +138,35 @@ func (oc *AIClient) dispatchPromptRun(
 }
 
 // dispatchOrQueueCore contains shared dispatch/steer/queue logic.
-// When userMessage is non-nil, it saves the message to the DB, handles ack
-// reactions, sends pending status on acquire, and notifies session mutations.
-// Returns true if the message was accepted (dispatched or queued).
+// Returns nil if the message was accepted (dispatched or queued).
 func (oc *AIClient) dispatchOrQueueCore(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
-	userMessage *database.Message,
 	queueItem pendingQueueItem,
 	queueSettings airuntime.QueueSettings,
 	promptContext PromptContext,
-) bool {
+) error {
 	roomID := portal.MXID
 	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
-	hasDBMessage := userMessage != nil
 	roomBusy := oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID)
 	if queueSettings.Mode == airuntime.QueueModeInterrupt && roomBusy {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(ctx, roomID)
 		roomBusy = false
 	}
-	sendPendingStatus := func() {
-		if evt == nil || queueItem.pending.PendingSent {
-			return
-		}
-		if portal != nil && portal.Bridge != nil {
-			if info := sdk.StatusEventInfoFromPortalEvent(portal, evt); info != nil {
-				status := bridgev2.MessageStatus{
-					Status:    event.MessageStatusPending,
-					Message:   "Processing...",
-					IsCertain: true,
-				}
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-			}
-		}
-		queueItem.pending.PendingSent = true
-	}
 
 	directRun := !roomBusy && oc.acquireRoom(roomID)
-	messageSaved := false
 	if directRun {
 		oc.stopQueueTyping(roomID)
-		if hasDBMessage {
-			oc.saveUserMessage(ctx, evt, userMessage)
-			messageSaved = true
-		}
-		sendPendingStatus()
 		queuedItem := queueItem
 		queuedItem.pending.Portal = portal
 		queuedItem.pending.Meta = meta
 		queuedItem.pending.Event = evt
-		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext, false)
+		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext)
 	}
 
 	steered := false
@@ -214,48 +182,17 @@ func (oc *AIClient) dispatchOrQueueCore(
 		}
 		enqueued := oc.enqueuePendingItem(roomID, queueItem, queueSettings)
 		if !enqueued {
-			if portal != nil && portal.Bridge != nil {
-				message := "Couldn't queue the message. Try again."
-				err := fmt.Errorf("%s", message)
-				msgStatus := bridgev2.WrapErrorInStatus(err).
-					WithStatus(event.MessageStatusRetriable).
-					WithErrorReason(event.MessageStatusGenericError).
-					WithMessage(message).
-					WithIsCertain(true).
-					WithSendNotice(false)
-				for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-					if portal != nil && portal.Bridge != nil {
-						if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
-							portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-						}
-					}
-				}
-			}
-			return false
+			err := fmt.Errorf("couldn't queue the message")
+			return bridgev2.WrapErrorInStatus(err).
+				WithStatus(event.MessageStatusRetriable).
+				WithErrorReason(event.MessageStatusGenericError).
+				WithMessage("Couldn't queue the message. Try again.").
+				WithIsCertain(true).
+				WithSendNotice(false)
 		}
 		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
-		for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
-			if portal != nil && portal.Bridge != nil {
-				if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
-					status := bridgev2.MessageStatus{
-						Status:    event.MessageStatusSuccess,
-						IsCertain: true,
-					}
-					portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-				}
-			}
-		}
-	} else if steered {
-		sendPendingStatus()
 	}
-
-	if hasDBMessage && !messageSaved {
-		oc.saveUserMessage(ctx, evt, userMessage)
-	}
-	if hasDBMessage {
-		oc.notifySessionMutation(ctx, portal, meta, false)
-	}
-	return true
+	return nil
 }
 
 // processPendingQueue processes queued messages for a room.
@@ -318,6 +255,6 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 
-		oc.dispatchPromptRun(ctx, roomID, item, promptContext, true)
+		oc.dispatchPromptRun(ctx, roomID, item, promptContext)
 	}()
 }

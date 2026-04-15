@@ -521,6 +521,64 @@ func initOpenRouterProvider(key, url, userID, pdfEngine, providerName string, lo
 	return provider, nil
 }
 
+func (oc *AIClient) buildUserMessageResponse(
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	msg *database.Message,
+) *bridgev2.MatrixMessageResponse {
+	metaSnapshot := clonePortalMetadata(meta)
+	return &bridgev2.MatrixMessageResponse{
+		DB: msg,
+		PostSave: func(ctx context.Context, saved *database.Message) {
+			oc.postSaveUserMessage(ctx, portal, metaSnapshot, saved)
+		},
+	}
+}
+
+func (oc *AIClient) postSaveUserMessage(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	msg *database.Message,
+) {
+	if msg == nil {
+		return
+	}
+	if portal == nil && msg.Room.ID != "" && oc != nil && oc.UserLogin != nil && oc.UserLogin.Bridge != nil {
+		resolved, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, msg.Room)
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI turn persistence")
+		} else {
+			portal = resolved
+		}
+	}
+	if portal == nil {
+		oc.loggerForContext(ctx).Debug().
+			Str("message_id", string(msg.ID)).
+			Str("event_id", msg.MXID.String()).
+			Str("room_id", string(msg.Room.ID)).
+			Str("room_receiver", string(msg.Room.Receiver)).
+			Msg("Skipping AI turn persistence because portal lookup returned nil")
+		return
+	}
+	metaSummary := "meta=nil"
+	if msgMeta, _ := msg.Metadata.(*MessageMetadata); msgMeta != nil {
+		metaSummary = transcriptMetaSummary(msgMeta)
+	}
+	oc.loggerForContext(ctx).Debug().
+		Str("message_id", string(msg.ID)).
+		Str("event_id", msg.MXID.String()).
+		Str("resolved_portal_id", string(portal.PortalKey.ID)).
+		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
+		Str("resolved_portal_mxid", portal.MXID.String()).
+		Str("meta", metaSummary).
+		Msg("Persisting AI turn after bridgev2 message save")
+	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
+	}
+	oc.notifySessionMutation(ctx, portal, meta, false)
+}
+
 // saveUserMessage persists a user message to the bridge mapping tables and
 // mirrors the canonical turn into the AI-owned turn store.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
@@ -564,9 +622,7 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if err := oc.upsertTransportPortalMessage(ctx, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to save transport user message to database")
 	}
-	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
-	}
+	oc.postSaveUserMessage(ctx, portal, nil, msg)
 }
 
 func (oc *AIClient) Connect(ctx context.Context) {
@@ -1783,9 +1839,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 			}
 		}
 	}
+	statusEvents := queueStatusEvents(last.Event, extraStatusEvents)
 	statusCtx := ctx
-	if len(extraStatusEvents) > 0 {
-		statusCtx = context.WithValue(ctx, statusEventsKey{}, extraStatusEvents)
+	if len(statusEvents) > 0 {
+		statusCtx = context.WithValue(ctx, statusEventsKey{}, statusEvents)
 	}
 	ackRemoveIDs := make([]id.EventID, 0, len(entries))
 	for _, entry := range entries {
@@ -1801,7 +1858,7 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		InboundContext:  &inboundCtx,
 		Type:            pendingTypeText,
 		MessageBody:     combinedBody,
-		StatusEvents:    extraStatusEvents,
+		StatusEvents:    statusEvents,
 		PendingSent:     last.PendingSent,
 		RawEventContent: rawEventContent,
 		AckEventIDs:     ackRemoveIDs,
@@ -1855,7 +1912,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
-	_ = oc.dispatchOrQueueCore(statusCtx, pendingEvent, last.Portal, last.Meta, nil, queueItem, queueSettings, promptContext)
+	if err = oc.dispatchOrQueueCore(statusCtx, pendingEvent, last.Portal, last.Meta, queueItem, queueSettings, promptContext); err != nil {
+		oc.loggerForContext(ctx).Err(err).Msg("Failed to dispatch debounced messages")
+		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
+	}
 
 }
 

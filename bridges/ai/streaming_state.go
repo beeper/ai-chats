@@ -299,19 +299,12 @@ func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2
 	if state == nil || state.suppressSend || state.statusSent {
 		return
 	}
-	if queueAcceptedStatusFromContext(ctx) {
-		return
-	}
 	if state.statusSentIDs == nil {
 		state.statusSentIDs = make(map[id.EventID]bool)
 	}
-	events := make([]*event.Event, 0, 4)
-	if evt != nil {
-		events = append(events, evt)
-	}
-	events = append(events, statusEventsFromContext(ctx)...)
-	if portal != nil && portal.MXID != "" {
-		events = append(events, oc.roomRunStatusEvents(portal.MXID)...)
+	events := statusEventsFromContext(ctx)
+	if len(events) == 0 {
+		return
 	}
 	for _, extra := range events {
 		if extra == nil || extra.ID == "" {

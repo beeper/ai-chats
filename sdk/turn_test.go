@@ -105,11 +105,11 @@ func (tst *testStreamTransport) Publish(context.Context, id.RoomID, id.EventID, 
 func (tst *testStreamTransport) Unregister(id.RoomID, id.EventID) {
 }
 
-func TestTurnBuildRelatesToDefaultsToSourceEvent(t *testing.T) {
+func TestTurnBuildRelatesToRequiresExplicitReplyOrThread(t *testing.T) {
 	turn := newTurn(context.Background(), nil, nil, UserMessageSource("$source"))
 	rel := turn.buildRelatesTo()
-	if rel == nil || rel.EventID != id.EventID("$source") {
-		t.Fatalf("expected source event relation, got %#v", rel)
+	if rel != nil {
+		t.Fatalf("expected no relation without explicit reply or thread, got %#v", rel)
 	}
 }
 
