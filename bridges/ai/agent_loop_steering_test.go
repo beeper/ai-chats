@@ -21,7 +21,7 @@ func getFollowUpMessagesForTest(oc *AIClient, roomID id.RoomID) []PromptMessage 
 	if !behavior.Followup {
 		return nil
 	}
-	candidate, _ := oc.takePendingQueueDispatchCandidate(roomID, true)
+	candidate := oc.takePendingQueueDispatchCandidate(roomID, true)
 	if candidate == nil || len(candidate.items) == 0 {
 		return nil
 	}

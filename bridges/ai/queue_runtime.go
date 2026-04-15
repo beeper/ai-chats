@@ -39,15 +39,6 @@ func (oc *AIClient) releaseRoom(roomID id.RoomID) {
 	oc.clearRoomRun(roomID)
 }
 
-// queuePendingMessage adds a message to the pending queue for later processing.
-func (oc *AIClient) queuePendingMessage(roomID id.RoomID, item pendingQueueItem, settings airuntime.QueueSettings) bool {
-	enqueued := oc.enqueuePendingItem(roomID, item, settings)
-	if enqueued {
-		oc.startQueueTyping(oc.backgroundContext(context.Background()), item.pending.Portal, item.pending.Meta, item.pending.Typing)
-	}
-	return enqueued
-}
-
 func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Event {
 	events := make([]*event.Event, 0, 1+len(extras))
 	seen := make(map[id.EventID]struct{}, 1+len(extras))
@@ -144,7 +135,9 @@ func (oc *AIClient) dispatchPromptRun(
 					cfg = &oc.connector.Config
 				}
 				queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-				oc.queuePendingMessage(roomID, followup, queueSettings)
+				if oc.enqueuePendingItem(roomID, followup, queueSettings) {
+					oc.startQueueTyping(oc.backgroundContext(context.Background()), followup.pending.Portal, followup.pending.Meta, followup.pending.Typing)
+				}
 			}
 			oc.releaseRoom(roomID)
 			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
@@ -175,8 +168,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 	shouldFollowup := behavior.Followup
 	hasDBMessage := userMessage != nil
 	roomBusy := oc.roomHasActiveRun(roomID) || oc.roomHasPendingQueueWork(roomID)
-	queueDecision := airuntime.DecideQueueAction(queueSettings.Mode, roomBusy, false)
-	if queueDecision.Action == airuntime.QueueActionInterruptAndRun {
+	if queueSettings.Mode == airuntime.QueueModeInterrupt && roomBusy {
 		oc.cancelRoomRun(roomID)
 		oc.clearPendingQueue(ctx, roomID)
 		roomBusy = false
@@ -220,7 +212,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		if behavior.BacklogAfter {
 			queueItem.backlogAfter = true
 		}
-		enqueued := oc.queuePendingMessage(roomID, queueItem, queueSettings)
+		enqueued := oc.enqueuePendingItem(roomID, queueItem, queueSettings)
 		if !enqueued {
 			if portal != nil && portal.Bridge != nil {
 				message := "Couldn't queue the message. Try again."
@@ -237,6 +229,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 			}
 			return false
 		}
+		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
 		for _, statusEvt := range queueStatusEvents(evt, queueItem.pending.StatusEvents) {
 			bridgeutil.SendMessageStatus(ctx, portal, statusEvt, bridgev2.MessageStatus{
 				Status:    event.MessageStatusSuccess,
@@ -294,8 +287,8 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		}
 		oc.stopQueueTyping(roomID)
 
-		candidate, actionSnapshot := oc.takePendingQueueDispatchCandidate(roomID, false)
-		if actionSnapshot == nil || candidate == nil || len(candidate.items) == 0 {
+		candidate := oc.takePendingQueueDispatchCandidate(roomID, false)
+		if candidate == nil || len(candidate.items) == 0 {
 			oc.releaseRoom(roomID)
 			return
 		}

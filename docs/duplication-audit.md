@@ -116,6 +116,11 @@ Recent cleanup kept pushing in that direction:
 - Room occupancy no longer has a second registry:
   `roomLocks` is gone, and `activeRoomRuns` now owns both room admission and
   active-run state
+- Queue interrupt admission no longer bounces through a generic policy helper:
+  `dispatchOrQueueCore(...)` now owns its interrupt-mode branch directly
+- Dead SDK media helper overlap is gone:
+  `sdk/media_helpers.go` was unused and duplicated bridge-owned media download
+  behavior, so it has been deleted
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems
@@ -454,12 +459,13 @@ owners for runtime, prompt, provider, session, and terminal state.
 
 1. streaming terminalization
 2. prompt canonicalization
-3. provider capability/auth consolidation
-4. session subsystem consolidation
+3. session subsystem consolidation
+4. provider capability/auth consolidation
 5. queue/runtime/heartbeat consolidation
-6. SDK runtime thinning
+6. `runtimeIntegrationHost` reduction
 7. SDK turn lifecycle consolidation
-8. final dead-code deletion sweep
+8. SDK runtime/loading collapse
+9. final dead-code deletion sweep
 
 ## Exit Condition
 

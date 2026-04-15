@@ -187,7 +187,9 @@ The highest-value remaining work is now:
 4. Provider consolidation
 5. Queue/runtime/heartbeat unification
 6. `runtimeIntegrationHost` reduction
-7. SDK runtime/loading collapse
+7. SDK turn lifecycle consolidation
+8. SDK runtime/loading collapse
+9. Final dead-code deletion sweep
 
 Recent progress also removed one more SDK runtime wrapper: provider identity
 normalization now calls the shared primitive directly.
@@ -281,6 +283,11 @@ specific session/delivery rooms it would touch before launch.
 
 Recent progress also collapsed duplicate room-busy state: `roomLocks` is gone,
 and `activeRoomRuns` now owns both room admission and active-run tracking.
+
+Recent progress also deleted two more low-value layers:
+`dispatchOrQueueCore(...)` now owns its interrupt-mode branch directly instead
+of routing through `DecideQueueAction(...)`, and the dead overlapping
+`sdk/media_helpers.go` file is gone.
 
 Recent progress also removed the one-callsite
 `resolveOpenRouterMediaConfig(...)` wrapper: `generateWithOpenRouter(...)` now

@@ -336,10 +336,10 @@ func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
 	return summary
 }
 
-func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly bool) (*pendingQueueDispatchCandidate, *pendingQueue) {
+func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly bool) *pendingQueueDispatchCandidate {
 	snapshot := oc.getQueueSnapshot(roomID)
 	if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
-		return nil, snapshot
+		return nil
 	}
 	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
 
@@ -357,7 +357,7 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 		if textOnly {
 			for i := 0; i < count; i++ {
 				if snapshot.items[i].pending.Type != pendingTypeText {
-					return nil, snapshot
+					return nil
 				}
 			}
 		}
@@ -375,7 +375,7 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 			items:         items,
 			summaryPrompt: summary,
 			collect:       true,
-		}, snapshot
+		}
 	}
 
 	if snapshot.dropPolicy == airuntime.QueueDropSummarize && snapshot.droppedCount > 0 {
@@ -384,23 +384,23 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 			item = *snapshot.lastItem
 		}
 		if textOnly && item.pending.Type != pendingTypeText {
-			return nil, snapshot
+			return nil
 		}
 		return &pendingQueueDispatchCandidate{
 			items:         []pendingQueueItem{item},
 			summaryPrompt: oc.consumeQueueSummary(roomID, "message"),
 			synthetic:     true,
-		}, snapshot
+		}
 	}
 
 	if len(snapshot.items) == 0 {
-		return nil, snapshot
+		return nil
 	}
 	if textOnly && snapshot.items[0].pending.Type != pendingTypeText {
-		return nil, snapshot
+		return nil
 	}
 	items := oc.popQueueItems(roomID, 1)
-	return &pendingQueueDispatchCandidate{items: items}, snapshot
+	return &pendingQueueDispatchCandidate{items: items}
 }
 
 func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandidate) (pendingQueueItem, string, bool) {
