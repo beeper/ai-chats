@@ -28,6 +28,19 @@ type heartbeatAgent struct {
 	heartbeat *HeartbeatConfig
 }
 
+type deliveryTarget struct {
+	Portal  *bridgev2.Portal
+	RoomID  id.RoomID
+	Channel string
+	Reason  string
+}
+
+type heartbeatRoute struct {
+	Session       heartbeatSessionResolution
+	SessionPortal *bridgev2.Portal
+	Delivery      deliveryTarget
+}
+
 func resolveHeartbeatAgents(cfg *Config) []heartbeatAgent {
 	var list []heartbeatAgent
 	if cfg == nil {
