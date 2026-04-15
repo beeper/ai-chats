@@ -15,8 +15,8 @@ import (
 func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
-	mainKey := client.resolveSessionRouting(agentID).MainKey
+	storeAgentID := client.sessionStoreAgentID(agentID)
+	mainKey := client.sessionMainKey(agentID)
 
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
@@ -44,8 +44,8 @@ func TestRecordAgentActivityOnlyWritesRoomSession(t *testing.T) {
 func TestLoadLastRoutedSessionKeyIgnoresMainSessionRow(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
-	mainKey := client.resolveSessionRouting(agentID).MainKey
+	storeAgentID := client.sessionStoreAgentID(agentID)
+	mainKey := client.sessionMainKey(agentID)
 
 	if err := client.saveStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 3_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
@@ -66,8 +66,8 @@ func TestLoadLastRoutedSessionKeyIgnoresMainSessionRow(t *testing.T) {
 func TestResolveHeartbeatRouteDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
-	mainKey := client.resolveSessionRouting(agentID).MainKey
+	storeAgentID := client.sessionStoreAgentID(agentID)
+	mainKey := client.sessionMainKey(agentID)
 
 	if err := client.saveStoredSessionUpdatedAt(context.Background(), storeAgentID, mainKey, 1_000); err != nil {
 		t.Fatalf("upsert main session entry: %v", err)
@@ -95,7 +95,7 @@ func TestResolveHeartbeatRouteDefaultDoesNotLoadMainSessionRoute(t *testing.T) {
 func TestRecordAgentActivitySkipsInternalRooms(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
 	agentID := normalizeAgentID(agents.DefaultAgentID)
-	storeAgentID := client.resolveSessionRouting(agentID).StoreAgentID
+	storeAgentID := client.sessionStoreAgentID(agentID)
 
 	portal := &bridgev2.Portal{
 		Portal: &database.Portal{
@@ -137,7 +137,7 @@ func TestLoadLastRoutedSessionKeyUsesGlobalSessionStoreForNonDefaultAgent(t *tes
 	if target != "!chat:example.com" {
 		t.Fatalf("expected global last route lookup to return room session, got target=%q", target)
 	}
-	if got := client.resolveSessionRouting(agentID).StoreAgentID; got != sessionScopeGlobal {
+	if got := client.sessionStoreAgentID(agentID); got != sessionScopeGlobal {
 		t.Fatalf("expected global session store owner %q, got %q", sessionScopeGlobal, got)
 	}
 }

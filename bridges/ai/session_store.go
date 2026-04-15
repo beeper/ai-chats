@@ -18,13 +18,6 @@ const (
 	defaultSessionMainKey = "main"
 )
 
-type sessionRouting struct {
-	AgentID      string
-	StoreAgentID string
-	MainKey      string
-	Scope        string
-}
-
 type heartbeatSessionResolution struct {
 	StoreAgentID string
 	SessionKey   string
@@ -50,14 +43,18 @@ func sessionStoreLock(ownerKey string, storeAgentID string, sessionKey string) *
 	return actual.(*sync.Mutex)
 }
 
-func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
+func (oc *AIClient) normalizedSessionAgentID(agentID string) string {
+	resolvedAgent := normalizeAgentID(agentID)
+	if resolvedAgent == "" {
+		return normalizeAgentID(agents.DefaultAgentID)
+	}
+	return resolvedAgent
+}
+
+func (oc *AIClient) sessionScope() string {
 	cfg := (*Config)(nil)
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
-	}
-	resolvedAgent := normalizeAgentID(agentID)
-	if resolvedAgent == "" {
-		resolvedAgent = normalizeAgentID(agents.DefaultAgentID)
 	}
 	scope := sessionScopePerSender
 	if cfg != nil && cfg.Session != nil {
@@ -65,24 +62,32 @@ func (oc *AIClient) resolveSessionRouting(agentID string) sessionRouting {
 			scope = sessionScopeGlobal
 		}
 	}
+	return scope
+}
+
+func (oc *AIClient) sessionMainKey(agentID string) string {
+	resolvedAgent := oc.normalizedSessionAgentID(agentID)
+	if oc.sessionScope() == sessionScopeGlobal {
+		return sessionScopeGlobal
+	}
 	normalizedMainKey := defaultSessionMainKey
+	cfg := (*Config)(nil)
+	if oc != nil && oc.connector != nil {
+		cfg = &oc.connector.Config
+	}
 	if cfg != nil && cfg.Session != nil {
 		if trimmed := strings.ToLower(strings.TrimSpace(cfg.Session.MainKey)); trimmed != "" {
 			normalizedMainKey = trimmed
 		}
 	}
-	mainSessionKey := "agent:" + resolvedAgent + ":" + normalizedMainKey
-	storeAgentID := resolvedAgent
-	if scope == sessionScopeGlobal {
-		mainSessionKey = sessionScopeGlobal
-		storeAgentID = sessionScopeGlobal
+	return "agent:" + resolvedAgent + ":" + normalizedMainKey
+}
+
+func (oc *AIClient) sessionStoreAgentID(agentID string) string {
+	if oc.sessionScope() == sessionScopeGlobal {
+		return sessionScopeGlobal
 	}
-	return sessionRouting{
-		AgentID:      resolvedAgent,
-		StoreAgentID: storeAgentID,
-		MainKey:      mainSessionKey,
-		Scope:        scope,
-	}
+	return oc.normalizedSessionAgentID(agentID)
 }
 
 func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
@@ -96,7 +101,8 @@ func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (s
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	routing := oc.resolveSessionRouting(agentID)
+	storeAgentID := oc.sessionStoreAgentID(agentID)
+	mainKey := oc.sessionMainKey(agentID)
 	var sessionKey string
 	err := scope.db.QueryRow(ctx, `
 		SELECT session_key
@@ -104,7 +110,7 @@ func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (s
 		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
 		ORDER BY updated_at_ms DESC
 		LIMIT 1
-	`, scope.bridgeID, scope.loginID, normalizeAgentID(routing.StoreAgentID), strings.TrimSpace(routing.MainKey)).Scan(&sessionKey)
+	`, scope.bridgeID, scope.loginID, normalizeAgentID(storeAgentID), strings.TrimSpace(mainKey)).Scan(&sessionKey)
 	if err == sql.ErrNoRows {
 		return "", false
 	}

@@ -165,5 +165,5 @@ func estimatePromptTokensForModel(prompt []openai.ChatCompletionMessageParamUnio
 }
 
 func estimatePromptContextTokensForModel(prompt PromptContext, model string) int {
-	return estimatePromptTokensForModel(promptContextToChatCompletionMessages(prompt, false), model)
+	return estimatePromptTokensForModel(promptContextToChatCompletionMessages(prompt), model)
 }

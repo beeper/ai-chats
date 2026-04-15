@@ -26,7 +26,7 @@ func (oc *AIClient) recordAgentActivity(ctx context.Context, portal *bridgev2.Po
 		return
 	}
 
-	storeAgentID := oc.resolveSessionRouting(agentID).StoreAgentID
+	storeAgentID := oc.sessionStoreAgentID(agentID)
 	oc.touchStoredSession(ctx, storeAgentID, portal.MXID.String(), 0)
 }
 

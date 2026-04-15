@@ -32,7 +32,7 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	typingSignals := a.typingSignals
 	touchTyping := a.touchTyping
 	isHeartbeat := a.isHeartbeat
-	currentMessages := promptContextToChatCompletionMessages(a.prompt, oc.isOpenRouterProvider())
+	currentMessages := promptContextToChatCompletionMessages(a.prompt)
 
 	params := oc.buildChatCompletionsAgentLoopParams(ctx, meta, currentMessages)
 

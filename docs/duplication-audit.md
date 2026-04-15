@@ -217,6 +217,16 @@ Recent cleanup kept pushing in that direction:
   `Turn.Session()` are gone, and the one-callsite
   `BuildTextOnlyFinalEditPayload(...)` adapter has been deleted in favor of
   direct fallback shaping at the real final-edit callsite
+- Session routing no longer round-trips through a temporary routing bag:
+  `resolveSessionRouting(...)` and the `sessionRouting` struct are gone, and
+  heartbeat/session activity/status paths now read the canonical session
+  primitives directly via `sessionStoreAgentID(...)`, `sessionMainKey(...)`,
+  `sessionScope(...)`, and `normalizedSessionAgentID(...)`
+- Chat-completions prompt serialization no longer carries a dead capability
+  flag:
+  the unused `supportsVideoURL` parameter has been deleted from
+  `promptContextToChatCompletionMessages(...)`, and its callers now use the
+  one canonical serializer signature
 
 ## Highest-Value Remaining Problems
 

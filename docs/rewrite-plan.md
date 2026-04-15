@@ -305,6 +305,17 @@ dead exported turn accessors `Turn.Agent()`, `Turn.Emitter()`, and
 `BuildTextOnlyFinalEditPayload(...)` wrapper has been deleted in favor of
 direct fallback payload shaping where final edits are actually built.
 
+Recent progress also removed a transient session-routing representation:
+the `sessionRouting` bag and `resolveSessionRouting(...)` helper are gone, and
+heartbeat/session activity/status logic now reads the canonical session
+primitives directly (`sessionStoreAgentID(...)`, `sessionMainKey(...)`,
+`sessionScope(...)`, `normalizedSessionAgentID(...)`).
+
+Recent progress also deleted a dead prompt-serialization parameter:
+`promptContextToChatCompletionMessages(...)` no longer carries an unused
+`supportsVideoURL` flag, so chat-completions and compaction paths now share
+one direct serializer signature.
+
 Recent progress also deleted another batch of historical wrappers:
 `sdk/client.go` no longer hides plain session state behind `getSession()` /
 `setSession()`, `Turn.Writer()` no longer routes through `turnPortal(...)`,

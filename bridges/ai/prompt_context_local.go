@@ -110,7 +110,7 @@ func promptContextToResponsesInput(ctx PromptContext) responses.ResponseInputPar
 	return result
 }
 
-func promptContextToChatCompletionMessages(ctx PromptContext, supportsVideoURL bool) []openai.ChatCompletionMessageParamUnion {
+func promptContextToChatCompletionMessages(ctx PromptContext) []openai.ChatCompletionMessageParamUnion {
 	var messages []openai.ChatCompletionMessageParamUnion
 	if system := strings.TrimSpace(ctx.SystemPrompt); system != "" {
 		messages = append(messages, openai.SystemMessage(system))

@@ -325,7 +325,7 @@ func (oc *AIClient) runCompactionFlushHook(
 	hook.OnContextOverflow(ctx, integrationruntime.ContextOverflowCall{
 		Portal:          portal,
 		Meta:            meta,
-		Prompt:          promptContextToChatCompletionMessages(prompt, false),
+		Prompt:          promptContextToChatCompletionMessages(prompt),
 		RequestedTokens: cle.RequestedTokens,
 		ModelMaxTokens:  cle.ModelMaxTokens,
 		Attempt:         attempt,
@@ -399,7 +399,7 @@ func (oc *AIClient) runtimeCompactOnOverflow(
 	requestedTokens int,
 	currentPromptTokens int,
 ) (PromptContext, airuntime.CompactionDecision, bool) {
-	serialized := promptContextToChatCompletionMessages(prompt, false)
+	serialized := promptContextToChatCompletionMessages(prompt)
 	result := airuntime.CompactPromptOnOverflow(airuntime.OverflowCompactionInput{
 		Prompt:              serialized,
 		ContextWindowTokens: contextWindowTokens,
