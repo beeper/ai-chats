@@ -33,10 +33,7 @@ func executeApplyPatch(ctx context.Context, args map[string]any) (string, error)
 		go func(paths []string) {
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
-			for _, path := range paths {
-				notifyIntegrationFileChanged(bg, path)
-				maybeRefreshAgentIdentity(bg, path)
-			}
+			notifyTextFSFileChanges(bg, paths...)
 		}(paths)
 
 		if strings.TrimSpace(result.Text) != "" {

@@ -134,6 +134,14 @@ Recent cleanup kept pushing in that direction:
   `buildCanonicalTurnData(...)` now uses one `BuildTurnDataFromUIMessage(...)`
   pass with the full assistant metadata/file/artifact inputs, and the extra
   merge helper path is gone
+- TextFS post-write side effects now have one owner:
+  tool writes, edit/apply-patch writes, and integration-host writes all funnel
+  through `notifyTextFSFileChanges(...)` instead of each re-spelling the
+  notify-plus-identity-refresh pair
+- Integration-host completions no longer bypass the bridge model mapper:
+  `runtimeIntegrationHost.NewCompletion(...)` now reuses
+  `AIClient.modelIDForAPI(...)` instead of sending a second raw model string
+  path to the provider
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems

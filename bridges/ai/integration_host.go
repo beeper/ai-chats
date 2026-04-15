@@ -217,7 +217,7 @@ func (h *runtimeIntegrationHost) NewCompletion(ctx context.Context, model string
 		return nil, fmt.Errorf("missing client")
 	}
 	req := openai.ChatCompletionNewParams{
-		Model:    model,
+		Model:    h.client.modelIDForAPI(model),
 		Messages: messages,
 		Tools:    toolParams,
 	}
@@ -351,8 +351,7 @@ func (h *runtimeIntegrationHost) WriteTextFile(ctx context.Context, portal *brid
 			Portal: portal,
 			Meta:   m,
 		})
-		notifyIntegrationFileChanged(toolCtx, entry.Path)
-		maybeRefreshAgentIdentity(toolCtx, entry.Path)
+		notifyTextFSFileChanges(toolCtx, entry.Path)
 		return entry.Path, nil
 	}
 	return path, nil

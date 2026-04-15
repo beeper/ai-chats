@@ -333,6 +333,16 @@ Recent progress also collapsed AI bridge turn canonicalization to one pass:
 `UIMessageFromTurnData(...)` and a second merge step, and the extra
 `turnDataFromStreamingState(...)` detour is gone.
 
+Recent progress also removed the duplicated TextFS post-write branch:
+tool writes, edit/apply-patch writes, and integration-host writes now all call
+`notifyTextFSFileChanges(...)`, so notify-plus-identity-refresh behavior has
+one owner.
+
+Recent progress also removed one more provider-model fork from
+`runtimeIntegrationHost`: completion requests now reuse
+`AIClient.modelIDForAPI(...)` instead of keeping a second raw model-string
+path.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

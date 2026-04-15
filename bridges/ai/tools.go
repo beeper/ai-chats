@@ -1582,8 +1582,7 @@ func executeWriteFile(ctx context.Context, args map[string]any) (string, error) 
 		go func(path string) {
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
-			notifyIntegrationFileChanged(bg, path)
-			maybeRefreshAgentIdentity(bg, path)
+			notifyTextFSFileChanges(bg, path)
 		}(entry.Path)
 	}
 	return fmt.Sprintf("Wrote %d bytes to %s.", len([]byte(content)), path), nil
@@ -1650,8 +1649,7 @@ func executeEditFile(ctx context.Context, args map[string]any) (string, error) {
 		go func(path string) {
 			bg, cancel := context.WithTimeout(detachedBridgeToolContext(ctx), textFSPostWriteTimeout)
 			defer cancel()
-			notifyIntegrationFileChanged(bg, path)
-			maybeRefreshAgentIdentity(bg, path)
+			notifyTextFSFileChanges(bg, path)
 		}(entry.Path)
 	}
 	return fmt.Sprintf("Replaced text in %s.", path), nil
