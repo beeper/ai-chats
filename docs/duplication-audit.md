@@ -121,6 +121,11 @@ Recent cleanup kept pushing in that direction:
 - Dead SDK media helper overlap is gone:
   `sdk/media_helpers.go` was unused and duplicated bridge-owned media download
   behavior, so it has been deleted
+- `runtimeIntegrationHost` lost three more non-canonical layers:
+  module enablement and module-config lookup now stay in `AIClient`, the dead
+  host-only `ExecuteBuiltinTool(...)` wrapper is gone, and assistant-turn
+  waiting now reuses `aiTurnRecord` instead of a second checkpoint adapter
+  type
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems

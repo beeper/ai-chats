@@ -312,6 +312,12 @@ uses the same low-level run launch primitive as queued/immediate execution
 though the surrounding queue/runtime/heartbeat pipeline is still not fully
 unified.
 
+Recent progress also trimmed `runtimeIntegrationHost` further: module
+enablement and module-config lookup now stay with `AIClient`, the dead
+host-only `ExecuteBuiltinTool(...)` wrapper is gone, and assistant-turn waits
+now compare against canonical `aiTurnRecord` rows instead of a second
+checkpoint adapter type.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

@@ -23,16 +23,6 @@ type runtimeIntegrationHost struct {
 	client *AIClient
 }
 
-type assistantTurnCheckpoint struct {
-	TurnID       string
-	ContextEpoch int64
-	Sequence     int64
-}
-
-func newRuntimeIntegrationHost(client *AIClient) *runtimeIntegrationHost {
-	return &runtimeIntegrationHost{client: client}
-}
-
 // ---- Core Host interface ----
 
 func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
@@ -44,56 +34,11 @@ func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
 
 func (h *runtimeIntegrationHost) Now() time.Time { return time.Now() }
 
-func (h *runtimeIntegrationHost) ModuleEnabled(name string) bool {
-	if h == nil || h.client == nil || h.client.connector == nil {
-		return true
-	}
-	cfg := h.client.connector.Config.Integrations
-	if cfg == nil || cfg.Modules == nil {
-		return true
-	}
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	raw, exists := cfg.Modules[normalized]
-	if !exists {
-		return true
-	}
-	switch v := raw.(type) {
-	case bool:
-		return v
-	case map[string]any:
-		if enabled, ok := v["enabled"]; ok {
-			if b, ok := enabled.(bool); ok {
-				return b
-			}
-		}
-		return true
-	default:
-		return true
-	}
-}
-
 func (h *runtimeIntegrationHost) ModuleConfig(name string) map[string]any {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return nil
 	}
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	// Check integrations-level module config first.
-	if cfg := h.client.connector.Config.Integrations; cfg != nil && cfg.Modules != nil {
-		if raw := cfg.Modules[normalized]; raw != nil {
-			if typed, ok := raw.(map[string]any); ok {
-				return typed
-			}
-		}
-	}
-	// Fall back to top-level module config.
-	if h.client.connector.Config.Modules != nil {
-		if raw := h.client.connector.Config.Modules[normalized]; raw != nil {
-			if typed, ok := raw.(map[string]any); ok {
-				return typed
-			}
-		}
-	}
-	return nil
+	return h.client.integrationModuleConfig(name)
 }
 
 func (h *runtimeIntegrationHost) AgentModuleConfig(agentID string, module string) map[string]any {
@@ -489,23 +434,6 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, agentID str
 	return out, nil
 }
 
-func (h *runtimeIntegrationHost) ExecuteBuiltinTool(ctx context.Context, scope integrationruntime.ToolScope, name string, rawArgsJSON string) (string, error) {
-	if h == nil || h.client == nil {
-		return "", fmt.Errorf("missing client")
-	}
-	portal := scope.Portal
-	meta, _ := scope.Meta.(*PortalMetadata)
-	if meta != nil && !h.client.isToolEnabled(meta, name) {
-		return "", fmt.Errorf("tool %s is disabled", name)
-	}
-	toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
-		Client: h.client,
-		Portal: portal,
-		Meta:   meta,
-	})
-	return h.client.executeBuiltinTool(toolCtx, portal, name, rawArgsJSON)
-}
-
 // ---- Logger ----
 
 func (h *runtimeIntegrationHost) emit(level string, msg string, fields map[string]any) {
@@ -559,19 +487,15 @@ func (oc *AIClient) latestAssistantTurnRecord(ctx context.Context, portal *bridg
 	})
 }
 
-func (oc *AIClient) lastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) assistantTurnCheckpoint {
+func (oc *AIClient) lastAssistantTurnCheckpoint(ctx context.Context, portal *bridgev2.Portal) *aiTurnRecord {
 	row, err := oc.latestAssistantTurnRecord(ctx, portal)
 	if err != nil || row == nil {
-		return assistantTurnCheckpoint{}
+		return nil
 	}
-	return assistantTurnCheckpoint{
-		TurnID:       row.TurnID,
-		ContextEpoch: row.ContextEpoch,
-		Sequence:     row.Sequence,
-	}
+	return row
 }
 
-func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after assistantTurnCheckpoint) (*database.Message, bool) {
+func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridgev2.Portal, after *aiTurnRecord) (*database.Message, bool) {
 	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
 		return nil, false
 	}
@@ -579,7 +503,7 @@ func (oc *AIClient) waitForAssistantTurnAfter(ctx context.Context, portal *bridg
 	if err != nil || row == nil {
 		return nil, false
 	}
-	if after.TurnID != "" || after.ContextEpoch != 0 || after.Sequence != 0 {
+	if after != nil {
 		if row.ContextEpoch != after.ContextEpoch {
 			if row.ContextEpoch <= after.ContextEpoch {
 				return nil, false

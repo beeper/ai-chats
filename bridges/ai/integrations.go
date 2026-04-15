@@ -240,7 +240,7 @@ func (oc *AIClient) initIntegrations() {
 	oc.integrationModules = make(map[string]integrationruntime.ModuleHooks)
 	oc.integrationOrder = nil
 
-	host := newRuntimeIntegrationHost(oc)
+	host := &runtimeIntegrationHost{client: oc}
 	modules := []integrationruntime.ModuleHooks{
 		integrationcron.NewWithScheduler(host, oc.scheduler),
 		integrationmemory.NewWithDeps(host, integrationmemory.IntegrationDeps{
@@ -255,7 +255,7 @@ func (oc *AIClient) initIntegrations() {
 			continue
 		}
 		name := module.Name()
-		if !host.ModuleEnabled(name) {
+		if !oc.integrationModuleEnabled(name) {
 			continue
 		}
 		oc.registerIntegrationModule(name, module)
@@ -283,6 +283,53 @@ func (oc *AIClient) initIntegrations() {
 	oc.toolRegistry.register(coreTools)
 
 	registerModuleCommands(oc.commandRegistry.definitions())
+}
+
+func (oc *AIClient) integrationModuleEnabled(name string) bool {
+	raw, ok := oc.integrationModuleValue(name)
+	if !ok {
+		return true
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case map[string]any:
+		if enabled, ok := v["enabled"]; ok {
+			if b, ok := enabled.(bool); ok {
+				return b
+			}
+		}
+	}
+	return true
+}
+
+func (oc *AIClient) integrationModuleConfig(name string) map[string]any {
+	raw, ok := oc.integrationModuleValue(name)
+	if !ok {
+		return nil
+	}
+	typed, _ := raw.(map[string]any)
+	return typed
+}
+
+func (oc *AIClient) integrationModuleValue(name string) (any, bool) {
+	if oc == nil || oc.connector == nil {
+		return nil, false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	if normalized == "" {
+		return nil, false
+	}
+	if cfg := oc.connector.Config.Integrations; cfg != nil && cfg.Modules != nil {
+		if raw, ok := cfg.Modules[normalized]; ok {
+			return raw, true
+		}
+	}
+	if oc.connector.Config.Modules != nil {
+		raw, ok := oc.connector.Config.Modules[normalized]
+		return raw, ok
+	}
+	return nil, false
 }
 
 func (oc *AIClient) integratedToolApprovalRequirement(toolName string, args map[string]any) (handled bool, required bool, action string) {
