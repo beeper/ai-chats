@@ -63,7 +63,6 @@ func TestMarkMessageSendSuccessSkippedWhenQueueAccepted(t *testing.T) {
 func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		roomLocks:      map[id.RoomID]bool{},
 		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
 		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
@@ -107,7 +106,6 @@ func TestDispatchOrQueueQueueRejectReturnsNotPending(t *testing.T) {
 func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		roomLocks:      map[id.RoomID]bool{},
 		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {}},
 		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
@@ -146,7 +144,6 @@ func TestDispatchOrQueueQueueAcceptReturnsPending(t *testing.T) {
 func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	oc := &AIClient{
-		roomLocks:      map[id.RoomID]bool{},
 		activeRoomRuns: map[id.RoomID]*roomRunState{},
 		pendingQueues:  map[id.RoomID]*pendingQueue{},
 	}
@@ -189,8 +186,8 @@ func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
 	if got := len(queue.items); got != 2 {
 		t.Fatalf("expected queue length 2 after enqueue behind backlog, got %d", got)
 	}
-	if oc.roomLocks[roomID] {
-		t.Fatalf("expected room lock to remain clear while backlog exists")
+	if oc.roomHasActiveRun(roomID) {
+		t.Fatalf("expected room occupancy to remain clear while backlog exists")
 	}
 }
 

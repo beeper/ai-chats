@@ -275,15 +275,11 @@ type AIClient struct {
 	loginConfigMu sync.Mutex
 	loginConfig   *aiLoginConfig
 
-	// roomLocks is the low-level occupancy guard used to serialize work per room.
-	roomLocks   map[id.RoomID]bool
-	roomLocksMu sync.Mutex
-
 	// Pending message queue per room (for turn-based behavior)
 	pendingQueues   map[id.RoomID]*pendingQueue
 	pendingQueuesMu sync.Mutex
 
-	// Active room runs (for interrupt/steer and tool-boundary steering).
+	// Active room runs and room occupancy (for admission, interrupt/steer, and tool-boundary steering).
 	activeRoomRuns   map[id.RoomID]*roomRunState
 	activeRoomRunsMu sync.Mutex
 
@@ -391,7 +387,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		connector:           connector,
 		apiKey:              key,
 		log:                 log,
-		roomLocks:           make(map[id.RoomID]bool),
 		pendingQueues:       make(map[id.RoomID]*pendingQueue),
 		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
 		subagentRuns:        make(map[string]*subagentRun),
@@ -649,11 +644,6 @@ func (oc *AIClient) Disconnect() {
 			oc.stopLoginLifecycleIntegrations(bridgeID, loginID)
 		}
 	}
-
-	// Clean up per-room maps to prevent unbounded growth
-	oc.roomLocksMu.Lock()
-	clear(oc.roomLocks)
-	oc.roomLocksMu.Unlock()
 
 	oc.pendingQueuesMu.Lock()
 	clear(oc.pendingQueues)

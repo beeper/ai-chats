@@ -33,8 +33,15 @@ func (oc *AIClient) attachRoomRun(ctx context.Context, roomID id.RoomID) context
 	if oc.activeRoomRuns == nil {
 		oc.activeRoomRuns = make(map[id.RoomID]*roomRunState)
 	}
-	oc.activeRoomRuns[roomID] = &roomRunState{cancel: cancel}
+	run := oc.activeRoomRuns[roomID]
+	if run == nil {
+		run = &roomRunState{}
+		oc.activeRoomRuns[roomID] = run
+	}
 	oc.activeRoomRunsMu.Unlock()
+	run.mu.Lock()
+	run.cancel = cancel
+	run.mu.Unlock()
 	return runCtx
 }
 

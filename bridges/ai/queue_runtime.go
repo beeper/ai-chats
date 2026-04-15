@@ -19,20 +19,23 @@ func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
 }
 
 func (oc *AIClient) acquireRoom(roomID id.RoomID) bool {
-	oc.roomLocksMu.Lock()
-	defer oc.roomLocksMu.Unlock()
-	if oc.roomLocks[roomID] {
+	if oc == nil || roomID == "" {
 		return false
 	}
-	oc.roomLocks[roomID] = true
+	oc.activeRoomRunsMu.Lock()
+	defer oc.activeRoomRunsMu.Unlock()
+	if oc.activeRoomRuns == nil {
+		oc.activeRoomRuns = make(map[id.RoomID]*roomRunState)
+	}
+	if oc.activeRoomRuns[roomID] != nil {
+		return false
+	}
+	oc.activeRoomRuns[roomID] = &roomRunState{}
 	return true
 }
 
 // releaseRoom releases a room after processing is complete.
 func (oc *AIClient) releaseRoom(roomID id.RoomID) {
-	oc.roomLocksMu.Lock()
-	defer oc.roomLocksMu.Unlock()
-	delete(oc.roomLocks, roomID)
 	oc.clearRoomRun(roomID)
 }
 

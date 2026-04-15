@@ -113,7 +113,9 @@ Recent cleanup kept pushing in that direction:
 - Heartbeat no longer owns a global inflight gate:
   `hasInflightRequests()` is gone, and heartbeat now checks and locks only the
   specific session/delivery rooms it would touch
-  `dispatchOrQueueCore(...)`: direct-run, steer-only, and queue branches no
+- Room occupancy no longer has a second registry:
+  `roomLocks` is gone, and `activeRoomRuns` now owns both room admission and
+  active-run state
   longer each carry their own save/notify return path
 
 ## Highest-Value Remaining Problems
@@ -322,6 +324,8 @@ Why this still violates the goal:
   `pendingMessage` owner instead of carrying a second queue-only raw-event copy
 - heartbeat no longer blocks on unrelated work in other rooms; it now uses the
   same room-scoped busy/lock primitives as queue/runtime admission
+- room occupancy no longer bounces between `roomLocks` and `activeRoomRuns`;
+  the run map is now the only room-busy state owner
 - the remaining duplication is in how heartbeat still performs its own preflight
   and launch wiring instead of entering one canonical execution path
 
