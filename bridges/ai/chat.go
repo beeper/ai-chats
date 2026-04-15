@@ -1145,26 +1145,11 @@ func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
 	}
-	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return fmt.Errorf("intent resolution failed")
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		return fmt.Errorf("ensure joined failed: %w", err)
-	}
-	_, err = intent.SendMessage(ctx, portal.MXID, event.EventMessage, &event.Content{
-		Parsed: &event.MessageEventContent{
-			MsgType:  event.MsgNotice,
-			Body:     message,
-			Mentions: &event.Mentions{},
-		},
-	}, nil)
-	return err
+	return sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message)
 }
 
-// sendSystemNotice sends a bridge-authored notice via the portal's canonical
-// remote sender intent so it lands like other AI-authored output in the room.
+// sendSystemNotice sends a bridge-authored notice via the shared SDK transport
+// path instead of maintaining a bridge-local Matrix send implementation.
 func (oc *AIClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Portal, message string) {
 	if err := oc.sendSystemNoticeMessage(ctx, portal, message); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to send system notice")

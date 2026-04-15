@@ -39,8 +39,8 @@ encryption:
   require: true
   allow_key_sharing: true
   verification_levels:
-    receive: unverified
-    send: unverified
+    receive: cross-signed-tofu
+    send: cross-signed-tofu
     share: cross-signed-tofu
   delete_keys:
     ratchet_on_decrypt: false
