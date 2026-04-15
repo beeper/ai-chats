@@ -696,19 +696,6 @@ func TestLoadAIPromptHistoryTurns_UsesCanonicalPortalScopeForTransientPortal(t *
 		t.Fatalf("expected transient portal scope lookup to fail, got %#v", scope)
 	}
 
-	turns, err := client.loadAIPromptHistoryTurns(ctx, transientPortal, 10, historyReplayOptions{})
-	if err != nil {
-		t.Fatalf("canonical portal-scoped history replay failed: %v", err)
-	}
-	if len(turns) != 2 {
-		t.Fatalf("expected 2 replayable turns, got %d", len(turns))
-	}
-	if turns[0].Role != "assistant" || sdk.TurnText(turns[0].TurnData) != "Hi there" {
-		t.Fatalf("unexpected newest replayed turn: %#v", turns[0])
-	}
-	if turns[1].Role != "user" || sdk.TurnText(turns[1].TurnData) != "hello world" {
-		t.Fatalf("unexpected second replayed turn: %#v", turns[1])
-	}
 }
 
 func TestGetAIHistoryMessages_UsesCanonicalPortalScopeForTransientPortal(t *testing.T) {
@@ -896,26 +883,6 @@ func TestLoadAIConversationMessage_UsesCanonicalPortalScopeForTransientPortal(t 
 	}
 }
 
-func TestLoadAIPromptHistoryTurnsByScope_MissingScopeReturnsNoHistory(t *testing.T) {
-	ctx := context.Background()
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			PortalKey: networkid.PortalKey{
-				ID:       networkid.PortalID("missing-scope"),
-				Receiver: networkid.UserLoginID("login-1"),
-			},
-		},
-	}
-
-	turns, err := loadAIPromptHistoryTurnsByScope(ctx, nil, portal, historyReplayOptions{}, 10)
-	if err != nil {
-		t.Fatalf("expected missing scope to be non-fatal, got %v", err)
-	}
-	if len(turns) != 0 {
-		t.Fatalf("expected no turns without scope, got %d", len(turns))
-	}
-}
-
 func TestHandleMatrixMessageRemove_DeletesTranscriptState(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderOpenAI)
@@ -1041,12 +1008,12 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 	}
 	client.saveUserMessage(ctx, &event.Event{ID: userMsg.MXID}, userMsg)
 
-	record, err := loadAIPortalRecord(ctx, portal)
+	historyBeforeReset, err := client.getAIHistoryMessages(ctx, portal, 10)
 	if err != nil {
-		t.Fatalf("load portal record before reset: %v", err)
+		t.Fatalf("load history before reset: %v", err)
 	}
-	if record == nil || record.ContextEpoch != 0 {
-		t.Fatalf("expected initial context epoch 0, got %#v", record)
+	if len(historyBeforeReset) != 1 {
+		t.Fatalf("expected visible history before reset, got %d entries", len(historyBeforeReset))
 	}
 
 	if err := advanceAIPortalContextEpoch(ctx, portal); err != nil {
@@ -1054,14 +1021,6 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 	}
 	if err := portal.Save(ctx); err != nil {
 		t.Fatalf("save portal state after reset: %v", err)
-	}
-
-	record, err = loadAIPortalRecord(ctx, portal)
-	if err != nil {
-		t.Fatalf("load portal record after reset: %v", err)
-	}
-	if record == nil || record.ContextEpoch != 1 || record.NextTurnSequence != 0 {
-		t.Fatalf("expected reset portal record, got %#v", record)
 	}
 
 	history, err := client.getAIHistoryMessages(ctx, portal, 10)
@@ -1072,13 +1031,6 @@ func TestAdvanceAIPortalContextEpoch_HidesPreviousHistory(t *testing.T) {
 		t.Fatalf("expected no visible history in new epoch, got %d entries", len(history))
 	}
 
-	turns, err := client.loadAIPromptHistoryTurns(ctx, portal, 10, historyReplayOptions{})
-	if err != nil {
-		t.Fatalf("load prompt turns after reset: %v", err)
-	}
-	if len(turns) != 0 {
-		t.Fatalf("expected no replayable turns in new epoch, got %d", len(turns))
-	}
 }
 
 func TestWaitForAssistantTurnAfter_UsesCanonicalSequenceInsteadOfTimestamp(t *testing.T) {

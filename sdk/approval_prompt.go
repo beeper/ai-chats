@@ -641,18 +641,6 @@ func AddOptionalDetail(input map[string]any, details []ApprovalDetail, key, labe
 	return input, details
 }
 
-// DecisionToString maps an ApprovalDecisionPayload to one of three upstream
-// string values (once/always/deny) based on the decision fields.
-func DecisionToString(decision ApprovalDecisionPayload, once, always, deny string) string {
-	if !decision.Approved {
-		return deny
-	}
-	if decision.Always {
-		return always
-	}
-	return once
-}
-
 func normalizeReactionKey(key string) string {
 	key = strings.TrimSpace(key)
 	if key == "" {

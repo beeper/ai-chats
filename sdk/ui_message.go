@@ -72,42 +72,6 @@ func BuildUIMessageMetadata(p UIMessageMetadataParams) map[string]any {
 	return metadata
 }
 
-func MergeUIMessageMetadata(base, update map[string]any) map[string]any {
-	return jsonutil.MergeRecursive(base, update)
-}
-
-type UIMessageParams struct {
-	TurnID     string
-	Role       string
-	Metadata   map[string]any
-	Parts      []map[string]any
-	SourceURLs []map[string]any
-	FileParts  []map[string]any
-}
-
-func BuildUIMessage(p UIMessageParams) map[string]any {
-	role := p.Role
-	if role == "" {
-		role = "assistant"
-	}
-	allParts := p.Parts
-	if len(p.SourceURLs) > 0 {
-		allParts = append(allParts, p.SourceURLs...)
-	}
-	if len(p.FileParts) > 0 {
-		allParts = append(allParts, p.FileParts...)
-	}
-	msg := map[string]any{
-		"id":    p.TurnID,
-		"role":  role,
-		"parts": allParts,
-	}
-	if len(p.Metadata) > 0 {
-		msg["metadata"] = p.Metadata
-	}
-	return msg
-}
-
 func MapFinishReason(reason string) string {
 	switch strings.TrimSpace(reason) {
 	case "stop", "end_turn", "end-turn":

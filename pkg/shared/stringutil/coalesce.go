@@ -41,12 +41,3 @@ func StringValue(v any) string {
 func TrimString(v any) string {
 	return strings.TrimSpace(StringValue(v))
 }
-
-// TrimDefault returns value (trimmed) if non-empty, otherwise returns fallback.
-func TrimDefault(value, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
-	}
-	return value
-}

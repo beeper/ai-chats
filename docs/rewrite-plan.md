@@ -352,8 +352,8 @@ Recent progress also collapsed duplicate room-busy state: `roomLocks` is gone,
 and `activeRoomRuns` now owns both room admission and active-run tracking.
 
 Recent progress also deleted two more low-value layers:
-`dispatchOrQueueCore(...)` now owns its interrupt-mode branch directly instead
-of routing through `DecideQueueAction(...)`, and the dead overlapping
+`dispatchOrQueueCore(...)` now owns its interrupt-mode branch directly, the
+obsolete `pkg/runtime.DecideQueueAction(...)` helper is gone, and the dead overlapping
 `sdk/media_helpers.go` file is gone.
 
 Recent progress also removed the one-callsite

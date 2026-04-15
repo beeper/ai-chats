@@ -43,17 +43,6 @@ func normalizeApprovalResolutionOrigin(origin ApprovalResolutionOrigin) Approval
 	}
 }
 
-func ApprovalResolutionOriginFromString(value string) ApprovalResolutionOrigin {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(ApprovalResolutionOriginUser):
-		return ApprovalResolutionOriginUser
-	case string(ApprovalResolutionOriginAgent):
-		return ApprovalResolutionOriginAgent
-	default:
-		return ""
-	}
-}
-
 // Shared sentinel errors for approval resolution.
 var (
 	ErrApprovalMissingID      = errors.New("missing approval id")

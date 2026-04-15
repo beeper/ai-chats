@@ -86,10 +86,6 @@ func TestApplyReplyToMode_First(t *testing.T) {
 }
 
 func TestQueueFallbackToolCompactionDecisions(t *testing.T) {
-	queue := DecideQueueAction(QueueModeInterrupt, true, false)
-	if queue.Action != QueueActionInterruptAndRun {
-		t.Fatalf("unexpected queue decision: %#v", queue)
-	}
 	if cls := ClassifyFallbackError(assertErr("rate limit exceeded")); cls != FailureClassRateLimit {
 		t.Fatalf("unexpected fallback classification: %s", cls)
 	}

@@ -198,36 +198,6 @@ func (b *BaseMessageMetadata) CopyFromBase(src *BaseMessageMetadata) {
 	}
 }
 
-// CopyNonZero copies src into dst when src is not the zero value for its type.
-func CopyNonZero[T comparable](dst *T, src T) {
-	var zero T
-	if dst != nil && src != zero {
-		*dst = src
-	}
-}
-
-// CopySlice copies src into dst when src is non-empty.
-func CopySlice[T any](dst *[]T, src []T) {
-	if dst == nil || len(src) == 0 {
-		return
-	}
-	cloned := make([]T, len(src))
-	copy(cloned, src)
-	*dst = cloned
-}
-
-// CopyMapSlice copies src into dst when src is non-empty, deep-cloning each map.
-func CopyMapSlice(dst *[]map[string]any, src []map[string]any) {
-	if dst == nil || len(src) == 0 {
-		return
-	}
-	cloned := make([]map[string]any, len(src))
-	for i, item := range src {
-		cloned[i] = jsonutil.DeepCloneMap(item)
-	}
-	*dst = cloned
-}
-
 // ToolCallMetadata tracks a tool call within a message.
 // Both bridges and the connector share this type for JSON-serialized database storage.
 type ToolCallMetadata struct {

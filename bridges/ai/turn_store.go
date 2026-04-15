@@ -99,12 +99,6 @@ func decodeAITurnMetadata(raw string, turnData sdk.TurnData) (*MessageMetadata, 
 	return normalizeAITurnMetadata(&meta, turnData), nil
 }
 
-func loadAIPortalRecord(ctx context.Context, portal *bridgev2.Portal) (*aiPersistedPortalRecord, error) {
-	return withResolvedPortalScopeValue(ctx, nil, portal, func(ctx context.Context, _ *bridgev2.Portal, scope *portalScope) (*aiPersistedPortalRecord, error) {
-		return loadAIPortalRecordByScope(ctx, scope)
-	})
-}
-
 func loadAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPersistedPortalRecord, error) {
 	if scope == nil {
 		return nil, nil
@@ -515,45 +509,6 @@ func databaseMessageFromAITurn(portal *bridgev2.Portal, record *aiTurnRecord) *d
 		msg.Room = portal.PortalKey
 	}
 	return msg
-}
-
-func (oc *AIClient) loadAIPromptHistoryTurns(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	limit int,
-	opts historyReplayOptions,
-) ([]*aiTurnRecord, error) {
-	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*aiTurnRecord, error) {
-		return loadAIPromptHistoryTurnsByScope(ctx, scope, portal, opts, limit)
-	})
-}
-
-func loadAIPromptHistoryTurnsByScope(
-	ctx context.Context,
-	scope *portalScope,
-	portal *bridgev2.Portal,
-	opts historyReplayOptions,
-	limit int,
-) ([]*aiTurnRecord, error) {
-	if limit <= 0 {
-		return nil, nil
-	}
-	query := aiTurnQuery{
-		includeInHistory: true,
-		limit:            limit,
-	}
-	if opts.targetMessageID != "" {
-		target, err := loadAITurnByRefByScope(ctx, scope, opts.targetMessageID, "")
-		if err != nil {
-			return nil, err
-		}
-		if target != nil {
-			query.maxSequenceExclusive = target.Sequence
-			query.contextEpoch = target.ContextEpoch
-			query.hasContextEpoch = true
-		}
-	}
-	return loadAICurrentContextTurnsByScope(ctx, scope, query)
 }
 
 func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bool {

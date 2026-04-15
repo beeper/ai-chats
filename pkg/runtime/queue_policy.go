@@ -75,33 +75,6 @@ func ResolveQueueOverflow(capacity int, currentLen int, policy QueueDropPolicy) 
 	}
 }
 
-func DecideQueueAction(mode QueueMode, hasActiveRun bool, isHeartbeat bool) QueueDecision {
-	if !hasActiveRun {
-		return QueueDecision{Action: QueueActionRunNow, Reason: "no_active_run"}
-	}
-	if isHeartbeat {
-		return QueueDecision{Action: QueueActionEnqueue, Reason: "heartbeat_backlog"}
-	}
-	if mode == QueueModeInterrupt {
-		return QueueDecision{Action: QueueActionInterruptAndRun, Reason: "interrupt_mode"}
-	}
-
-	reason := "default_backlog"
-	switch mode {
-	case QueueModeSteer:
-		reason = "steer_mode"
-	case QueueModeFollowup:
-		reason = "followup_mode"
-	case QueueModeCollect:
-		reason = "collect_mode"
-	case QueueModeSteerBacklog:
-		reason = "steer_backlog_mode"
-	case QueueModeBacklog:
-		reason = "backlog_mode"
-	}
-	return QueueDecision{Action: QueueActionEnqueue, Reason: reason}
-}
-
 // ElideQueueText truncates text to the given character limit with an ellipsis.
 func ElideQueueText(text string, limit int) string {
 	if limit <= 0 || len(text) <= limit {
