@@ -364,6 +364,11 @@ Recent progress also centralized login-scoped TextFS store construction:
 tool / bootstrap / heartbeat / agent-display code no longer rebuilds separate
 `textfs.NewStore(...)` paths.
 
+Recent progress also removed the host-side agent-module JSON round-trip:
+`runtimeIntegrationHost.AgentModuleConfig(...)` now uses a typed module
+selector, and memory module config is normalized on agent hydration instead of
+serializing the whole agent just to discover one field.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly

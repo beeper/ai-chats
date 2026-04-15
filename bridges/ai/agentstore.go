@@ -262,7 +262,7 @@ func ToAgentDefinitionContent(agent *agents.AgentDefinition) *AgentDefinitionCon
 		content.IdentityPersona = agent.Identity.Persona
 	}
 
-	content.MemorySearch = agent.MemorySearch
+	content.MemorySearch = normalizeMemorySearchConfig(agent.MemorySearch)
 
 	return content
 }
@@ -297,7 +297,7 @@ func FromAgentDefinitionContent(content *AgentDefinitionContent) *agents.AgentDe
 		}
 	}
 
-	def.MemorySearch = content.MemorySearch
+	def.MemorySearch = normalizeMemorySearchConfig(content.MemorySearch)
 
 	return def
 }

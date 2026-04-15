@@ -163,6 +163,11 @@ Recent cleanup kept pushing in that direction:
   `AIClient.textFSStoreForAgent(...)` now owns the storage tuple, the host-only
   `textStoreForAgent(...)` helper is gone, and tools / bootstrap / heartbeat /
   agent-display reads all delegate to the same store-construction rule
+- Agent module config no longer round-trips the entire agent through JSON:
+  `runtimeIntegrationHost.AgentModuleConfig(...)` now delegates to a typed
+  module selector, memory module lookup is aligned with `memory_search`, and
+  agent hydration normalizes memory config back into a typed shape instead of
+  rediscovering it through generic maps later
 
 ## Highest-Value Remaining Problems
 

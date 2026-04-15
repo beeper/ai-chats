@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -44,26 +43,7 @@ func (h *runtimeIntegrationHost) AgentModuleConfig(agentID string, module string
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return nil
 	}
-	store := &AgentStoreAdapter{client: h.client}
-	agent, err := store.GetAgentByID(h.client.backgroundContext(context.TODO()), agentID)
-	if err != nil || agent == nil {
-		return nil
-	}
-	// Marshal the entire agent to a generic map and extract the module key.
-	raw, err := json.Marshal(agent)
-	if err != nil {
-		return nil
-	}
-	var agentMap map[string]any
-	if err := json.Unmarshal(raw, &agentMap); err != nil {
-		return nil
-	}
-	moduleName := strings.ToLower(strings.TrimSpace(module))
-	moduleData, ok := agentMap[moduleName].(map[string]any)
-	if !ok {
-		return nil
-	}
-	return moduleData
+	return h.client.agentModuleConfig(agentID, module)
 }
 
 // ---- Host methods: logger access ----
