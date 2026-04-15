@@ -8,10 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -404,60 +401,4 @@ func (c *Conversation) QueueRemoteEvent(evt bridgev2.RemoteEvent) {
 	if c.login != nil {
 		c.login.Bridge.QueueRemoteEvent(c.login, evt)
 	}
-}
-
-func normalizeConversationSpec(spec ConversationSpec) ConversationSpec {
-	if spec.Kind == "" {
-		spec.Kind = ConversationKindNormal
-	}
-	if spec.Kind == ConversationKindDelegated {
-		if spec.Visibility == "" {
-			spec.Visibility = ConversationVisibilityHidden
-		}
-		spec.ArchiveOnCompletion = true
-	}
-	if spec.Visibility == "" {
-		spec.Visibility = ConversationVisibilityNormal
-	}
-	if strings.TrimSpace(spec.PortalID) == "" {
-		spec.PortalID = "sdk:" + uuid.NewString()
-	}
-	return spec
-}
-
-func conversationStateFromSpec(spec ConversationSpec) *sdkConversationState {
-	spec = normalizeConversationSpec(spec)
-	return &sdkConversationState{
-		Kind:                 spec.Kind,
-		Visibility:           spec.Visibility,
-		ParentConversationID: strings.TrimSpace(spec.ParentConversationID),
-		ParentEventID:        strings.TrimSpace(spec.ParentEventID),
-		ArchiveOnCompletion:  spec.ArchiveOnCompletion,
-		Metadata:             spec.Metadata,
-	}
-}
-
-func ensureConversationPortal(ctx context.Context, login *bridgev2.UserLogin, spec ConversationSpec) (*bridgev2.Portal, error) {
-	if login == nil || login.Bridge == nil {
-		return nil, fmt.Errorf("login bridge unavailable")
-	}
-	spec = normalizeConversationSpec(spec)
-	key := networkid.PortalKey{
-		ID: networkid.PortalID(spec.PortalID),
-	}
-	if login.ID != "" {
-		key.Receiver = login.ID
-	}
-	portal, err := login.Bridge.GetPortalByKey(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if portal.RoomType == "" {
-		portal.RoomType = database.RoomTypeDefault
-	}
-	if strings.TrimSpace(spec.Title) != "" {
-		portal.Name = strings.TrimSpace(spec.Title)
-		portal.NameSet = true
-	}
-	return portal, nil
 }

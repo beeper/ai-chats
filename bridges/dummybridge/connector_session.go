@@ -51,7 +51,10 @@ func (dc *DummyBridgeConnector) onDisconnect(_ *dummySession) {}
 
 func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.ChatInfo, error) {
 	if conv == nil || conv.Portal() == nil {
-		return bridgeutil.BuildChatInfoWithFallback("", "", dummyAgentName, dummyPortalTopic), nil
+		return &bridgev2.ChatInfo{
+			Name:  ptr.Ptr(dummyAgentName),
+			Topic: ptr.NonZero(strings.TrimSpace(dummyPortalTopic)),
+		}, nil
 	}
 	portal := conv.Portal()
 	meta := portalMeta(portal)
@@ -62,7 +65,10 @@ func (dc *DummyBridgeConnector) getChatInfo(conv *sdk.Conversation) (*bridgev2.C
 	if title == "" {
 		title = dummyAgentName
 	}
-	info := bridgeutil.BuildChatInfoWithFallback(title, portal.Name, dummyAgentName, portal.Topic)
+	info := &bridgev2.ChatInfo{
+		Name:  ptr.Ptr(title),
+		Topic: ptr.NonZero(strings.TrimSpace(portal.Topic)),
+	}
 	if strings.TrimSpace(meta.Topic) != "" {
 		info.Topic = ptr.Ptr(meta.Topic)
 	}

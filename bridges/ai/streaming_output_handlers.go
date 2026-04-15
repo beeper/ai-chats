@@ -246,7 +246,9 @@ func (oc *AIClient) gateMcpToolApproval(
 	}
 	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
 	if err := actions.approvalRequested(params, needsApproval); err != nil {
-		delete(state.pendingMcpApprovalsSeen, approvalID)
+		if state != nil {
+			delete(state.pendingMcpApprovalsSeen, approvalID)
+		}
 		if state != nil && state.turn != nil {
 			delete(state.turn.UIState().UIToolApprovalRequested, approvalID)
 		}

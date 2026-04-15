@@ -23,7 +23,6 @@ var (
 	systemEvents   = make(map[string]*systemEventQueue)
 )
 
-const maxSystemEvents = 20
 const systemEventsKeySeparator = "\x1f"
 
 func requireSessionKey(key string) (string, error) {

@@ -26,10 +26,10 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	if len(uiMessage) == 0 && turn != nil {
 		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
 	}
-	turnData := sdk.TurnData{}
+	var turnData sdk.TurnData
 	if turn != nil {
 		turnData = buildCanonicalTurnData(state, nil)
-	} else {
+	} else if len(uiMessage) != 0 {
 		turnData = sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
 			ID:             turnID,
 			Role:           "assistant",
@@ -38,9 +38,6 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 			ToolCalls:      state.toolCalls,
 			GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 		})
-		if len(uiMessage) == 0 {
-			turnData = sdk.TurnData{}
-		}
 	}
 	modelID := state.respondingModelID
 	if modelID == "" {
