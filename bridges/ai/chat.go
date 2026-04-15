@@ -1065,7 +1065,7 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 		LoginID:        oc.UserLogin.ID,
 		BotUserID:      modelUserID(modelID),
 		BotDisplayName: modelName,
-		CanBackfill:    true,
+		CanBackfill:    false,
 	})
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
