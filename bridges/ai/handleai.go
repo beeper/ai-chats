@@ -150,8 +150,17 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	_, intent, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, typing)
-	if err != nil || intent == nil {
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return
+	}
+	if typing {
+		if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+			return
+		}
+	}
+	if intent == nil {
 		return
 	}
 	var timeout time.Duration
@@ -166,132 +175,6 @@ func (oc *AIClient) setModelTyping(ctx context.Context, portal *bridgev2.Portal,
 		}
 		oc.loggerForContext(ctx).Warn().Err(err).Bool("typing", typing).Msg("Failed to set typing indicator")
 	}
-}
-
-const autoGreetingDelay = 5 * time.Second
-
-func (oc *AIClient) hasPortalMessages(ctx context.Context, portal *bridgev2.Portal) bool {
-	if oc == nil || portal == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil {
-		return true
-	}
-
-	// Use a small lookback window so we can ignore "non-user" internal messages (e.g. welcome notices,
-	// subagent triggers) when deciding whether the chat is "empty enough" to auto-greet.
-	history, err := oc.getAIHistoryMessages(ctx, portal, 10)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to check portal message history")
-		// Best-effort: if the DB is temporarily unavailable, prefer still scheduling the greeting.
-		// The goroutine re-checks message history before dispatching.
-		return false
-	}
-	for _, msg := range history {
-		meta, ok := msg.Metadata.(*MessageMetadata)
-		if !ok || meta == nil {
-			// Some bridge-generated events may be stored with nil/unknown metadata (e.g. notices/state echoes).
-			// Only treat them as "conversation has started" if they look like user/assistant messages by sender.
-			if msg.SenderID == humanUserID(oc.UserLogin.ID) {
-				return true
-			}
-			if portal.OtherUserID != "" && msg.SenderID == portal.OtherUserID {
-				return true
-			}
-			continue
-		}
-		if meta.ExcludeFromHistory {
-			continue
-		}
-		role := strings.TrimSpace(strings.ToLower(meta.Role))
-		if role != "user" && role != "assistant" {
-			continue
-		}
-		if strings.TrimSpace(meta.Body) == "" {
-			continue
-		}
-		return true
-	}
-	return oc.hasInternalPromptHistory(ctx, portal)
-}
-
-func isInternalControlRoom(meta *PortalMetadata) bool {
-	if meta == nil {
-		return false
-	}
-	return meta.InternalRoom()
-}
-
-func autoGreetingBlockReason(meta *PortalMetadata) string {
-	switch {
-	case isInternalControlRoom(meta):
-		return "internal-control-room"
-	case resolveAgentID(meta) == "":
-		return "no-agent"
-	}
-	return ""
-}
-
-func (oc *AIClient) scheduleAutoGreeting(ctx context.Context, portal *bridgev2.Portal) {
-	if oc == nil || portal == nil || portal.MXID == "" {
-		return
-	}
-	meta := portalMeta(portal)
-	if autoGreetingBlockReason(meta) != "" {
-		return
-	}
-	if oc.hasPortalMessages(ctx, portal) {
-		return
-	}
-
-	portalKey := portal.PortalKey
-	roomID := portal.MXID
-	go func() {
-		oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop started")
-		bgCtx := oc.backgroundContext(ctx)
-		for {
-			delay := autoGreetingDelay
-			if roomID != "" {
-				if state, ok := oc.getUserTypingState(roomID); ok && !state.lastActivity.IsZero() {
-					if since := time.Since(state.lastActivity); since < autoGreetingDelay {
-						delay = autoGreetingDelay - since
-					}
-				}
-			}
-			timer := time.NewTimer(delay)
-			<-timer.C
-			timer.Stop()
-
-			current, err := oc.UserLogin.Bridge.GetPortalByKey(bgCtx, portalKey)
-			if err != nil || current == nil {
-				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal not found")
-				return
-			}
-			currentMeta := portalMeta(current)
-			if currentMeta != nil && currentMeta.AutoGreetingSent {
-				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: already sent")
-				return
-			}
-			if reason := autoGreetingBlockReason(currentMeta); reason != "" {
-				oc.log.Debug().Stringer("room_id", roomID).Str("reason", reason).Msg("auto-greeting loop exiting: blocked by portal state")
-				return
-			}
-			if oc.hasPortalMessages(bgCtx, current) {
-				oc.log.Debug().Stringer("room_id", roomID).Msg("auto-greeting loop exiting: portal has messages")
-				return
-			}
-			if oc.isUserTyping(current.MXID) || !oc.userIdleFor(current.MXID, autoGreetingDelay) {
-				continue
-			}
-
-			currentMeta.AutoGreetingSent = true
-			if err := oc.savePortal(bgCtx, current, "auto greeting state"); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist auto greeting state")
-				return
-			}
-			if _, _, err := oc.dispatchInternalMessage(bgCtx, current, currentMeta, autoGreetingPrompt, "auto-greeting", true); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to dispatch auto greeting")
-			}
-			return
-		}
-	}()
 }
 
 func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.Portal) error {

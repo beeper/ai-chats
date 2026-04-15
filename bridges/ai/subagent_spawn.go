@@ -274,10 +274,14 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 		}
 	}
 
+	roomName := resolveSubagentRoomName(label, task)
 	chatResp, err := oc.createChat(ctx, chatCreateParams{
 		ModelID:            resolvedModel,
 		Agent:              targetAgent,
 		ApplyModelOverride: modelApplied,
+		RoomName:           roomName,
+		ParentRoomID:       portal.MXID,
+		RuntimeReasoning:   reasoningEffort,
 	})
 	if err != nil {
 		return tools.JSONResult(map[string]any{
@@ -291,34 +295,7 @@ func (oc *AIClient) executeSessionsSpawn(ctx context.Context, portal *bridgev2.P
 			"error":  "failed to create sub-agent session",
 		}), nil
 	}
-
-	roomName := resolveSubagentRoomName(label, task)
-	childPortal, err := oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:     chatResp.Portal,
-		ChatInfo:   chatResp.PortalInfo,
-		SaveAction: "subagent room setup",
-		Mutate: func(childPortal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
-			childMeta := portalMeta(childPortal)
-			childMeta.SubagentParentRoomID = portal.MXID.String()
-			if reasoningEffort != "" {
-				childMeta.RuntimeReasoning = reasoningEffort
-			}
-			if roomName != "" {
-				if chatInfo != nil {
-					chatInfo.Name = &roomName
-				}
-				childPortal.Name = roomName
-				childPortal.NameSet = true
-			}
-		},
-		CleanupOnCreateError: "failed to create subagent Matrix room",
-	})
-	if err != nil {
-		return tools.JSONResult(map[string]any{
-			"status": "error",
-			"error":  err.Error(),
-		}), nil
-	}
+	childPortal := chatResp.Portal
 	childMeta := portalMeta(childPortal)
 
 	eventID := sdk.NewEventID("subagent")

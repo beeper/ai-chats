@@ -979,38 +979,6 @@ func TestTurnWriterStartEnsuresSenderJoinedBeforePlaceholderSend(t *testing.T) {
 	}
 }
 
-func TestConversationSendNoticeUsesConversationIntent(t *testing.T) {
-	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "login-1"}}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:test"}}
-	intent := &sdkTestMatrixAPI{}
-	conv := newConversation(context.Background(), portal, login, bridgev2.EventSender{Sender: "agent-test", SenderLogin: login.ID})
-	conv.intentOverride = func(context.Context) (bridgev2.MatrixAPI, error) { return intent, nil }
-
-	if err := conv.SendNotice(context.Background(), " hello "); err != nil {
-		t.Fatalf("SendNotice returned error: %v", err)
-	}
-	if len(intent.sentMessages) != 1 {
-		t.Fatalf("expected one notice to be sent through the conversation intent, got %d", len(intent.sentMessages))
-	}
-	got := intent.sentMessages[0]
-	if got.roomID != portal.MXID {
-		t.Fatalf("expected notice to target %q, got %q", portal.MXID, got.roomID)
-	}
-	if got.eventType != event.EventMessage {
-		t.Fatalf("expected event type %q, got %q", event.EventMessage, got.eventType)
-	}
-	msg, ok := got.content.Parsed.(*event.MessageEventContent)
-	if !ok {
-		t.Fatalf("expected parsed message content, got %#v", got.content.Parsed)
-	}
-	if msg.MsgType != event.MsgNotice {
-		t.Fatalf("expected notice message, got %q", msg.MsgType)
-	}
-	if msg.Body != "hello" {
-		t.Fatalf("expected trimmed notice body, got %q", msg.Body)
-	}
-}
-
 func waitForTurnEnd(t *testing.T, turn *Turn, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

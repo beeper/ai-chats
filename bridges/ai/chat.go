@@ -531,15 +531,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
 			}
-			if chatResp != nil && chatResp.Portal != nil && chatResp.Portal.MXID == "" {
-				chatResp.Portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-					Portal:   chatResp.Portal,
-					ChatInfo: chatResp.PortalInfo,
-				})
-				if err != nil {
-					return nil, fmt.Errorf("failed to create portal room: %w", err)
-				}
-			}
 		}
 		return &bridgev2.ResolveIdentifierResponse{
 			UserID:   userID,
@@ -563,15 +554,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
-			}
-			if chatResp != nil && chatResp.Portal != nil && chatResp.Portal.MXID == "" {
-				chatResp.Portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-					Portal:   chatResp.Portal,
-					ChatInfo: chatResp.PortalInfo,
-				})
-				if err != nil {
-					return nil, fmt.Errorf("failed to create portal room: %w", err)
-				}
 			}
 		}
 
@@ -665,6 +647,9 @@ type chatCreateParams struct {
 	ApplyModelOverride bool
 	Title              string
 	PortalKey          *networkid.PortalKey
+	RoomName           string
+	ParentRoomID       id.RoomID
+	RuntimeReasoning   string
 }
 
 func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*bridgev2.CreateChatResponse, error) {
@@ -693,6 +678,33 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 	}
 	if params.Agent != nil {
 		oc.configureAgentChatPortal(ctx, portal, chatInfo, params.Agent, modelID, params.ApplyModelOverride, "agent config")
+	}
+	roomName := strings.TrimSpace(params.RoomName)
+	if roomName != "" {
+		portal.Name = roomName
+		portal.NameSet = true
+		if chatInfo != nil {
+			chatInfo.Name = &roomName
+		}
+	}
+	meta := portalMeta(portal)
+	if params.ParentRoomID != "" {
+		meta.SubagentParentRoomID = params.ParentRoomID.String()
+	}
+	if reasoning := strings.TrimSpace(params.RuntimeReasoning); reasoning != "" {
+		meta.RuntimeReasoning = reasoning
+	}
+	if roomName != "" || params.ParentRoomID != "" || strings.TrimSpace(params.RuntimeReasoning) != "" {
+		if err := oc.savePortal(ctx, portal, "chat setup"); err != nil {
+			return nil, fmt.Errorf("failed to save chat setup: %w", err)
+		}
+	}
+	portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
+		Portal:   portal,
+		ChatInfo: chatInfo,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to materialize chat room: %w", err)
 	}
 
 	return &bridgev2.CreateChatResponse{
@@ -841,15 +853,7 @@ func (oc *AIClient) handleNewChat(
 		oc.sendSystemNotice(runCtx, portal, "Couldn't create the chat: "+err.Error())
 		return
 	}
-
-	newPortal, err := oc.ensurePortalRoom(runCtx, ensurePortalRoomParams{
-		Portal:   chatResp.Portal,
-		ChatInfo: chatResp.PortalInfo,
-	})
-	if err != nil {
-		oc.sendSystemNotice(runCtx, portal, "Couldn't create the room: "+err.Error())
-		return
-	}
+	newPortal := chatResp.Portal
 
 	roomLink := fmt.Sprintf("https://matrix.to/#/%s", newPortal.MXID)
 	oc.sendSystemNotice(runCtx, portal, fmt.Sprintf(

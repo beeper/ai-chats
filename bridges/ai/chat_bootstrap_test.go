@@ -48,7 +48,7 @@ func TestAgentsEnabledForLogin_DefaultsDisabledAndConfigControlsEnablement(t *te
 	}
 }
 
-func TestEnsurePortalRoomDoesNotSendDisclaimerOnMaterialization(t *testing.T) {
+func TestCreateChatDoesNotSendDisclaimerOnMaterialization(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
@@ -63,15 +63,9 @@ func TestEnsurePortalRoomDoesNotSendDisclaimerOnMaterialization(t *testing.T) {
 		t.Fatalf("createChat returned error: %v", err)
 	}
 
-	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:   chatResp.Portal,
-		ChatInfo: chatResp.PortalInfo,
-	})
-	if err != nil {
-		t.Fatalf("ensurePortalRoom returned error: %v", err)
-	}
+	portal := chatResp.Portal
 	if portal.MXID == "" {
-		t.Fatal("expected ensurePortalRoom to materialize a Matrix room")
+		t.Fatal("expected createChat to materialize a Matrix room")
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -101,13 +95,7 @@ func TestSendDisclaimerNoticeSendsOnce(t *testing.T) {
 		t.Fatalf("createChat returned error: %v", err)
 	}
 
-	portal, err := client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:   chatResp.Portal,
-		ChatInfo: chatResp.PortalInfo,
-	})
-	if err != nil {
-		t.Fatalf("first ensurePortalRoom returned error: %v", err)
-	}
+	portal := chatResp.Portal
 	if err := client.sendDisclaimerNotice(ctx, portal); err != nil {
 		t.Fatalf("sendDisclaimerNotice returned error: %v", err)
 	}

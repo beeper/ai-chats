@@ -31,9 +31,12 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 // ToolDefinition defines a tool that can be used by the AI.
@@ -494,9 +497,13 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 	asVoice, _ := args["asVoice"].(bool)
 	gifPlayback, _ := args["gifPlayback"].(bool)
 
-	intent, err := btc.Client.getIntentForPortal(ctx, btc.Portal, bridgev2.RemoteEventMessage)
-	if err != nil {
-		return "", fmt.Errorf("failed to get intent: %w", err)
+	sender := btc.Client.senderForPortal(ctx, btc.Portal)
+	intent, ok := btc.Portal.GetIntentFor(ctx, sender, btc.Client.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return "", fmt.Errorf("failed to get intent")
+	}
+	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
+		return "", fmt.Errorf("failed to prepare sender: %w", err)
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, btc.Portal.MXID, data, fileName, mimeType)
@@ -557,7 +564,16 @@ func executeMessageSend(ctx context.Context, args map[string]any, btc *BridgeToo
 			Content: content,
 		}},
 	}
-	eventID, _, sendErr := btc.Client.sendViaPortalWithTiming(ctx, btc.Portal, converted, "", time.Now(), 0)
+	eventID, _, sendErr := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       btc.Client.UserLogin,
+		Portal:      btc.Portal,
+		Sender:      sender,
+		IDPrefix:    btc.Client.ClientBase.MessageIDPrefix,
+		LogKey:      btc.Client.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	})
 	if sendErr != nil {
 		return "", fmt.Errorf("couldn't send the media message: %w", sendErr)
 	}
@@ -607,7 +623,15 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 		}},
 	}
 
-	if err := btc.Client.sendEditViaPortalWithTiming(ctx, btc.Portal, targetPart.ID, editContent, time.Now(), 0); err != nil {
+	sender := btc.Client.senderForPortal(ctx, btc.Portal)
+	intent, ok := btc.Portal.GetIntentFor(ctx, sender, btc.Client.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return "", fmt.Errorf("couldn't resolve edit intent")
+	}
+	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
+		return "", fmt.Errorf("couldn't prepare edit sender: %w", err)
+	}
+	if err := sdk.SendEditViaPortal(btc.Client.UserLogin, btc.Portal, sender, targetPart.ID, time.Now(), 0, "ai_edit_target", editContent); err != nil {
 		return "", fmt.Errorf("couldn't edit the message: %w", err)
 	}
 
@@ -625,8 +649,34 @@ func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeT
 
 	targetEventID := id.EventID(messageID)
 
-	if err := btc.Client.redactEventViaPortal(ctx, btc.Portal, targetEventID); err != nil {
-		return "", fmt.Errorf("couldn't delete the message: %w", err)
+	targetPart, err := btc.Client.loadPortalMessagePartByMXID(ctx, btc.Portal, targetEventID)
+	if err != nil {
+		return "", fmt.Errorf("couldn't find the message to delete: %w", err)
+	}
+	if targetPart == nil {
+		return "", fmt.Errorf("couldn't find the message to delete: %s", messageID)
+	}
+	sender := btc.Client.senderForPortal(ctx, btc.Portal)
+	intent, ok := btc.Portal.GetIntentFor(ctx, sender, btc.Client.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return "", fmt.Errorf("couldn't resolve delete intent")
+	}
+	if err := intent.EnsureJoined(ctx, btc.Portal.MXID); err != nil {
+		return "", fmt.Errorf("couldn't prepare delete sender: %w", err)
+	}
+	result := btc.Client.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: btc.Portal.PortalKey,
+			Sender:    sender,
+		},
+		TargetMessage: targetPart.ID,
+	})
+	if !result.Success {
+		if result.Error != nil {
+			return "", fmt.Errorf("couldn't delete the message: %w", result.Error)
+		}
+		return "", fmt.Errorf("couldn't delete the message")
 	}
 
 	return jsonActionResult("delete", map[string]any{

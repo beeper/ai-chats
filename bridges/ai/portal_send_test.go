@@ -3,16 +3,15 @@ package ai
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix"
 )
 
 type testMatrixAPI struct {
@@ -77,83 +76,6 @@ func (tma *testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*eve
 }
 
 var _ bridgev2.MatrixAPI = (*testMatrixAPI)(nil)
-
-func TestSendViaPortalRejectsMissingBridgeState(t *testing.T) {
-	_, _, err := (&AIClient{}).sendViaPortalWithTiming(context.Background(), &bridgev2.Portal{}, &bridgev2.ConvertedMessage{}, "", time.Now(), 0)
-	if err == nil {
-		t.Fatal("expected bridge unavailable error")
-	}
-	if !strings.Contains(err.Error(), "bridge unavailable") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendViaPortalRejectsInvalidPortal(t *testing.T) {
-	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
-
-	_, _, err := oc.sendViaPortalWithTiming(context.Background(), nil, &bridgev2.ConvertedMessage{}, "", time.Now(), 0)
-	if err == nil {
-		t.Fatal("expected invalid portal error")
-	}
-	if !strings.Contains(err.Error(), "invalid portal") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendEditViaPortalRejectsMissingBridgeState(t *testing.T) {
-	err := (&AIClient{}).sendEditViaPortalWithTiming(context.Background(), &bridgev2.Portal{}, networkid.MessageID("msg-1"), &bridgev2.ConvertedEdit{}, time.Now(), 0)
-	if err == nil {
-		t.Fatal("expected bridge unavailable error")
-	}
-	if !strings.Contains(err.Error(), "bridge unavailable") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendEditViaPortalRejectsInvalidTargetMessage(t *testing.T) {
-	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
-
-	err := oc.sendEditViaPortalWithTiming(context.Background(), portal, "", &bridgev2.ConvertedEdit{}, time.Now(), 0)
-	if err == nil {
-		t.Fatal("expected invalid target message error")
-	}
-	if !strings.Contains(err.Error(), "invalid target message") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestResolvePortalSenderAndIntentEnsuresJoined(t *testing.T) {
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
-	intent := &testMatrixAPI{}
-	sender := bridgev2.EventSender{Sender: "agent-test", SenderLogin: "login-1"}
-
-	gotSender, gotIntent, err := resolvePortalSenderAndIntent(
-		context.Background(),
-		portal,
-		sender,
-		bridgev2.RemoteEventMessage,
-		true,
-		func(_ context.Context, _ *bridgev2.Portal, gotSender bridgev2.EventSender, _ bridgev2.RemoteEventType) (bridgev2.MatrixAPI, error) {
-			if gotSender != sender {
-				t.Fatalf("expected sender %#v, got %#v", sender, gotSender)
-			}
-			return intent, nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gotSender != sender {
-		t.Fatalf("expected sender %#v, got %#v", sender, gotSender)
-	}
-	if gotIntent != intent {
-		t.Fatalf("expected returned intent to match test intent")
-	}
-	if len(intent.joinedRooms) != 1 || intent.joinedRooms[0] != portal.MXID {
-		t.Fatalf("expected EnsureJoined for %s, got %#v", portal.MXID, intent.joinedRooms)
-	}
-}
 
 func TestSenderForPortalUsesResolvedAgentGhost(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "magic-proxy:@user:test"}}

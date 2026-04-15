@@ -2,10 +2,10 @@ package ai
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
@@ -23,39 +23,31 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
-	if err != nil {
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		oc.loggerForContext(ctx).Warn().Int("body_len", len(body)).Msg("Failed to resolve continuation intent")
+		return
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
 		return
 	}
 	rendered := format.RenderMarkdown(body, true, true)
 	msgID := sdk.NewMessageID("ai")
-	msg := &simplevent.PreConvertedMessage{
-		EventMeta: simplevent.EventMeta{
-			Type:        bridgev2.RemoteEventMessage,
-			PortalKey:   portal.PortalKey,
-			Sender:      sender,
-			Timestamp:   timing.Timestamp,
-			StreamOrder: timing.StreamOrder,
-			LogContext: func(c zerolog.Context) zerolog.Context {
-				return c.Str("ai_msg_id", string(msgID))
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:   networkid.PartID("0"),
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          rendered.Body,
+				Format:        rendered.Format,
+				FormattedBody: rendered.FormattedBody,
+				Mentions:      &event.Mentions{},
 			},
-		},
-		ID: msgID,
-		Data: &bridgev2.ConvertedMessage{
-			Parts: []*bridgev2.ConvertedMessagePart{{
-				ID:   networkid.PartID("0"),
-				Type: event.EventMessage,
-				Content: &event.MessageEventContent{
-					MsgType:       event.MsgText,
-					Body:          rendered.Body,
-					Format:        rendered.Format,
-					FormattedBody: rendered.FormattedBody,
-					Mentions:      &event.Mentions{},
-				},
-				Extra: map[string]any{"com.beeper.continuation": true},
-			}},
-		},
+			Extra: map[string]any{"com.beeper.continuation": true},
+		}},
 	}
 	var relatesTo *event.RelatesTo
 	if replyTarget.ThreadRoot != "" {
@@ -63,10 +55,23 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 	} else if replyTarget.ReplyTo != "" {
 		relatesTo = (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
 	}
-	if relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
-		msg.Data.Parts[0].Content.RelatesTo = relatesTo
+	if relatesTo != nil && len(converted.Parts) > 0 && converted.Parts[0] != nil && converted.Parts[0].Content != nil {
+		converted.Parts[0].Content.RelatesTo = relatesTo
 	}
-	oc.UserLogin.QueueRemoteEvent(msg)
+	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      "ai_msg_id",
+		MsgID:       msgID,
+		Timestamp:   timing.Timestamp,
+		StreamOrder: timing.StreamOrder,
+		Converted:   converted,
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to queue continuation message")
+		return
+	}
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }
 
@@ -270,17 +275,49 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 	if portal == nil || state == nil {
 		return
 	}
-	if state.turn.NetworkMessageID() != "" {
-		if err := oc.redactViaPortal(ctx, portal, state.turn.NetworkMessageID()); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message via network ID")
+	if portal.MXID == "" || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		oc.loggerForContext(ctx).Warn().Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to resolve redaction intent for streaming message")
+		return
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to prepare redaction sender for streaming message")
+		return
+	}
+	targetMessageID := state.turn.NetworkMessageID()
+	if targetMessageID == "" {
+		if state.turn.InitialEventID() == "" {
+			return
 		}
-		return
+		part, err := oc.loadPortalMessagePartByMXID(ctx, portal, state.turn.InitialEventID())
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to look up streaming message for redaction")
+			return
+		}
+		if part == nil {
+			oc.loggerForContext(ctx).Warn().Stringer("event_id", state.turn.InitialEventID()).Msg("Streaming message not found for redaction")
+			return
+		}
+		targetMessageID = part.ID
 	}
-	if state.turn.InitialEventID() == "" {
-		return
-	}
-	if err := oc.redactEventViaPortal(ctx, portal, state.turn.InitialEventID()); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message via event ID")
+	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: portal.PortalKey,
+			Sender:    sender,
+		},
+		TargetMessage: targetMessageID,
+	})
+	if !result.Success {
+		err := fmt.Errorf("redact failed")
+		if result.Error != nil {
+			err = fmt.Errorf("redact failed: %w", result.Error)
+		}
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message")
 	}
 }
 
@@ -304,7 +341,17 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 		}},
 	}
 
-	if _, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0); err != nil {
+	sender := oc.senderForPortal(ctx, portal)
+	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      oc.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	}); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
 		return err
 	}
@@ -420,7 +467,8 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 
 	// Generate link previews for URLs in the response
-	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	sender := oc.senderForPortal(ctx, portal)
+	intent, _ := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
 	var sourceCitations []citations.SourceCitation
 	if state != nil {
 		sourceCitations = state.sourceCitations

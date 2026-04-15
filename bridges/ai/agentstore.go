@@ -493,30 +493,14 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 		return "", fmt.Errorf("agent '%s' not found: %w", room.AgentID, err)
 	}
 
-	resp, err := b.client.createChat(ctx, chatCreateParams{Agent: agent})
+	resp, err := b.client.createChat(ctx, chatCreateParams{
+		Agent:    agent,
+		RoomName: room.Name,
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create room: %w", err)
 	}
-
-	portal, err := b.client.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:     resp.Portal,
-		ChatInfo:   resp.PortalInfo,
-		SaveAction: "room creation",
-		Mutate: func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo) {
-			if room.Name == "" {
-				return
-			}
-			portal.Name = room.Name
-			portal.NameSet = true
-			if chatInfo != nil {
-				chatInfo.Name = &room.Name
-			}
-		},
-		CleanupOnCreateError: "failed to create Matrix room",
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to create Matrix room: %w", err)
-	}
+	portal := resp.Portal
 
 	return string(portal.PortalKey.ID), nil
 }

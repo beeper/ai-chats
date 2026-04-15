@@ -9,6 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) sendGeneratedMedia(
@@ -23,10 +25,16 @@ func (oc *AIClient) sendGeneratedMedia(
 	asVoice bool,
 	caption string,
 ) (id.EventID, string, error) {
-	// Get intent for upload (standard pattern — 7 reference bridges use intent.UploadMedia)
-	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
-	if err != nil {
-		return "", "", fmt.Errorf("intent resolution failed: %w", err)
+	if portal == nil || portal.MXID == "" {
+		return "", "", fmt.Errorf("invalid portal")
+	}
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return "", "", fmt.Errorf("intent resolution failed")
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		return "", "", fmt.Errorf("ensure joined failed: %w", err)
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
@@ -86,7 +94,16 @@ func (oc *AIClient) sendGeneratedMedia(
 			}},
 		}
 
-		eventID, _, sendErr := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0)
+		eventID, _, sendErr := sdk.SendViaPortal(sdk.SendViaPortalParams{
+			Login:       oc.UserLogin,
+			Portal:      portal,
+			Sender:      sender,
+			IDPrefix:    oc.ClientBase.MessageIDPrefix,
+			LogKey:      oc.ClientBase.MessageLogKey,
+			Timestamp:   time.Now(),
+			StreamOrder: 0,
+			Converted:   converted,
+		})
 		if sendErr != nil {
 			return "", "", fmt.Errorf("send failed: %w", sendErr)
 		}
@@ -101,7 +118,16 @@ func (oc *AIClient) sendGeneratedMedia(
 		}},
 	}
 
-	eventID, _, sendErr := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0)
+	eventID, _, sendErr := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      oc.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	})
 	if sendErr != nil {
 		return "", "", fmt.Errorf("send failed: %w", sendErr)
 	}

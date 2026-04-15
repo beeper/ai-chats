@@ -20,6 +20,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -296,10 +297,6 @@ type AIClient struct {
 	// Message debouncer for combining rapid messages
 	inboundDebouncer *Debouncer
 
-	// Matrix typing state (per room)
-	userTypingMu    sync.RWMutex
-	userTypingState map[id.RoomID]userTypingState
-
 	// Typing indicator while messages are queued (per room)
 	queueTypingMu sync.Mutex
 	queueTyping   map[id.RoomID]*TypingController
@@ -390,7 +387,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
 		subagentRuns:        make(map[string]*subagentRun),
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
-		userTypingState:     make(map[id.RoomID]userTypingState),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 		loginConfig:         cloneAILoginConfig(cfg),
 	}
@@ -663,10 +659,6 @@ func (oc *AIClient) Disconnect() {
 	oc.groupHistoryMu.Lock()
 	clear(oc.groupHistoryBuffers)
 	oc.groupHistoryMu.Unlock()
-
-	oc.userTypingMu.Lock()
-	clear(oc.userTypingState)
-	oc.userTypingMu.Unlock()
 
 	oc.queueTypingMu.Lock()
 	for _, tc := range oc.queueTyping {
@@ -1721,8 +1713,12 @@ func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Port
 	if portal == nil || portal.MXID == "" {
 		return errors.New("invalid portal")
 	}
-	_, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
-	return err
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return errors.New("intent resolution failed")
+	}
+	return intent.EnsureJoined(ctx, portal.MXID)
 }
 
 func (oc *AIClient) loggerForContext(ctx context.Context) *zerolog.Logger {
@@ -1869,7 +1865,46 @@ func (oc *AIClient) removeAckReactionByID(ctx context.Context, portal *bridgev2.
 		return
 	}
 
-	if err := oc.redactEventViaPortal(ctx, portal, reactionEventID); err != nil {
+	part, err := oc.loadPortalMessagePartByMXID(ctx, portal, reactionEventID)
+	if err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).
+			Stringer("reaction_event", reactionEventID).
+			Msg("Failed to look up ack reaction by ID")
+		return
+	}
+	if part == nil {
+		oc.loggerForContext(ctx).Warn().
+			Stringer("reaction_event", reactionEventID).
+			Msg("Ack reaction not found by ID")
+		return
+	}
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		oc.loggerForContext(ctx).Warn().
+			Stringer("reaction_event", reactionEventID).
+			Msg("Failed to resolve ack reaction sender")
+		return
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).
+			Stringer("reaction_event", reactionEventID).
+			Msg("Failed to prepare ack reaction sender")
+		return
+	}
+	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: portal.PortalKey,
+			Sender:    sender,
+		},
+		TargetMessage: part.ID,
+	})
+	if !result.Success {
+		err = errors.New("redact failed")
+		if result.Error != nil {
+			err = fmt.Errorf("redact failed: %w", result.Error)
+		}
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Stringer("reaction_event", reactionEventID).
 			Msg("Failed to remove ack reaction by ID")

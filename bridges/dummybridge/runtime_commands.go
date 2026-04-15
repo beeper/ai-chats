@@ -16,17 +16,17 @@ func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *sdk.Conve
 	}
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
-		return conv.SendNotice(turn.Context(), helpText())
+		return sdk.SendSystemMessage(turn.Context(), conv.Login(), conv.Portal(), conv.Sender(), helpText())
 	}
 	cmd, err := parseCommand(text)
 	if err != nil {
-		return conv.SendNotice(turn.Context(), fmt.Sprintf("%s\n\n%s", err.Error(), helpText()))
+		return sdk.SendSystemMessage(turn.Context(), conv.Login(), conv.Portal(), conv.Sender(), fmt.Sprintf("%s\n\n%s", err.Error(), helpText()))
 	}
 	if cmd == nil {
-		return conv.SendNotice(turn.Context(), helpText())
+		return sdk.SendSystemMessage(turn.Context(), conv.Login(), conv.Portal(), conv.Sender(), helpText())
 	}
 	if cmd.Name == "help" {
-		return conv.SendNotice(turn.Context(), helpText())
+		return sdk.SendSystemMessage(turn.Context(), conv.Login(), conv.Portal(), conv.Sender(), helpText())
 	}
 	if session == nil {
 		return errors.New("dummybridge session is unavailable")
@@ -45,7 +45,7 @@ func (dc *DummyBridgeConnector) onMessage(session *dummySession, conv *sdk.Conve
 	case cmd.Chaos != nil:
 		runErr = runner.runChaos(turn.Context(), conv, turn, *cmd.Chaos, log)
 	default:
-		runErr = conv.SendNotice(turn.Context(), helpText())
+		runErr = sdk.SendSystemMessage(turn.Context(), conv.Login(), conv.Portal(), conv.Sender(), helpText())
 	}
 	if runErr != nil {
 		log.Warn().Err(runErr).Dur("elapsed", runner.runtime.now().Sub(started)).Msg("DummyBridge demo command failed")

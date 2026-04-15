@@ -39,8 +39,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if msg.Event == nil {
 		return nil, errors.New("missing message event")
 	}
-	oc.noteUserActivity(portal.MXID)
-
 	logCtx := oc.loggerForContext(ctx).With().
 		Stringer("event_id", msg.Event.ID).
 		Stringer("sender", msg.Event.Sender).
@@ -344,15 +342,8 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}, nil
 }
 
-// HandleMatrixTyping tracks local user typing state for auto-greeting delays.
+// HandleMatrixTyping currently ignores local typing updates.
 func (oc *AIClient) HandleMatrixTyping(ctx context.Context, typing *bridgev2.MatrixTyping) error {
-	if typing == nil || typing.Portal == nil {
-		return nil
-	}
-	if typing.Portal.MXID == "" {
-		return nil
-	}
-	oc.setUserTyping(typing.Portal.MXID, typing.IsTyping)
 	return nil
 }
 

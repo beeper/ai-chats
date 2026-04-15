@@ -141,6 +141,13 @@ func SendSystemMessage(
 	if body == "" {
 		return nil
 	}
+	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return fmt.Errorf("intent resolution failed")
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		return fmt.Errorf("ensure joined failed: %w", err)
+	}
 	_, _, err := SendViaPortal(SendViaPortalParams{
 		Login:    login,
 		Portal:   portal,

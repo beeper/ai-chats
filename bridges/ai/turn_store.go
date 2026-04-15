@@ -511,33 +511,6 @@ func databaseMessageFromAITurn(portal *bridgev2.Portal, record *aiTurnRecord) *d
 	return msg
 }
 
-func hasInternalPromptHistoryByScope(ctx context.Context, scope *portalScope) bool {
-	if scope == nil {
-		return false
-	}
-	record, err := ensureAIPortalRecordByScope(ctx, scope)
-	if err != nil || record == nil {
-		return false
-	}
-	var count int
-	err = scope.db.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM `+aiTurnsTable+`
-		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
-		  AND context_epoch=$4
-		  AND kind=$5
-		  AND include_in_history=1
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, record.ContextEpoch, aiTurnKindInternal).Scan(&count)
-	return err == nil && count > 0
-}
-
-func (oc *AIClient) hasInternalPromptHistory(ctx context.Context, portal *bridgev2.Portal) bool {
-	hasHistory, err := withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) (bool, error) {
-		return hasInternalPromptHistoryByScope(ctx, scope), nil
-	})
-	return err == nil && hasHistory
-}
-
 func aiHistoryMessageFromTurn(portalKey networkid.PortalKey, row *aiTurnRecord) *database.Message {
 	if row == nil {
 		return nil

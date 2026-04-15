@@ -50,10 +50,6 @@ func (oc *AIClient) cleanupDeletedRoomRuntime(ctx context.Context, roomID id.Roo
 	delete(oc.groupHistoryBuffers, roomID)
 	oc.groupHistoryMu.Unlock()
 
-	oc.userTypingMu.Lock()
-	delete(oc.userTypingState, roomID)
-	oc.userTypingMu.Unlock()
-
 	ackReactionStoreMu.Lock()
 	delete(ackReactionStore, roomID)
 	ackReactionStoreMu.Unlock()

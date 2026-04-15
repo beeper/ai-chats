@@ -9,11 +9,8 @@ import (
 )
 
 type ensurePortalRoomParams struct {
-	Portal               *bridgev2.Portal
-	ChatInfo             *bridgev2.ChatInfo
-	SaveAction           string
-	Mutate               func(portal *bridgev2.Portal, chatInfo *bridgev2.ChatInfo)
-	CleanupOnCreateError string
+	Portal   *bridgev2.Portal
+	ChatInfo *bridgev2.ChatInfo
 }
 
 func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoomParams) (*bridgev2.Portal, error) {
@@ -28,21 +25,11 @@ func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoo
 	if chatInfo == nil {
 		chatInfo = oc.chatInfoFromPortal(ctx, params.Portal)
 	}
-	if params.Mutate != nil {
-		params.Mutate(params.Portal, chatInfo)
-	}
-	if params.SaveAction != "" {
-		if err := oc.savePortal(ctx, params.Portal, params.SaveAction); err != nil {
-			return nil, err
-		}
-	}
 
 	created := params.Portal.MXID == ""
 	if created {
 		if err := params.Portal.CreateMatrixRoom(ctx, oc.UserLogin, chatInfo); err != nil {
-			if params.CleanupOnCreateError != "" {
-				cleanupPortal(ctx, oc, params.Portal, params.CleanupOnCreateError)
-			}
+			cleanupPortal(ctx, oc, params.Portal, "failed to create Matrix room")
 			return nil, err
 		}
 	} else if chatInfo != nil {
@@ -50,8 +37,5 @@ func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoo
 	}
 	params.Portal.UpdateBridgeInfo(ctx)
 	params.Portal.UpdateCapabilities(ctx, oc.UserLogin, true)
-	if created {
-		oc.scheduleAutoGreeting(ctx, params.Portal)
-	}
 	return params.Portal, nil
 }

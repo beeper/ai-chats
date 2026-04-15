@@ -14,6 +14,7 @@ import (
 
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const (
@@ -540,7 +541,30 @@ func (oc *AIClient) emitCompactionStatus(ctx context.Context, portal *bridgev2.P
 			Extra: content,
 		}},
 	}
-	if _, _, err := oc.sendViaPortalWithTiming(ctx, portal, converted, "", time.Now(), 0); err != nil {
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		oc.loggerForContext(ctx).Warn().
+			Str("type", string(evt.Type)).
+			Msg("Failed to resolve compaction status intent")
+		return
+	}
+	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).
+			Str("type", string(evt.Type)).
+			Msg("Failed to prepare compaction status sender")
+		return
+	}
+	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      oc.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	}); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).
 			Str("type", string(evt.Type)).
 			Msg("Failed to emit compaction status event")

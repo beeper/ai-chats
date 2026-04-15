@@ -11,6 +11,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func buildMessageRelatesTo(replyToEventID, threadRootEventID id.EventID) *event.RelatesTo {
@@ -45,7 +47,17 @@ func sendFormattedMessage(ctx context.Context, btc *BridgeToolContext, message s
 		}},
 	}
 
-	eventID, _, err := btc.Client.sendViaPortalWithTiming(ctx, btc.Portal, converted, "", time.Now(), 0)
+	sender := btc.Client.senderForPortal(ctx, btc.Portal)
+	eventID, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       btc.Client.UserLogin,
+		Portal:      btc.Portal,
+		Sender:      sender,
+		IDPrefix:    btc.Client.ClientBase.MessageIDPrefix,
+		LogKey:      btc.Client.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	})
 	if err != nil {
 		if errorPrefix == "" {
 			errorPrefix = "failed to send message"

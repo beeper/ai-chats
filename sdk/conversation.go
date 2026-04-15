@@ -9,7 +9,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 )
 
 // Conversation represents a chat room the agent is participating in.
@@ -196,78 +195,6 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		return defaultSDKFeatureConfig()
 	}
 	return computeRoomFeaturesForAgents(agents)
-}
-
-// SendHTML sends a message with both plaintext and HTML body.
-func (c *Conversation) SendHTML(ctx context.Context, text, html string) error {
-	content := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    text,
-	}
-	if html != "" {
-		content.Format = event.FormatHTML
-		content.FormattedBody = html
-	}
-	return c.sendMessageContent(ctx, content)
-}
-
-// SendMedia sends a media message.
-func (c *Conversation) SendMedia(ctx context.Context, data []byte, mediaType, filename string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	mxcURL, encFile, err := intent.UploadMedia(ctx, c.portal.MXID, data, filename, mediaType)
-	if err != nil {
-		return err
-	}
-	msgType := event.MsgFile
-	switch {
-	case strings.HasPrefix(mediaType, "image/"):
-		msgType = event.MsgImage
-	case strings.HasPrefix(mediaType, "audio/"):
-		msgType = event.MsgAudio
-	case strings.HasPrefix(mediaType, "video/"):
-		msgType = event.MsgVideo
-	}
-	content := &event.MessageEventContent{
-		MsgType: msgType,
-		Body:    filename,
-		Info: &event.FileInfo{
-			MimeType: mediaType,
-			Size:     len(data),
-		},
-	}
-	if encFile != nil {
-		content.File = encFile
-	} else {
-		content.URL = mxcURL
-	}
-	wrappedContent := &event.Content{Parsed: content}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, wrappedContent, nil)
-	return err
-}
-
-// SendNotice sends a notice message.
-func (c *Conversation) SendNotice(ctx context.Context, text string) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil
-	}
-	return c.sendMessageContent(ctx, &event.MessageEventContent{
-		MsgType:  event.MsgNotice,
-		Body:     text,
-		Mentions: &event.Mentions{},
-	})
-}
-
-func (c *Conversation) sendMessageContent(ctx context.Context, content *event.MessageEventContent) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
-	return err
 }
 
 // Stream starts a new streaming response in this conversation.
