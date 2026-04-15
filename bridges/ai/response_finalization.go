@@ -24,15 +24,6 @@ func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev
 		return
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		oc.loggerForContext(ctx).Warn().Int("body_len", len(body)).Msg("Failed to resolve continuation intent")
-		return
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
-		return
-	}
 	rendered := format.RenderMarkdown(body, true, true)
 	msgID := sdk.NewMessageID("ai")
 	converted := &bridgev2.ConvertedMessage{

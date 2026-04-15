@@ -542,19 +542,6 @@ func (oc *AIClient) emitCompactionStatus(ctx context.Context, portal *bridgev2.P
 		}},
 	}
 	sender := oc.senderForPortal(ctx, portal)
-	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		oc.loggerForContext(ctx).Warn().
-			Str("type", string(evt.Type)).
-			Msg("Failed to resolve compaction status intent")
-		return
-	}
-	if err := intent.EnsureJoined(ctx, portal.MXID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Str("type", string(evt.Type)).
-			Msg("Failed to prepare compaction status sender")
-		return
-	}
 	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
 		Login:       oc.UserLogin,
 		Portal:      portal,

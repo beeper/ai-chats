@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
@@ -19,7 +18,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -1147,38 +1145,7 @@ func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
 	}
-	sender := oc.senderForPortal(ctx, portal)
-	evt := &simplevent.Message[string]{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessage,
-			PortalKey: portal.PortalKey,
-			Sender:    sender,
-			Timestamp: time.Now(),
-		},
-		Data: message,
-		ID:   networkid.MessageID(fmt.Sprintf("system-notice:%d", time.Now().UnixNano())),
-		ConvertMessageFunc: func(ctx context.Context, portal *bridgev2.Portal, intent bridgev2.MatrixAPI, body string) (*bridgev2.ConvertedMessage, error) {
-			return &bridgev2.ConvertedMessage{
-				Parts: []*bridgev2.ConvertedMessagePart{{
-					ID:   networkid.PartID("0"),
-					Type: event.EventMessage,
-					Content: &event.MessageEventContent{
-						MsgType:  event.MsgNotice,
-						Body:     body,
-						Mentions: &event.Mentions{},
-					},
-				}},
-			}, nil
-		},
-	}
-	res := oc.UserLogin.QueueRemoteEvent(evt)
-	if !res.Success {
-		if res.Error != nil {
-			return res.Error
-		}
-		return fmt.Errorf("queue remote event failed")
-	}
-	return nil
+	return sdk.SendSystemMessage(ctx, oc.UserLogin, portal, oc.senderForPortal(ctx, portal), message)
 }
 
 // sendSystemNotice sends a bridge-authored notice via the shared SDK transport
