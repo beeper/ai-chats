@@ -9,19 +9,21 @@ import (
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 type pendingQueueItem struct {
-	pending        pendingMessage
-	messageID      string
-	summaryLine    string
-	enqueuedAt     int64
-	prompt         string
-	backlogAfter   bool
-	allowDuplicate bool
+	pending         pendingMessage
+	acceptedMessage *database.Message
+	messageID       string
+	summaryLine     string
+	enqueuedAt      int64
+	prompt          string
+	backlogAfter    bool
+	allowDuplicate  bool
 }
 
 type pendingQueue struct {

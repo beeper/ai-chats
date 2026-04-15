@@ -37,27 +37,27 @@ func TestQueueStatusEventsDeduplicates(t *testing.T) {
 	}
 }
 
-func TestMarkMessageSendSuccessOnlyMarksExplicitStatusEvents(t *testing.T) {
-	oc := &AIClient{}
-	state := &streamingState{}
-	evt := &event.Event{ID: id.EventID("$event")}
-
-	oc.markMessageSendSuccess(context.Background(), nil, evt, state)
-
-	if state.statusSent {
-		t.Fatalf("expected statusSent=false without explicit status events")
-	}
-	if len(state.statusSentIDs) != 0 {
-		t.Fatalf("expected no status IDs to be tracked, got %d", len(state.statusSentIDs))
+func TestConsumeRoomRunAcceptedMessagesDrainsQueue(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	msg1 := &database.Message{ID: "msg1"}
+	msg2 := &database.Message{ID: "msg2"}
+	oc := &AIClient{
+		activeRoomRuns: map[id.RoomID]*roomRunState{
+			roomID: {
+				acceptedUserMessages: []*database.Message{msg1, msg2},
+			},
+		},
 	}
 
-	statusCtx := context.WithValue(context.Background(), statusEventsKey{}, []*event.Event{evt})
-	oc.markMessageSendSuccess(statusCtx, nil, evt, state)
-	if !state.statusSent {
-		t.Fatalf("expected statusSent=true with explicit status events")
+	got := oc.consumeRoomRunAcceptedMessages(roomID)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 accepted messages, got %d", len(got))
 	}
-	if len(state.statusSentIDs) != 1 {
-		t.Fatalf("expected 1 tracked status ID, got %d", len(state.statusSentIDs))
+	if got[0] != msg1 || got[1] != msg2 {
+		t.Fatalf("unexpected drained messages: %#v", got)
+	}
+	if again := oc.consumeRoomRunAcceptedMessages(roomID); len(again) != 0 {
+		t.Fatalf("expected accepted message queue to be empty after drain, got %d", len(again))
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -12,16 +13,17 @@ import (
 type roomRunState struct {
 	cancel context.CancelFunc
 
-	mu           sync.Mutex
-	state        *streamingState
-	stop         *assistantStopMetadata
-	turnID       string
-	sourceEvent  id.EventID
-	initialEvent id.EventID
-	streaming    bool
-	steerQueue   []pendingQueueItem
-	statusEvents []*event.Event
-	ackPending   []pendingMessage
+	mu                   sync.Mutex
+	state                *streamingState
+	stop                 *assistantStopMetadata
+	turnID               string
+	sourceEvent          id.EventID
+	initialEvent         id.EventID
+	streaming            bool
+	steerQueue           []pendingQueueItem
+	statusEvents         []*event.Event
+	acceptedUserMessages []*database.Message
+	ackPending           []pendingMessage
 }
 
 func (oc *AIClient) attachRoomRun(ctx context.Context, roomID id.RoomID) context.Context {
@@ -186,6 +188,9 @@ func (oc *AIClient) registerRoomRunPendingItemLocked(run *roomRunState, item pen
 	if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
 		run.ackPending = append(run.ackPending, item.pending)
 	}
+	if item.acceptedMessage != nil {
+		run.acceptedUserMessages = append(run.acceptedUserMessages, item.acceptedMessage)
+	}
 }
 
 func (oc *AIClient) drainSteerQueue(roomID id.RoomID) []pendingQueueItem {
@@ -209,4 +214,16 @@ func (oc *AIClient) roomRunStatusEvents(roomID id.RoomID) []*event.Event {
 	events := slices.Clone(run.statusEvents)
 	run.mu.Unlock()
 	return events
+}
+
+func (oc *AIClient) consumeRoomRunAcceptedMessages(roomID id.RoomID) []*database.Message {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return nil
+	}
+	run.mu.Lock()
+	messages := slices.Clone(run.acceptedUserMessages)
+	run.acceptedUserMessages = nil
+	run.mu.Unlock()
+	return messages
 }

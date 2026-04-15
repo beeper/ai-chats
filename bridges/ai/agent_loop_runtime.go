@@ -121,10 +121,10 @@ func runAgentLoopStreamStep[T any](
 	for stream.Next() {
 		touchAgentLoopActivity(ctx)
 		current := stream.Current()
-		done, cle, err := handleEvent(current)
-		if err == nil && cle == nil && (shouldMarkSuccess == nil || shouldMarkSuccess(current)) {
+		if shouldMarkSuccess == nil || shouldMarkSuccess(current) {
 			oc.markMessageSendSuccess(ctx, portal, evt, state)
 		}
+		done, cle, err := handleEvent(current)
 		if done || cle != nil || err != nil {
 			return done, cle, err
 		}

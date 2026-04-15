@@ -311,19 +311,18 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if promptContext.CurrentTurnData.Role != "" {
 		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
-	if msg.InputTransactionID != "" {
-		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-	}
 	queueItem := pendingQueueItem{
-		pending:     pending,
-		messageID:   string(eventID),
-		summaryLine: rawBodyOriginal,
-		enqueuedAt:  time.Now().UnixMilli(),
+		pending:         pending,
+		acceptedMessage: userMessage,
+		messageID:       string(eventID),
+		summaryLine:     rawBodyOriginal,
+		enqueuedAt:      time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return oc.buildUserMessageResponse(portal, runMeta, userMessage), nil
+	oc.registerPendingUserMessage(msg, portal, userMessage)
+	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
 // HandleMatrixTyping currently ignores local typing updates.
@@ -689,19 +688,18 @@ func (oc *AIClient) handleMediaMessage(
 		if promptContext.CurrentTurnData.Role != "" {
 			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 		}
-		if msg.InputTransactionID != "" {
-			userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-		}
 		queueItem := pendingQueueItem{
-			pending:     pending,
-			messageID:   string(eventID),
-			summaryLine: rawBody,
-			enqueuedAt:  time.Now().UnixMilli(),
+			pending:         pending,
+			acceptedMessage: userMessage,
+			messageID:       string(eventID),
+			summaryLine:     rawBody,
+			enqueuedAt:      time.Now().UnixMilli(),
 		}
 		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 			return nil, err
 		}
-		return oc.buildUserMessageResponse(portal, meta, userMessage), nil
+		oc.registerPendingUserMessage(msg, portal, userMessage)
+		return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 	}
 
 	var understanding *mediaUnderstandingResult
@@ -815,19 +813,18 @@ func (oc *AIClient) handleMediaMessage(
 		Metadata:  userMeta,
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
-	if msg.InputTransactionID != "" {
-		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-	}
 	queueItem := pendingQueueItem{
-		pending:     pending,
-		messageID:   string(eventID),
-		summaryLine: rawCaption,
-		enqueuedAt:  time.Now().UnixMilli(),
+		pending:         pending,
+		acceptedMessage: userMessage,
+		messageID:       string(eventID),
+		summaryLine:     rawCaption,
+		enqueuedAt:      time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return oc.buildUserMessageResponse(portal, meta, userMessage), nil
+	oc.registerPendingUserMessage(msg, portal, userMessage)
+	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
 func (oc *AIClient) dispatchMediaUnderstandingFallback(
@@ -960,19 +957,18 @@ func (oc *AIClient) handleTextFileMessage(
 	if promptContext.CurrentTurnData.Role != "" {
 		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
-	if msg.InputTransactionID != "" {
-		userMessage.SendTxnID = networkid.RawTransactionID(msg.InputTransactionID)
-	}
 	queueItem := pendingQueueItem{
-		pending:     pending,
-		messageID:   string(eventID),
-		summaryLine: strings.TrimSpace(rawCaption),
-		enqueuedAt:  time.Now().UnixMilli(),
+		pending:         pending,
+		acceptedMessage: userMessage,
+		messageID:       string(eventID),
+		summaryLine:     strings.TrimSpace(rawCaption),
+		enqueuedAt:      time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return oc.buildUserMessageResponse(portal, meta, userMessage), nil
+	oc.registerPendingUserMessage(msg, portal, userMessage)
+	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

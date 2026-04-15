@@ -521,20 +521,6 @@ func initOpenRouterProvider(key, url, userID, pdfEngine, providerName string, lo
 	return provider, nil
 }
 
-func (oc *AIClient) buildUserMessageResponse(
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	msg *database.Message,
-) *bridgev2.MatrixMessageResponse {
-	metaSnapshot := clonePortalMetadata(meta)
-	return &bridgev2.MatrixMessageResponse{
-		DB: msg,
-		PostSave: func(ctx context.Context, saved *database.Message) {
-			oc.postSaveUserMessage(ctx, portal, metaSnapshot, saved)
-		},
-	}
-}
-
 func (oc *AIClient) postSaveUserMessage(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -579,11 +565,13 @@ func (oc *AIClient) postSaveUserMessage(
 	oc.notifySessionMutation(ctx, portal, meta, false)
 }
 
-// saveUserMessage persists a user message to the bridge mapping tables and
-// mirrors the canonical turn into the AI-owned turn store.
-func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
-	if evt != nil {
-		msg.MXID = evt.ID
+func (oc *AIClient) persistAcceptedUserMessage(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	msg *database.Message,
+) {
+	if msg == nil {
+		return
 	}
 	meta, _ := msg.Metadata.(*MessageMetadata)
 	oc.loggerForContext(ctx).Debug().
@@ -597,20 +585,23 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
-	portal, err := oc.UserLogin.Bridge.GetPortalByKey(ctx, msg.Room)
-	if err != nil || portal == nil {
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI turn persistence")
+	var err error
+	if portal == nil {
+		portal, err = oc.UserLogin.Bridge.GetPortalByKey(ctx, msg.Room)
+		if err != nil || portal == nil {
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to resolve portal for AI turn persistence")
+			}
+			if err == nil {
+				oc.loggerForContext(ctx).Debug().
+					Str("message_id", string(msg.ID)).
+					Str("event_id", msg.MXID.String()).
+					Str("room_id", string(msg.Room.ID)).
+					Str("room_receiver", string(msg.Room.Receiver)).
+					Msg("Failed to resolve portal for AI turn persistence because portal lookup returned nil")
+			}
+			return
 		}
-		if err == nil {
-			oc.loggerForContext(ctx).Debug().
-				Str("message_id", string(msg.ID)).
-				Str("event_id", msg.MXID.String()).
-				Str("room_id", string(msg.Room.ID)).
-				Str("room_receiver", string(msg.Room.Receiver)).
-				Msg("Failed to resolve portal for AI turn persistence because portal lookup returned nil")
-		}
-		return
 	}
 	oc.loggerForContext(ctx).Debug().
 		Str("message_id", string(msg.ID)).
@@ -623,6 +614,15 @@ func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to save transport user message to database")
 	}
 	oc.postSaveUserMessage(ctx, portal, nil, msg)
+}
+
+// saveUserMessage persists a user message to the bridge mapping tables and
+// mirrors the canonical turn into the AI-owned turn store.
+func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
+	if evt != nil {
+		msg.MXID = evt.ID
+	}
+	oc.persistAcceptedUserMessage(ctx, nil, msg)
 }
 
 func (oc *AIClient) Connect(ctx context.Context) {
@@ -1840,10 +1840,6 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		}
 	}
 	statusEvents := queueStatusEvents(last.Event, extraStatusEvents)
-	statusCtx := ctx
-	if len(statusEvents) > 0 {
-		statusCtx = context.WithValue(ctx, statusEventsKey{}, statusEvents)
-	}
 	ackRemoveIDs := make([]id.EventID, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Event != nil {
@@ -1867,12 +1863,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 			WasMentioned: last.WasMentioned,
 		},
 	}
-	promptContext, err := oc.buildPromptContextForPendingMessage(statusCtx, pending, combinedBody)
+	promptContext, err := oc.buildPromptContextForPendingMessage(ctx, pending, combinedBody)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
-		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
+		oc.notifyMatrixSendFailure(ctx, last.Portal, last.Event, err)
 		if last.Meta.AckReactionRemoveAfter && entries[0].AckEventID != "" {
-			oc.removeAckReactionByID(statusCtx, last.Portal, entries[0].AckEventID)
+			oc.removeAckReactionByID(ctx, last.Portal, entries[0].AckEventID)
 		}
 		return
 	}
@@ -1899,12 +1895,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving debounced message")
 	}
-	oc.saveUserMessage(ctx, last.Event, userMessage)
 	queueItem := pendingQueueItem{
-		pending:     pending,
-		messageID:   string(pendingEvent.ID),
-		summaryLine: combinedRaw,
-		enqueuedAt:  time.Now().UnixMilli(),
+		pending:         pending,
+		acceptedMessage: userMessage,
+		messageID:       string(pendingEvent.ID),
+		summaryLine:     combinedRaw,
+		enqueuedAt:      time.Now().UnixMilli(),
 	}
 	var cfg *Config
 	if oc != nil && oc.connector != nil {
@@ -1912,9 +1908,9 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
-	if err = oc.dispatchOrQueueCore(statusCtx, pendingEvent, last.Portal, last.Meta, queueItem, queueSettings, promptContext); err != nil {
+	if err = oc.dispatchOrQueueCore(ctx, pendingEvent, last.Portal, last.Meta, queueItem, queueSettings, promptContext); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to dispatch debounced messages")
-		oc.notifyMatrixSendFailure(statusCtx, last.Portal, last.Event, err)
+		oc.notifyMatrixSendFailure(ctx, last.Portal, last.Event, err)
 	}
 
 }

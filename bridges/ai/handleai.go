@@ -35,7 +35,10 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 	// Use FormatUserFacingError for consistent, user-friendly error messages
 	errorMessage := FormatUserFacingError(err)
 
-	statusEvents := statusEventsFromContext(ctx)
+	statusEvents := []*event.Event(nil)
+	if portal != nil && portal.MXID != "" {
+		statusEvents = oc.roomRunStatusEvents(portal.MXID)
+	}
 	if len(statusEvents) == 0 && evt != nil {
 		statusEvents = []*event.Event{evt}
 	}

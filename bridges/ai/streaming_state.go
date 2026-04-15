@@ -50,9 +50,6 @@ type streamingState struct {
 	finishReason           string
 	responseID             string
 	responseStatus         string
-	statusSent             bool
-	statusSentIDs          map[id.EventID]bool
-
 	// Directive processing
 	replyTarget      ReplyTarget
 	replyAccumulator *runtimeparse.StreamingDirectiveAccumulator
@@ -254,7 +251,6 @@ func newStreamingState(ctx context.Context, meta *PortalMetadata, roomID id.Room
 		agentID:                 agentID,
 		startedAtMs:             time.Now().UnixMilli(),
 		roomID:                  roomID,
-		statusSentIDs:           make(map[id.EventID]bool),
 		replyAccumulator:        runtimeparse.NewStreamingDirectiveAccumulator(),
 		pendingMcpApprovalsSeen: make(map[string]bool),
 	}
@@ -296,37 +292,10 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 }
 
 func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil || state.suppressSend || state.statusSent {
+	if state == nil || state.suppressSend {
 		return
 	}
-	if state.statusSentIDs == nil {
-		state.statusSentIDs = make(map[id.EventID]bool)
-	}
-	events := statusEventsFromContext(ctx)
-	if len(events) == 0 {
-		return
-	}
-	for _, extra := range events {
-		if extra == nil || extra.ID == "" {
-			continue
-		}
-		if state.statusSentIDs[extra.ID] {
-			continue
-		}
-		if portal != nil && portal.Bridge != nil {
-			if info := sdk.StatusEventInfoFromPortalEvent(portal, extra); info != nil {
-				status := bridgev2.MessageStatus{
-					Status:    event.MessageStatusSuccess,
-					IsCertain: true,
-				}
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-			}
-		}
-		state.statusSentIDs[extra.ID] = true
-	}
-	if len(state.statusSentIDs) > 0 {
-		state.statusSent = true
-	}
+	oc.acceptPendingMessages(ctx, portal, state)
 }
 
 // generatedImage tracks a pending image from image generation

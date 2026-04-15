@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) roomHasActiveRun(roomID id.RoomID) bool {
@@ -55,6 +56,27 @@ func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Eve
 		appendEvent(evt)
 	}
 	return events
+}
+
+func (oc *AIClient) sendPendingMessageStatus(ctx context.Context, portal *bridgev2.Portal, events []*event.Event, message string) {
+	if portal == nil || portal.Bridge == nil {
+		return
+	}
+	for _, evt := range events {
+		if evt == nil {
+			continue
+		}
+		info := sdk.StatusEventInfoFromPortalEvent(portal, evt)
+		if info == nil {
+			continue
+		}
+		status := bridgev2.MessageStatus{
+			Status:    event.MessageStatusPending,
+			Message:   message,
+			IsCertain: true,
+		}
+		portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+	}
 }
 
 func (oc *AIClient) buildPromptContextForPendingMessage(
@@ -107,8 +129,10 @@ func (oc *AIClient) dispatchPromptRun(
 	promptContext PromptContext,
 ) {
 	runCtx := oc.attachRoomRun(oc.backgroundContext(ctx), roomID)
-	if len(item.pending.StatusEvents) > 0 {
-		runCtx = context.WithValue(runCtx, statusEventsKey{}, item.pending.StatusEvents)
+	if run := oc.getRoomRun(roomID); run != nil {
+		run.mu.Lock()
+		oc.registerRoomRunPendingItemLocked(run, item)
+		run.mu.Unlock()
 	}
 	if item.pending.InboundContext != nil {
 		runCtx = withInboundContext(runCtx, *item.pending.InboundContext)
@@ -138,7 +162,6 @@ func (oc *AIClient) dispatchPromptRun(
 }
 
 // dispatchOrQueueCore contains shared dispatch/steer/queue logic.
-// Returns nil if the message was accepted (dispatched or queued).
 func (oc *AIClient) dispatchOrQueueCore(
 	ctx context.Context,
 	evt *event.Event,
@@ -167,6 +190,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		queuedItem.pending.Meta = meta
 		queuedItem.pending.Event = evt
 		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext)
+		return nil
 	}
 
 	steered := false
@@ -189,6 +213,10 @@ func (oc *AIClient) dispatchOrQueueCore(
 				WithMessage("Couldn't queue the message. Try again.").
 				WithIsCertain(true).
 				WithSendNotice(false)
+		}
+		if !queueItem.pending.PendingSent {
+			statusEvents := queueStatusEvents(evt, queueItem.pending.StatusEvents)
+			oc.sendPendingMessageStatus(ctx, portal, statusEvents, "Queued — waiting for current turn to finish...")
 		}
 		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
 	}
