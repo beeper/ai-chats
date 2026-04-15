@@ -232,7 +232,6 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 	timeoutCtx, cancel := context.WithTimeout(oc.backgroundContext(context.Background()), heartbeatRunTimeout)
 	defer cancel()
 	runCtx := withHeartbeatRun(timeoutCtx, hbCfg, resultCh)
-	done := make(chan struct{})
 	sendPortal := sessionPortal
 	if deliveryPortal != nil && deliveryPortal.MXID != "" {
 		sendPortal = deliveryPortal
@@ -248,17 +247,13 @@ func (oc *AIClient) runHeartbeatOnce(agentID string, heartbeat *HeartbeatConfig,
 		}
 		lockedRooms = append(lockedRooms, roomID)
 	}
-	go func() {
+	done := oc.launchAgentLoopRun(runCtx, nil, sendPortal, promptMeta, promptContext, func() {
 		defer func() {
 			for i := len(lockedRooms) - 1; i >= 0; i-- {
 				oc.releaseRoom(lockedRooms[i])
 			}
 		}()
-		completionCtx, completionCancel := oc.withAgentLoopInactivityTimeout(runCtx)
-		defer completionCancel()
-		oc.runAgentLoopWithRetry(completionCtx, nil, sendPortal, promptMeta, promptContext)
-		close(done)
-	}()
+	})
 
 	select {
 	case res := <-resultCh:

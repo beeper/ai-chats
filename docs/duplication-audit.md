@@ -347,8 +347,10 @@ Why this still violates the goal:
 - heartbeat route selection now walks one session resolver and one delivery
   resolver instead of repeating portal validation and `channel-not-ready`
   branches
-- the remaining duplication is now mostly the heartbeat-specific launch/result
-  scaffold around that shared runtime path
+- queued runs and heartbeats now share the same async launch wrapper around
+  `withAgentLoopInactivityTimeout(...)` + `runAgentLoopWithRetry(...)`
+- the remaining duplication is now mostly heartbeat-specific preflight/result
+  policy around that shared runtime path
 
 Desired owner:
 

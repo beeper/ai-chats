@@ -123,29 +123,24 @@ func (oc *AIClient) dispatchPromptRun(
 		runCtx = WithTypingContext(runCtx, item.pending.Typing)
 	}
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
-	go func(metaSnapshot *PortalMetadata) {
-		defer func() {
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			if item.backlogAfter {
-				followup := item
-				followup.backlogAfter = false
-				followup.allowDuplicate = true
-				var cfg *Config
-				if oc != nil && oc.connector != nil {
-					cfg = &oc.connector.Config
-				}
-				queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-				if oc.enqueuePendingItem(roomID, followup, queueSettings) {
-					oc.startQueueTyping(oc.backgroundContext(context.Background()), followup.pending.Portal, followup.pending.Meta, followup.pending.Typing)
-				}
+	oc.launchAgentLoopRun(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext, func() {
+		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
+		if item.backlogAfter {
+			followup := item
+			followup.backlogAfter = false
+			followup.allowDuplicate = true
+			var cfg *Config
+			if oc != nil && oc.connector != nil {
+				cfg = &oc.connector.Config
 			}
-			oc.releaseRoom(roomID)
-			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-		}()
-		completionCtx, cancel := oc.withAgentLoopInactivityTimeout(runCtx)
-		defer cancel()
-		oc.runAgentLoopWithRetry(completionCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
-	}(metaSnapshot)
+			queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+			if oc.enqueuePendingItem(roomID, followup, queueSettings) {
+				oc.startQueueTyping(oc.backgroundContext(context.Background()), followup.pending.Portal, followup.pending.Meta, followup.pending.Typing)
+			}
+		}
+		oc.releaseRoom(roomID)
+		oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
+	})
 }
 
 // dispatchOrQueueCore contains shared dispatch/steer/queue logic.

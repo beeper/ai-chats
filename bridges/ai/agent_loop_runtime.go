@@ -79,6 +79,27 @@ func (oc *AIClient) withAgentLoopInactivityTimeout(ctx context.Context) (context
 	return context.WithValue(runCtx, agentLoopActivityKey{}, touch), cancel
 }
 
+func (oc *AIClient) launchAgentLoopRun(
+	ctx context.Context,
+	evt *event.Event,
+	portal *bridgev2.Portal,
+	meta *PortalMetadata,
+	prompt PromptContext,
+	onExit func(),
+) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if onExit != nil {
+			defer onExit()
+		}
+		completionCtx, cancel := oc.withAgentLoopInactivityTimeout(ctx)
+		defer cancel()
+		oc.runAgentLoopWithRetry(completionCtx, evt, portal, meta, prompt)
+	}()
+	return done
+}
+
 func runAgentLoopStreamStep[T any](
 	ctx context.Context,
 	oc *AIClient,

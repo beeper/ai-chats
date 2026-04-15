@@ -312,6 +312,10 @@ uses the same low-level run launch primitive as queued/immediate execution
 though the surrounding queue/runtime/heartbeat pipeline is still not fully
 unified.
 
+Recent progress also collapsed the duplicated async launch wrapper itself:
+queued runs and heartbeats now both enter the shared `launchAgentLoopRun(...)`
+primitive, so only their exit policy remains separate.
+
 Recent progress also trimmed `runtimeIntegrationHost` further: module
 enablement and module-config lookup now stay with `AIClient`, the dead
 host-only `ExecuteBuiltinTool(...)` wrapper is gone, and assistant-turn waits
