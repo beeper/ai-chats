@@ -168,6 +168,11 @@ Recent cleanup kept pushing in that direction:
   module selector, memory module lookup is aligned with `memory_search`, and
   agent hydration normalizes memory config back into a typed shape instead of
   rediscovering it through generic maps later
+- SDK turn-part schema no longer has duplicated field maps in both directions:
+  `sdk.TurnDataFromUIMessage(...)` and `sdk.UIMessageFromTurnData(...)` now
+  share dedicated `decodeTurnPart(...)` / `encodeTurnPart(...)` helpers and one
+  reserved-key list, so new part fields no longer require two separate schema
+  edits
 
 ## Highest-Value Remaining Problems
 

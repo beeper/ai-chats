@@ -369,6 +369,11 @@ Recent progress also removed the host-side agent-module JSON round-trip:
 selector, and memory module config is normalized on agent hydration instead of
 serializing the whole agent just to discover one field.
 
+Recent progress also centralized SDK turn-part schema mapping:
+`TurnDataFromUIMessage(...)` and `UIMessageFromTurnData(...)` now share
+dedicated part encode/decode helpers and one reserved-key list instead of
+maintaining the same `TurnPart` field schema twice by hand.
+
 Recent progress also removed the local session-tool helper layer:
 `executeSessionsList(...)`, `executeSessionsHistory(...)`, and
 `executeSessionsSend(...)` now own their session lookup/display logic directly
