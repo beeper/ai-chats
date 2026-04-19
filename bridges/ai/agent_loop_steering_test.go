@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
@@ -165,6 +166,35 @@ func TestGetFollowUpMessages_CollectSummaryIsConsumed(t *testing.T) {
 	}
 	if snapshot := oc.getQueueSnapshot(roomID); snapshot != nil {
 		t.Fatalf("expected queue to be fully drained after collect dispatch, got %#v", snapshot)
+	}
+}
+
+func TestPreparePendingQueueDispatchCandidate_CollectPreservesAcceptedMessages(t *testing.T) {
+	msg1 := &database.Message{ID: "msg1"}
+	msg2 := &database.Message{ID: "msg2"}
+	candidate := &pendingQueueDispatchCandidate{
+		collect: true,
+		items: []pendingQueueItem{
+			{
+				pending:          pendingMessage{Type: pendingTypeText, MessageBody: "first"},
+				acceptedMessages: []*database.Message{msg1},
+			},
+			{
+				pending:          pendingMessage{Type: pendingTypeText, MessageBody: "second"},
+				acceptedMessages: []*database.Message{msg2},
+			},
+		},
+	}
+
+	item, _, ok := preparePendingQueueDispatchCandidate(candidate)
+	if !ok {
+		t.Fatalf("expected collect candidate to prepare successfully")
+	}
+	if len(item.acceptedMessages) != 2 {
+		t.Fatalf("expected 2 accepted messages, got %d", len(item.acceptedMessages))
+	}
+	if item.acceptedMessages[0] != msg1 || item.acceptedMessages[1] != msg2 {
+		t.Fatalf("unexpected accepted message order: %#v", item.acceptedMessages)
 	}
 }
 

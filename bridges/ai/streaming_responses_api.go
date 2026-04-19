@@ -107,6 +107,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			logResponsesFailure(a.log, err, params, a.meta, a.prompt, "stream_init")
 			return false, nil, &PreDeltaError{Err: err}
 		}
+		a.oc.markTurnAccepted(ctx, a.portal, state, a.meta)
 	} else {
 		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && len(state.pendingSteeringPrompts) == 0 {
 			return false, nil, nil
@@ -148,8 +149,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 
 	tools := newStreamToolRegistry()
 	a.rsc.tools = tools
-	done, cle, err := runAgentLoopStreamStep(ctx, a.oc, a.portal, state, evt, stream,
-		func(streamEvent responses.ResponseStreamEventUnion) bool { return streamEvent.Type != "error" },
+	done, cle, err := runAgentLoopStreamStep(ctx, state, stream,
 		func(streamEvent responses.ResponseStreamEventUnion) (bool, *ContextLengthError, error) {
 			done, cle, evtErr := a.oc.processResponseStreamEvent(ctx, a.rsc, streamEvent, round > 0)
 			if done && evtErr != nil {

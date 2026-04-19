@@ -99,7 +99,7 @@ func (oc *AIClient) finalizeStreamingTurn(
 	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
 	if params.success {
 		if params.generateTitle {
-			oc.maybeGenerateTitle(ctx, portal, finalRenderedBodyFallback(state))
+			oc.maybeGenerateTitle(ctx, portal, state.currentUserMessage, finalRenderedBodyFallback(state))
 		}
 		if params.recordProviderSuccess {
 			oc.recordProviderSuccess(ctx)

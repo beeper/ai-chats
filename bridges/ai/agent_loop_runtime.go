@@ -102,12 +102,8 @@ func (oc *AIClient) launchAgentLoopRun(
 
 func runAgentLoopStreamStep[T any](
 	ctx context.Context,
-	oc *AIClient,
-	portal *bridgev2.Portal,
 	state *streamingState,
-	evt *event.Event,
 	stream *ssestream.Stream[T],
-	shouldMarkSuccess func(T) bool,
 	handleEvent func(T) (done bool, cle *ContextLengthError, err error),
 	handleErr func(error) (cle *ContextLengthError, err error),
 ) (bool, *ContextLengthError, error) {
@@ -121,9 +117,6 @@ func runAgentLoopStreamStep[T any](
 	for stream.Next() {
 		touchAgentLoopActivity(ctx)
 		current := stream.Current()
-		if shouldMarkSuccess == nil || shouldMarkSuccess(current) {
-			oc.markMessageSendSuccess(ctx, portal, evt, state)
-		}
 		done, cle, err := handleEvent(current)
 		if done || cle != nil || err != nil {
 			return done, cle, err

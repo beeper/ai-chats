@@ -9,7 +9,6 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
@@ -50,6 +49,7 @@ type streamingState struct {
 	finishReason           string
 	responseID             string
 	responseStatus         string
+	currentUserMessage     string
 	// Directive processing
 	replyTarget      ReplyTarget
 	replyAccumulator *runtimeparse.StreamingDirectiveAccumulator
@@ -68,6 +68,7 @@ type streamingState struct {
 	pendingMcpApprovalsSeen map[string]bool
 
 	finalized atomic.Bool
+	accepted  atomic.Bool
 	stop      atomic.Pointer[assistantStopMetadata]
 }
 
@@ -118,6 +119,20 @@ func (s *streamingState) isFinalized() bool {
 		return false
 	}
 	return s.finalized.Load()
+}
+
+func (s *streamingState) markAccepted() bool {
+	if s == nil {
+		return false
+	}
+	return s.accepted.CompareAndSwap(false, true)
+}
+
+func (s *streamingState) isAccepted() bool {
+	if s == nil {
+		return false
+	}
+	return s.accepted.Load()
 }
 
 func (s *streamingState) nextMessageTiming() sdk.EventTiming {
@@ -291,11 +306,16 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 	state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
 }
 
-func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil || state.suppressSend {
+func (oc *AIClient) markTurnAccepted(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state == nil || !state.markAccepted() {
 		return
 	}
-	oc.acceptPendingMessages(ctx, portal, state)
+	if !state.suppressSend {
+		oc.acceptPendingMessages(ctx, portal, state)
+	}
+	if writer := state.writer(); writer != nil {
+		writer.Start(ctx, oc.buildUIMessageMetadata(state, meta, false))
+	}
 }
 
 // generatedImage tracks a pending image from image generation

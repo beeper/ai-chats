@@ -312,16 +312,17 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		acceptedMessage: userMessage,
-		messageID:       string(eventID),
-		summaryLine:     rawBodyOriginal,
-		enqueuedAt:      time.Now().UnixMilli(),
+		pending: pending,
+		acceptedMessages: []*database.Message{
+			userMessage,
+		},
+		messageID:   string(eventID),
+		summaryLine: rawBodyOriginal,
+		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	oc.registerPendingUserMessage(msg, portal, userMessage)
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
@@ -689,16 +690,17 @@ func (oc *AIClient) handleMediaMessage(
 			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 		}
 		queueItem := pendingQueueItem{
-			pending:         pending,
-			acceptedMessage: userMessage,
-			messageID:       string(eventID),
-			summaryLine:     rawBody,
-			enqueuedAt:      time.Now().UnixMilli(),
+			pending: pending,
+			acceptedMessages: []*database.Message{
+				userMessage,
+			},
+			messageID:   string(eventID),
+			summaryLine: rawBody,
+			enqueuedAt:  time.Now().UnixMilli(),
 		}
 		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 			return nil, err
 		}
-		oc.registerPendingUserMessage(msg, portal, userMessage)
 		return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 	}
 
@@ -814,16 +816,17 @@ func (oc *AIClient) handleMediaMessage(
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
 	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		acceptedMessage: userMessage,
-		messageID:       string(eventID),
-		summaryLine:     rawCaption,
-		enqueuedAt:      time.Now().UnixMilli(),
+		pending: pending,
+		acceptedMessages: []*database.Message{
+			userMessage,
+		},
+		messageID:   string(eventID),
+		summaryLine: rawCaption,
+		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	oc.registerPendingUserMessage(msg, portal, userMessage)
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 
@@ -958,16 +961,17 @@ func (oc *AIClient) handleTextFileMessage(
 		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		acceptedMessage: userMessage,
-		messageID:       string(eventID),
-		summaryLine:     strings.TrimSpace(rawCaption),
-		enqueuedAt:      time.Now().UnixMilli(),
+		pending: pending,
+		acceptedMessages: []*database.Message{
+			userMessage,
+		},
+		messageID:   string(eventID),
+		summaryLine: strings.TrimSpace(rawCaption),
+		enqueuedAt:  time.Now().UnixMilli(),
 	}
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	oc.registerPendingUserMessage(msg, portal, userMessage)
 	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
 }
 

@@ -35,12 +35,15 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 	// Use FormatUserFacingError for consistent, user-friendly error messages
 	errorMessage := FormatUserFacingError(err)
 
+	turnAccepted := portal != nil && portal.MXID != "" && oc.roomRunAccepted(portal.MXID)
 	statusEvents := []*event.Event(nil)
-	if portal != nil && portal.MXID != "" {
-		statusEvents = oc.roomRunStatusEvents(portal.MXID)
-	}
-	if len(statusEvents) == 0 && evt != nil {
-		statusEvents = []*event.Event{evt}
+	if !turnAccepted {
+		if portal != nil && portal.MXID != "" {
+			statusEvents = oc.roomRunStatusEvents(portal.MXID)
+		}
+		if len(statusEvents) == 0 && evt != nil {
+			statusEvents = []*event.Event{evt}
+		}
 	}
 	if len(statusEvents) > 0 {
 		status := messageStatusForError(err)
@@ -229,7 +232,7 @@ func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.P
 	return nil
 }
 
-func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, assistantResponse string) {
+func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Portal, userMessageHint, assistantResponse string) {
 	if oc == nil || portal == nil {
 		return
 	}
@@ -262,13 +265,15 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			return
 		}
 
-		var userMessage string
-		for i := len(messages) - 1; i >= 0; i-- {
-			msg := messages[i]
-			msgMeta, ok := msg.Metadata.(*MessageMetadata)
-			if ok && msgMeta != nil && msgMeta.Role == "user" && msgMeta.Body != "" {
-				userMessage = msgMeta.Body
-				break
+		userMessage := strings.TrimSpace(userMessageHint)
+		if userMessage == "" {
+			for i := len(messages) - 1; i >= 0; i-- {
+				msg := messages[i]
+				msgMeta, ok := msg.Metadata.(*MessageMetadata)
+				if ok && msgMeta != nil && msgMeta.Role == "user" && msgMeta.Body != "" {
+					userMessage = strings.TrimSpace(msgMeta.Body)
+					break
+				}
 			}
 		}
 

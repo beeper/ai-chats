@@ -2,14 +2,18 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestQueueStatusEventsDeduplicates(t *testing.T) {
@@ -58,6 +62,166 @@ func TestConsumeRoomRunAcceptedMessagesDrainsQueue(t *testing.T) {
 	}
 	if again := oc.consumeRoomRunAcceptedMessages(roomID); len(again) != 0 {
 		t.Fatalf("expected accepted message queue to be empty after drain, got %d", len(again))
+	}
+}
+
+func TestConsumeRoomRunStatusEventsDrainsQueue(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	evt1 := &event.Event{ID: id.EventID("$one")}
+	evt2 := &event.Event{ID: id.EventID("$two")}
+	oc := &AIClient{
+		activeRoomRuns: map[id.RoomID]*roomRunState{
+			roomID: {
+				statusEvents: []*event.Event{evt1, evt2},
+			},
+		},
+	}
+
+	got := oc.consumeRoomRunStatusEvents(roomID)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 status events, got %d", len(got))
+	}
+	if got[0] != evt1 || got[1] != evt2 {
+		t.Fatalf("unexpected drained status events: %#v", got)
+	}
+	if again := oc.consumeRoomRunStatusEvents(roomID); len(again) != 0 {
+		t.Fatalf("expected status event queue to be empty after drain, got %d", len(again))
+	}
+}
+
+func TestPromptCurrentUserVisibleTextPrefersCanonicalTurnData(t *testing.T) {
+	got := promptCurrentUserVisibleText(PromptContext{
+		CurrentTurnData: sdk.TurnData{
+			Role: "user",
+			Parts: []sdk.TurnPart{
+				{Type: "text", Text: "first"},
+				{Type: "tool", Text: "ignored"},
+				{Type: "text", Text: "second"},
+			},
+		},
+		Messages: []PromptMessage{{
+			Role:   PromptRoleUser,
+			Blocks: []PromptBlock{{Type: PromptBlockText, Text: "fallback"}},
+		}},
+	})
+	if got != "first\nsecond" {
+		t.Fatalf("unexpected canonical turn text: %q", got)
+	}
+}
+
+func TestAcceptPendingMessagesPersistsMessagesAndSendsSuccessMSS(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: networkid.PortalKey{
+				ID:       "openai:room",
+				Receiver: client.UserLogin.ID,
+			},
+		},
+		Bridge: client.UserLogin.Bridge,
+	}
+	portal.MXID = roomID
+
+	acceptedAt := time.UnixMilli(1776263886607)
+	msg1 := &database.Message{
+		ID:        networkid.MessageID("mx:$one"),
+		MXID:      id.EventID("$one"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Timestamp: acceptedAt,
+		Metadata:  &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "one"}},
+	}
+	msg2 := &database.Message{
+		ID:        networkid.MessageID("mx:$two"),
+		MXID:      id.EventID("$two"),
+		Room:      portal.PortalKey,
+		SenderID:  humanUserID(client.UserLogin.ID),
+		Timestamp: acceptedAt.Add(time.Millisecond),
+		Metadata:  &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "two"}},
+	}
+	state := &streamingState{roomID: roomID}
+	client.activeRoomRuns = map[id.RoomID]*roomRunState{
+		roomID: {
+			state:                state,
+			acceptedUserMessages: []*database.Message{msg1, msg2},
+			statusEvents: []*event.Event{
+				{ID: msg1.MXID, Type: event.EventMessage, RoomID: roomID},
+				{ID: msg2.MXID, Type: event.EventMessage, RoomID: roomID},
+			},
+		},
+	}
+
+	client.acceptPendingMessages(context.Background(), portal, state)
+
+	tmc, ok := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
+	if !ok {
+		t.Fatalf("expected test matrix connector")
+	}
+	if len(tmc.statuses) != 2 {
+		t.Fatalf("expected 2 success statuses, got %d", len(tmc.statuses))
+	}
+	for i, status := range tmc.statuses {
+		if status.Status != event.MessageStatusSuccess {
+			t.Fatalf("status %d should be success, got %s", i, status.Status)
+		}
+	}
+	if len(tmc.statusInfos) != 2 {
+		t.Fatalf("expected 2 status infos, got %d", len(tmc.statusInfos))
+	}
+	if tmc.statusInfos[0].SourceEventID != msg1.MXID || tmc.statusInfos[1].SourceEventID != msg2.MXID {
+		t.Fatalf("unexpected status event ids: %#v", tmc.statusInfos)
+	}
+	if got := client.consumeRoomRunAcceptedMessages(roomID); len(got) != 0 {
+		t.Fatalf("expected accepted message queue to be empty after acceptance, got %d", len(got))
+	}
+	if got := client.consumeRoomRunStatusEvents(roomID); len(got) != 0 {
+		t.Fatalf("expected status event queue to be empty after acceptance, got %d", len(got))
+	}
+	for _, mxid := range []id.EventID{msg1.MXID, msg2.MXID} {
+		saved, err := client.UserLogin.Bridge.DB.Message.GetPartByMXID(context.Background(), mxid)
+		if err != nil {
+			t.Fatalf("get saved message %s: %v", mxid, err)
+		}
+		if saved == nil {
+			t.Fatalf("expected saved message for %s", mxid)
+		}
+	}
+}
+
+func TestNotifyMatrixSendFailureSkipsMSSAfterAcceptance(t *testing.T) {
+	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
+	roomID := id.RoomID("!room:example.com")
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: networkid.PortalKey{
+				ID:       "openai:room",
+				Receiver: client.UserLogin.ID,
+			},
+		},
+		Bridge: client.UserLogin.Bridge,
+	}
+	portal.MXID = roomID
+	state := &streamingState{roomID: roomID}
+	state.markAccepted()
+	client.activeRoomRuns = map[id.RoomID]*roomRunState{
+		roomID: {
+			state: state,
+		},
+	}
+
+	client.notifyMatrixSendFailure(context.Background(), portal, &event.Event{
+		ID:     id.EventID("$source"),
+		Type:   event.EventMessage,
+		RoomID: roomID,
+	}, errors.New("boom"))
+
+	tmc, ok := client.UserLogin.Bridge.Matrix.(*testMatrixConnector)
+	if !ok {
+		t.Fatalf("expected test matrix connector")
+	}
+	if len(tmc.statuses) != 0 {
+		t.Fatalf("expected no failure MSS after acceptance, got %d", len(tmc.statuses))
 	}
 }
 

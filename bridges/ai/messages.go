@@ -86,3 +86,28 @@ type PromptContext struct {
 	Tools           []ToolDefinition
 	CurrentTurnData sdk.TurnData
 }
+
+func promptCurrentUserVisibleText(prompt PromptContext) string {
+	var parts []string
+	for _, part := range prompt.CurrentTurnData.Parts {
+		if part.Type == "text" {
+			text := strings.TrimSpace(part.Text)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	for i := len(prompt.Messages) - 1; i >= 0; i-- {
+		if prompt.Messages[i].Role != PromptRoleUser {
+			continue
+		}
+		text := strings.TrimSpace(prompt.Messages[i].VisibleText())
+		if text != "" {
+			return text
+		}
+	}
+	return ""
+}

@@ -188,8 +188,8 @@ func (oc *AIClient) registerRoomRunPendingItemLocked(run *roomRunState, item pen
 	if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
 		run.ackPending = append(run.ackPending, item.pending)
 	}
-	if item.acceptedMessage != nil {
-		run.acceptedUserMessages = append(run.acceptedUserMessages, item.acceptedMessage)
+	if len(item.acceptedMessages) > 0 {
+		run.acceptedUserMessages = append(run.acceptedUserMessages, item.acceptedMessages...)
 	}
 }
 
@@ -216,6 +216,18 @@ func (oc *AIClient) roomRunStatusEvents(roomID id.RoomID) []*event.Event {
 	return events
 }
 
+func (oc *AIClient) consumeRoomRunStatusEvents(roomID id.RoomID) []*event.Event {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return nil
+	}
+	run.mu.Lock()
+	events := slices.Clone(run.statusEvents)
+	run.statusEvents = nil
+	run.mu.Unlock()
+	return events
+}
+
 func (oc *AIClient) consumeRoomRunAcceptedMessages(roomID id.RoomID) []*database.Message {
 	run := oc.getRoomRun(roomID)
 	if run == nil {
@@ -226,4 +238,14 @@ func (oc *AIClient) consumeRoomRunAcceptedMessages(roomID id.RoomID) []*database
 	run.acceptedUserMessages = nil
 	run.mu.Unlock()
 	return messages
+}
+
+func (oc *AIClient) roomRunAccepted(roomID id.RoomID) bool {
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		return false
+	}
+	run.mu.Lock()
+	defer run.mu.Unlock()
+	return run.state != nil && run.state.isAccepted()
 }

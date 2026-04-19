@@ -1872,35 +1872,39 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		}
 		return
 	}
-	// Create user message for database
-	userMessage := &database.Message{
-		ID:       sdk.MatrixMessageID(last.Event.ID),
-		MXID:     last.Event.ID,
-		Room:     last.Portal.PortalKey,
-		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: &MessageMetadata{
-			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: combinedBody},
-		},
-		Timestamp: sdk.MatrixEventTimestamp(last.Event),
-	}
-	if len(promptContext.Messages) > 0 {
-		if promptContext.CurrentTurnData.Role != "" {
-			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
+	acceptedMessages := make([]*database.Message, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Event == nil {
+			continue
 		}
-	}
-
-	// Save user message to database - we must do this ourselves since we already
-	// returned Pending: true to the bridge framework when debouncing started
-	// Ensure ghost row exists to avoid foreign key violations.
-	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, userMessage.SenderID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving debounced message")
+		entryBody := oc.buildMatrixInboundBody(ctx, entry.Portal, entry.Meta, entry.Event, entry.RawBody, entry.SenderName, entry.RoomName, entry.IsGroup)
+		acceptedMessages = append(acceptedMessages, &database.Message{
+			ID:       sdk.MatrixMessageID(entry.Event.ID),
+			MXID:     entry.Event.ID,
+			Room:     entry.Portal.PortalKey,
+			SenderID: humanUserID(oc.UserLogin.ID),
+			Metadata: &MessageMetadata{
+				BaseMessageMetadata: sdk.BaseMessageMetadata{
+					Role: "user",
+					Body: entryBody,
+					CanonicalTurnData: sdk.TurnData{
+						Role: "user",
+						Parts: []sdk.TurnPart{{
+							Type: "text",
+							Text: entryBody,
+						}},
+					}.ToMap(),
+				},
+			},
+			Timestamp: sdk.MatrixEventTimestamp(entry.Event),
+		})
 	}
 	queueItem := pendingQueueItem{
-		pending:         pending,
-		acceptedMessage: userMessage,
-		messageID:       string(pendingEvent.ID),
-		summaryLine:     combinedRaw,
-		enqueuedAt:      time.Now().UnixMilli(),
+		pending:          pending,
+		acceptedMessages: acceptedMessages,
+		messageID:        string(pendingEvent.ID),
+		summaryLine:      combinedRaw,
+		enqueuedAt:       time.Now().UnixMilli(),
 	}
 	var cfg *Config
 	if oc != nil && oc.connector != nil {

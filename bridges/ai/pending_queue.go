@@ -16,14 +16,14 @@ import (
 )
 
 type pendingQueueItem struct {
-	pending         pendingMessage
-	acceptedMessage *database.Message
-	messageID       string
-	summaryLine     string
-	enqueuedAt      int64
-	prompt          string
-	backlogAfter    bool
-	allowDuplicate  bool
+	pending          pendingMessage
+	acceptedMessages []*database.Message
+	messageID        string
+	summaryLine      string
+	enqueuedAt       int64
+	prompt           string
+	backlogAfter     bool
+	allowDuplicate   bool
 }
 
 type pendingQueue struct {
@@ -412,6 +412,7 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 	if candidate.collect {
 		items := candidate.items
 		ackIDs := make([]id.EventID, 0, len(items))
+		acceptedMessages := make([]*database.Message, 0, len(items))
 		for idx := range items {
 			if items[idx].pending.Event != nil {
 				if len(items[idx].pending.AckEventIDs) > 0 {
@@ -423,11 +424,13 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 			if items[idx].prompt == "" {
 				items[idx].prompt = items[idx].pending.MessageBody
 			}
+			acceptedMessages = append(acceptedMessages, items[idx].acceptedMessages...)
 		}
 		item := items[len(items)-1]
 		if len(ackIDs) > 0 {
 			item.pending.AckEventIDs = ackIDs
 		}
+		item.acceptedMessages = acceptedMessages
 		blocks := []string{"[Queued messages while agent was busy]"}
 		if strings.TrimSpace(candidate.summaryPrompt) != "" {
 			blocks = append(blocks, candidate.summaryPrompt)

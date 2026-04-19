@@ -45,6 +45,9 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 			err:    initErr,
 		})
 	}
+	if round == 0 {
+		oc.markTurnAccepted(ctx, portal, state, meta)
+	}
 
 	activeTools := newStreamToolRegistry()
 	actions := newStreamTurnActions(
@@ -64,8 +67,7 @@ func (a *chatCompletionsTurnAdapter) RunAgentTurn(
 	var roundContent strings.Builder
 	state.resetFinishReason()
 
-	_, cle, err := runAgentLoopStreamStep(ctx, oc, portal, state, evt, stream,
-		func(openai.ChatCompletionChunk) bool { return true },
+	_, cle, err := runAgentLoopStreamStep(ctx, state, stream,
 		func(chunk openai.ChatCompletionChunk) (bool, *ContextLengthError, error) {
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
 				actions.updateUsage(

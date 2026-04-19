@@ -23,7 +23,9 @@ import (
 )
 
 type testMatrixConnector struct {
-	api *testMatrixAPI
+	api         *testMatrixAPI
+	statuses    []bridgev2.MessageStatus
+	statusInfos []*bridgev2.MessageStatusEventInfo
 }
 
 func (tmc *testMatrixConnector) Init(*bridgev2.Bridge)       {}
@@ -49,7 +51,14 @@ func (tmc *testMatrixConnector) BotIntent() bridgev2.MatrixAPI { return tmc.Ghos
 func (tmc *testMatrixConnector) SendBridgeStatus(context.Context, *status.BridgeState) error {
 	return nil
 }
-func (tmc *testMatrixConnector) SendMessageStatus(context.Context, *bridgev2.MessageStatus, *bridgev2.MessageStatusEventInfo) {
+func (tmc *testMatrixConnector) SendMessageStatus(_ context.Context, status *bridgev2.MessageStatus, info *bridgev2.MessageStatusEventInfo) {
+	if status != nil {
+		tmc.statuses = append(tmc.statuses, *status)
+	}
+	if info != nil {
+		copied := *info
+		tmc.statusInfos = append(tmc.statusInfos, &copied)
+	}
 }
 func (tmc *testMatrixConnector) GenerateContentURI(context.Context, networkid.MediaID) (id.ContentURIString, error) {
 	return "", nil

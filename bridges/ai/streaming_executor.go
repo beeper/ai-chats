@@ -62,6 +62,9 @@ func (oc *AIClient) runAgentLoop(
 	defer typingCleanup()
 
 	state := prep.State
+	if state != nil && state.currentUserMessage == "" {
+		state.currentUserMessage = promptCurrentUserVisibleText(prompt)
+	}
 	provider := newProvider(prep, prompt)
 	if state.roomID != "" {
 		if provider.TrackRoomRunStreaming() {
@@ -70,7 +73,6 @@ func (oc *AIClient) runAgentLoop(
 		}
 	}
 
-	state.writer().Start(ctx, oc.buildUIMessageMetadata(state, meta, false))
 	return executeAgentLoopRounds(ctx, provider, evt)
 }
 
