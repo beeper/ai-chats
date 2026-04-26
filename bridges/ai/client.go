@@ -1867,8 +1867,12 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(ctx, last.Portal, last.Event, err)
-		if last.Meta.AckReactionRemoveAfter && entries[0].AckEventID != "" {
-			oc.removeAckReactionByID(ctx, last.Portal, entries[0].AckEventID)
+		if last.Meta != nil && last.Meta.AckReactionRemoveAfter {
+			for _, entry := range entries {
+				if entry.AckEventID != "" {
+					oc.removeAckReactionByID(ctx, last.Portal, entry.AckEventID)
+				}
+			}
 		}
 		return
 	}

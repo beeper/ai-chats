@@ -83,12 +83,18 @@ func (s *AgentStoreAdapter) saveAgent(ctx context.Context, agent *AgentDefinitio
 	if agent == nil {
 		return nil
 	}
+	if s == nil || s.client == nil || s.client.UserLogin == nil {
+		return errors.New("login state is not available")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return saveCustomAgentForLogin(ctx, s.client.UserLogin, agent)
 }
 
 func (s *AgentStoreAdapter) deleteAgent(ctx context.Context, agentID string) error {
+	if s == nil || s.client == nil || s.client.UserLogin == nil {
+		return errors.New("login state is not available")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return deleteCustomAgentForLogin(ctx, s.client.UserLogin, agentID)
@@ -494,8 +500,8 @@ func (b *BossStoreAdapter) CreateRoom(ctx context.Context, room tools.RoomData) 
 	}
 
 	resp, err := b.client.createChat(ctx, chatCreateParams{
-		Agent:    agent,
-		RoomName: room.Name,
+		Agent: agent,
+		Title: room.Name,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create room: %w", err)

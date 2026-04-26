@@ -22,7 +22,9 @@ func aiClientNeedsRebuildConfig(existing *AIClient, key string, provider string,
 	existingProvider := ""
 	existingBaseURL := ""
 	if existing.UserLogin != nil {
-		existingProvider = strings.TrimSpace(loginMetadata(existing.UserLogin).Provider)
+		if meta := loginMetadata(existing.UserLogin); meta != nil {
+			existingProvider = strings.TrimSpace(meta.Provider)
+		}
 	}
 	existingBaseURL = stringutil.NormalizeBaseURL(loginCredentialBaseURL(existing.loginConfigSnapshot(context.Background())))
 	targetProvider := strings.TrimSpace(provider)
@@ -88,6 +90,11 @@ func (oc *OpenAIConnector) loadAIUserLogin(ctx context.Context, login *bridgev2.
 	}
 	if meta == nil {
 		meta = loginMetadata(login)
+	}
+	if meta == nil {
+		oc.evictCachedClient(login.ID, nil)
+		login.Client = newBrokenLoginClient(login, initLoginClientError)
+		return nil
 	}
 	if cfg == nil {
 		var err error

@@ -276,6 +276,9 @@ func (cc *CodexClient) forgetManagedDirectory(ctx context.Context, path string) 
 		if state, err := loadCodexPortalState(ctx, portal); err == nil && state != nil {
 			cc.cleanupImportedPortalState(state.CodexThreadID)
 		}
+		if err := clearCodexPortalState(ctx, portal); err != nil {
+			return 0, err
+		}
 		cc.deletePortalOnly(ctx, portal, "codex directory forgotten")
 	}
 	return len(portals), nil

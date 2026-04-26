@@ -55,6 +55,22 @@ func saveCodexPortalState(ctx context.Context, portal *bridgev2.Portal, state *c
 	return portal.Save(ctx)
 }
 
+func clearCodexPortalState(ctx context.Context, portal *bridgev2.Portal) error {
+	if portal == nil {
+		return nil
+	}
+	meta := portalMeta(portal)
+	meta.IsCodexRoom = false
+	meta.Title = ""
+	meta.Slug = ""
+	meta.CodexThreadID = ""
+	meta.CodexCwd = ""
+	meta.ElevatedLevel = ""
+	meta.AwaitingCwdSetup = false
+	meta.ManagedImport = false
+	return portal.Save(ctx)
+}
+
 func listCodexPortalStateRecords(ctx context.Context, login *bridgev2.UserLogin) ([]codexPortalStateRecord, error) {
 	if login == nil || login.Bridge == nil {
 		return nil, nil

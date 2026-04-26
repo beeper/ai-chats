@@ -398,6 +398,7 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	}
 	if err := oc.persistAIConversationMessage(ctx, portal, transcriptMsg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist edited conversation turn")
+		return err
 	}
 	if edit.EditTarget != nil {
 		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)

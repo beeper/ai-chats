@@ -121,7 +121,7 @@ func (oc *AIClient) ensureLoginConfigLoaded(ctx context.Context) *aiLoginConfig 
 	oc.loginConfigMu.Lock()
 	defer oc.loginConfigMu.Unlock()
 	if oc.loginConfig != nil {
-		return oc.loginConfig
+		return cloneAILoginConfig(oc.loginConfig)
 	}
 	cfg, err := loadAILoginConfig(ctx, oc.UserLogin)
 	if err != nil {
@@ -129,7 +129,7 @@ func (oc *AIClient) ensureLoginConfigLoaded(ctx context.Context) *aiLoginConfig 
 		cfg = &aiLoginConfig{}
 	}
 	oc.loginConfig = cfg
-	return oc.loginConfig
+	return cloneAILoginConfig(oc.loginConfig)
 }
 
 func (oc *AIClient) loginConfigSnapshot(ctx context.Context) *aiLoginConfig {
@@ -141,26 +141,38 @@ func (oc *AIClient) updateLoginConfig(ctx context.Context, fn func(*aiLoginConfi
 		return nil
 	}
 	oc.loginConfigMu.Lock()
-	defer oc.loginConfigMu.Unlock()
-	if oc.loginConfig == nil {
-		cfg, err := loadAILoginConfig(ctx, oc.UserLogin)
+	cfg := cloneAILoginConfig(oc.loginConfig)
+	loaded := oc.loginConfig != nil
+	oc.loginConfigMu.Unlock()
+
+	if !loaded {
+		var err error
+		cfg, err = loadAILoginConfig(ctx, oc.UserLogin)
 		if err != nil {
 			return err
 		}
-		oc.loginConfig = cfg
 	}
-	if !fn(oc.loginConfig) {
+	if !fn(cfg) {
 		return nil
 	}
-	return saveAILoginConfig(ctx, oc.UserLogin, oc.loginConfig)
+	if err := saveAILoginConfig(ctx, oc.UserLogin, cfg); err != nil {
+		return err
+	}
+	oc.loginConfigMu.Lock()
+	oc.loginConfig = cloneAILoginConfig(cfg)
+	oc.loginConfigMu.Unlock()
+	return nil
 }
 
 func (oc *AIClient) replaceLoginConfig(ctx context.Context, cfg *aiLoginConfig) error {
 	if oc == nil || oc.UserLogin == nil {
 		return nil
 	}
+	if err := saveAILoginConfig(ctx, oc.UserLogin, cfg); err != nil {
+		return err
+	}
 	oc.loginConfigMu.Lock()
 	oc.loginConfig = cloneAILoginConfig(cfg)
 	oc.loginConfigMu.Unlock()
-	return saveAILoginConfig(ctx, oc.UserLogin, cfg)
+	return nil
 }

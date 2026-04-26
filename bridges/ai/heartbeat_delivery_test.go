@@ -78,6 +78,7 @@ func TestResolveHeartbeatDeliveryTargetFallsBackFromMismatchedSessionRoom(t *tes
 
 func TestResolveHeartbeatRouteFallsBackFromMismatchedExplicitSessionRoom(t *testing.T) {
 	client := newDBBackedTestAIClient(t, "")
+	client.SetLoggedIn(true)
 
 	agentID := normalizeAgentID(agents.DefaultAgentID)
 	lastPortal := testAgentPortal("last", "!last:example.com", agentID, &PortalMetadata{

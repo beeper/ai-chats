@@ -64,7 +64,9 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 	if agentID == "" {
 		return fmt.Errorf("custom agent id is required")
 	}
-	payload, err := json.Marshal(agent)
+	clone := *agent
+	clone.ID = agentID
+	payload, err := json.Marshal(&clone)
 	if err != nil {
 		return err
 	}

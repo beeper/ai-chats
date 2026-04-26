@@ -12,10 +12,20 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
-// desktopAccountNetwork returns the network identifier for a desktop API account.
-// TODO: add Network field to desktop-api-go Account and remove this stub.
-func desktopAccountNetwork(_ beeperdesktopapi.Account) string {
-	return "unknown"
+func desktopAccountNetwork(account beeperdesktopapi.Account) string {
+	accountID := strings.TrimSpace(account.AccountID)
+	if accountID == "" {
+		return ""
+	}
+	prefix, _, ok := strings.Cut(accountID, "_ba_")
+	if !ok {
+		prefix, _, ok = strings.Cut(accountID, "_")
+	}
+	if !ok {
+		return ""
+	}
+	prefix = strings.TrimPrefix(prefix, "local-")
+	return strings.TrimSpace(prefix)
 }
 
 type desktopAccountHint struct {
@@ -241,7 +251,7 @@ func normalizeDesktopBridgeType(network string) string {
 	if out := normalizeDesktopNetworkToken(network); out != "" {
 		return out
 	}
-	return "unknown"
+	return ""
 }
 
 func formatDesktopAccountID(areThereMultipleDesktopInstances bool, instanceKey, bridgeType, rawAccountID string) string {
@@ -252,7 +262,13 @@ func formatDesktopAccountID(areThereMultipleDesktopInstances bool, instanceKey, 
 	bridge := normalizeDesktopBridgeType(bridgeType)
 	if areThereMultipleDesktopInstances {
 		instance := sanitizeDesktopInstanceKey(instanceKey)
+		if bridge == "" {
+			return fmt.Sprintf("%s_%s", instance, accountID)
+		}
 		return fmt.Sprintf("%s_%s_%s", instance, bridge, accountID)
+	}
+	if bridge == "" {
+		return accountID
 	}
 	return fmt.Sprintf("%s_%s", bridge, accountID)
 }

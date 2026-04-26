@@ -105,7 +105,7 @@ func TestNormalizeDesktopBridgeType(t *testing.T) {
 		{name: "whatsapp business", network: "WhatsApp Business", want: "whatsapp"},
 		{name: "telegram bot", network: "telegram_bot", want: "telegram"},
 		{name: "unknown token fallback", network: "Custom Network V2", want: "custom_network_v2"},
-		{name: "empty unknown", network: "", want: "unknown"},
+		{name: "empty network", network: "", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

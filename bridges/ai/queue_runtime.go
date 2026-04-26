@@ -277,6 +277,11 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 		if err != nil {
 			oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for pending queue item")
 			oc.notifyMatrixSendFailure(ctx, item.pending.Portal, item.pending.Event, err)
+			for _, event := range queueStatusEvents(item.pending.Event, item.pending.StatusEvents) {
+				if event != nil && event != item.pending.Event {
+					oc.notifyMatrixSendFailure(ctx, item.pending.Portal, event, err)
+				}
+			}
 			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 			oc.releaseRoom(roomID)
 			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)

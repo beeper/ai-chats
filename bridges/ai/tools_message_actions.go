@@ -24,6 +24,7 @@ func executeMessageReactRemove(ctx context.Context, args map[string]any, btc *Br
 	}
 
 	emoji, _ := args["emoji"].(string)
+	emoji = strings.TrimSpace(emoji)
 	if emoji == "" {
 		return "", errors.New("action=react with remove requires an explicit emoji")
 	}

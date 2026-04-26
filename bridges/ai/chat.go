@@ -548,15 +548,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 
 		oc.ensureGhostDisplayName(ctx, modelID)
 
-		var chatResp *bridgev2.CreateChatResponse
-		if createChat {
-			oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
-			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create chat: %w", err)
-			}
-		}
-
 		responder, err := oc.resolveResponder(ctx, &PortalMetadata{
 			ResolvedTarget: &ResolvedTarget{
 				Kind:    ResolvedTargetModel,
@@ -566,6 +557,16 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve model responder: %w", err)
 		}
+
+		var chatResp *bridgev2.CreateChatResponse
+		if createChat {
+			oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
+			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create chat: %w", err)
+			}
+		}
+
 		resp := &bridgev2.ResolveIdentifierResponse{
 			UserID:   userID,
 			UserInfo: responderUserInfo(responder, modelContactIdentifiers(modelID), false),

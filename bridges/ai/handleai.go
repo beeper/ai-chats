@@ -124,10 +124,13 @@ const healthWarningThreshold = 5
 func (oc *AIClient) recordProviderError(ctx context.Context) {
 	var nextErrors int
 	var crossedThreshold bool
-	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+	if err := oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		nextErrors, crossedThreshold = state.RecordProviderError(time.Now(), healthWarningThreshold)
 		return true
-	})
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist provider error state")
+		return
+	}
 	if crossedThreshold {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateTransientDisconnect,
@@ -139,10 +142,13 @@ func (oc *AIClient) recordProviderError(ctx context.Context) {
 
 func (oc *AIClient) recordProviderSuccess(ctx context.Context) {
 	var recovered bool
-	_ = oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
+	if err := oc.updateLoginState(ctx, func(state *loginRuntimeState) bool {
 		recovered = state.RecordProviderSuccess(healthWarningThreshold)
 		return recovered
-	})
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist provider recovery state")
+		return
+	}
 	if recovered && oc.IsLoggedIn() {
 		oc.UserLogin.BridgeState.Send(status.BridgeState{
 			StateEvent: status.StateConnected,
@@ -258,15 +264,13 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 15*time.Second)
 		defer cancel()
 
-		// Fetch the last user message from database
-		messages, err := oc.getAIHistoryMessages(bgCtx, portal, 10)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get messages for title generation")
-			return
-		}
-
 		userMessage := strings.TrimSpace(userMessageHint)
 		if userMessage == "" {
+			messages, err := oc.getAIHistoryMessages(bgCtx, portal, 10)
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to get messages for title generation")
+				return
+			}
 			for i := len(messages) - 1; i >= 0; i-- {
 				msg := messages[i]
 				msgMeta, ok := msg.Metadata.(*MessageMetadata)

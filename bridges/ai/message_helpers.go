@@ -109,7 +109,7 @@ func (oc *AIClient) upsertTransportPortalMessage(
 		if err != nil {
 			return err
 		}
-		if existing != nil && existing.Room == portal.PortalKey {
+		if existing != nil {
 			existing.Room = transport.Room
 			if transport.ID != "" {
 				existing.ID = transport.ID

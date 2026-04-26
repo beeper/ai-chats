@@ -27,7 +27,7 @@ The AgentRemote Manager stores profile state under `~/.config/agentremote/`.
 | Bridge | What it connects |
 | --- | --- |
 | [`AI Chats`](./bridges/ai/README.md) | Talk to any model on Beeper AI |
-| [`Codex`](./bridges/codex/README.md) | A local `codex app-server` runtime, requires Codex to be installed |
+| [`Codex`](./bridges/codex/README.md) | A local `codex app-server` runtime; requires Codex to be installed |
 
 ## Quick start
 

@@ -101,12 +101,18 @@ func resolveApprovalPromptContext(state *streamingState, turn *sdk.Turn, fallbac
 }
 
 func normalizeApprovalToken(s string) string {
-	return strings.ToLower(strings.TrimSpace(s))
+	return strings.TrimSpace(s)
 }
 
 func normalizeMcpRuleToolName(name string) string {
 	n := normalizeApprovalToken(name)
-	return strings.TrimPrefix(n, "mcp.")
+	if rest, ok := strings.CutPrefix(n, "mcp."); ok {
+		return rest
+	}
+	if rest, ok := strings.CutPrefix(n, "MCP."); ok {
+		return rest
+	}
+	return n
 }
 
 func (oc *AIClient) toolApprovalsRuntimeEnabled() bool {
@@ -166,7 +172,7 @@ func (oc *AIClient) isBuiltinAlwaysAllowed(ctx context.Context, toolName, action
 		return false
 	}
 	tn := normalizeApprovalToken(toolName)
-	act := normalizeApprovalToken(action)
+	act := strings.ToLower(normalizeApprovalToken(action))
 	if tn == "" {
 		return false
 	}
@@ -187,7 +193,7 @@ func (oc *AIClient) persistAlwaysAllow(ctx context.Context, pending *pendingTool
 		return oc.insertToolApprovalRule(ctx, ToolApprovalKindMCP, sl, tn, "")
 	case ToolApprovalKindBuiltin:
 		tn := normalizeApprovalToken(pending.RuleToolName)
-		act := normalizeApprovalToken(pending.Action)
+		act := strings.ToLower(normalizeApprovalToken(pending.Action))
 		if tn == "" {
 			return nil
 		}

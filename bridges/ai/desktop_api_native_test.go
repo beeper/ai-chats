@@ -9,14 +9,13 @@ import (
 )
 
 func TestMatchDesktopChatsByLabelAliases(t *testing.T) {
-	t.Skip("requires Account.Network field in desktop-api-go")
 	chats := []beeperdesktopapi.Chat{
-		{ID: "c1", Title: "Family", AccountID: "acc-wa"},
-		{ID: "c2", Title: "Family", AccountID: "acc-ig"},
+		{ID: "c1", Title: "Family", AccountID: "local-whatsapp_ba_wa"},
+		{ID: "c2", Title: "Family", AccountID: "local-instagram_ba_ig"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa"},
-		"acc-ig": {AccountID: "acc-ig"},
+		"local-whatsapp_ba_wa":  {AccountID: "local-whatsapp_ba_wa"},
+		"local-instagram_ba_ig": {AccountID: "local-instagram_ba_ig"},
 	}
 
 	exact, _ := matchDesktopChatsByLabel(chats, "family", accounts)
@@ -29,24 +28,23 @@ func TestMatchDesktopChatsByLabelAliases(t *testing.T) {
 		t.Fatalf("expected whatsapp-qualified label to resolve c1, got %+v", exact)
 	}
 
-	exact, _ = matchDesktopChatsByLabel(chats, "acc-ig/family", accounts)
+	exact, _ = matchDesktopChatsByLabel(chats, "local-instagram_ba_ig/family", accounts)
 	if len(exact) != 1 || exact[0].ID != "c2" {
 		t.Fatalf("expected account-qualified label to resolve c2, got %+v", exact)
 	}
 }
 
 func TestFilterDesktopChatsByResolveOptions(t *testing.T) {
-	t.Skip("requires Account.Network field in desktop-api-go")
 	chats := []beeperdesktopapi.Chat{
-		{ID: "c1", Title: "Family", AccountID: "acc-wa"},
-		{ID: "c2", Title: "Family", AccountID: "acc-ig"},
+		{ID: "c1", Title: "Family", AccountID: "local-whatsapp_ba_wa"},
+		{ID: "c2", Title: "Family", AccountID: "local-instagram_ba_ig"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa"},
-		"acc-ig": {AccountID: "acc-ig"},
+		"local-whatsapp_ba_wa":  {AccountID: "local-whatsapp_ba_wa"},
+		"local-instagram_ba_ig": {AccountID: "local-instagram_ba_ig"},
 	}
 
-	filtered := filterDesktopChatsByResolveOptions(chats, accounts, "main_desktop", desktopLabelResolveOptions{AccountID: "acc-wa"})
+	filtered := filterDesktopChatsByResolveOptions(chats, accounts, "main_desktop", desktopLabelResolveOptions{AccountID: "local-whatsapp_ba_wa"})
 	if len(filtered) != 1 || filtered[0].ID != "c1" {
 		t.Fatalf("account filter failed: %+v", filtered)
 	}
@@ -58,23 +56,22 @@ func TestFilterDesktopChatsByResolveOptions(t *testing.T) {
 }
 
 func TestFilterDesktopChatsByResolveOptionsCanonicalAccountID(t *testing.T) {
-	t.Skip("requires Account.Network field in desktop-api-go")
 	chats := []beeperdesktopapi.Chat{
-		{ID: "c1", Title: "Family", AccountID: "acc-wa"},
+		{ID: "c1", Title: "Family", AccountID: "local-whatsapp_ba_wa"},
 	}
 	accounts := map[string]beeperdesktopapi.Account{
-		"acc-wa": {AccountID: "acc-wa"},
+		"local-whatsapp_ba_wa": {AccountID: "local-whatsapp_ba_wa"},
 	}
 
 	filtered := filterDesktopChatsByResolveOptions(chats, accounts, "Main Desktop", desktopLabelResolveOptions{
-		AccountID: "whatsapp_acc-wa",
+		AccountID: "whatsapp_local-whatsapp_ba_wa",
 	})
 	if len(filtered) != 1 || filtered[0].ID != "c1" {
 		t.Fatalf("single-instance canonical account filter failed: %+v", filtered)
 	}
 
 	filtered = filterDesktopChatsByResolveOptions(chats, accounts, "Main Desktop", desktopLabelResolveOptions{
-		AccountID: "main_desktop_whatsapp_acc-wa",
+		AccountID: "main_desktop_whatsapp_local-whatsapp_ba_wa",
 	})
 	if len(filtered) != 1 || filtered[0].ID != "c1" {
 		t.Fatalf("multi-instance canonical account filter failed: %+v", filtered)
@@ -234,46 +231,37 @@ func TestDesktopNetworkFilterMatches(t *testing.T) {
 	}
 }
 
-func TestDesktopChatLabelCandidatesIncludeCanonicalAndRawNetworkAliases(t *testing.T) {
-	t.Skip("requires Account.Network field in desktop-api-go")
+func TestDesktopChatLabelCandidatesIncludeDerivedNetworkAlias(t *testing.T) {
 	chat := beeperdesktopapi.Chat{
 		ID:        "c1",
 		Title:     "Family",
-		AccountID: "acc-wa",
+		AccountID: "local-whatsapp_ba_wa",
 	}
 	account := beeperdesktopapi.Account{
-		AccountID: "acc-wa",
+		AccountID: "local-whatsapp_ba_wa",
 	}
 
 	candidates := desktopChatLabelCandidates(chat, account)
-	hasCanonical := false
-	hasRaw := false
 	for _, candidate := range candidates {
-		switch candidate {
-		case "whatsapp:Family":
-			hasCanonical = true
-		case "whatsapp_business:Family":
-			hasRaw = true
+		if candidate == "whatsapp:Family" {
+			return
 		}
 	}
-	if !hasCanonical || !hasRaw {
-		t.Fatalf("expected canonical and raw aliases, got %v", candidates)
-	}
+	t.Fatalf("expected derived network alias, got %v", candidates)
 }
 
 func TestDesktopSessionAccountID(t *testing.T) {
-	t.Skip("requires Account.Network field in desktop-api-go")
 	account := beeperdesktopapi.Account{
-		AccountID: "acc_123",
+		AccountID: "local-whatsapp_ba_123",
 	}
 
 	single := desktopSessionAccountID(false, "Main Desktop", account)
-	if single != "whatsapp_acc_123" {
+	if single != "whatsapp_local-whatsapp_ba_123" {
 		t.Fatalf("unexpected single-instance account id: %q", single)
 	}
 
 	multi := desktopSessionAccountID(true, "Main Desktop", account)
-	if multi != "main_desktop_whatsapp_acc_123" {
+	if multi != "main_desktop_whatsapp_local-whatsapp_ba_123" {
 		t.Fatalf("unexpected multi-instance account id: %q", multi)
 	}
 }
