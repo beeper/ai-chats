@@ -16,7 +16,7 @@ The target is the taste level of Pi:
 - one clean agent/runtime loop
 - thin integration edges
 
-And the subsystem discipline of OpenClaw:
+And the subsystem discipline of AgentRemote:
 
 - session logic in one place
 - media logic in one place
@@ -33,10 +33,10 @@ And the subsystem discipline of OpenClaw:
 - `pi-mono/packages/agent/src/agent.ts`
 - `pi-mono/packages/agent/src/agent-loop.ts`
 
-### OpenClaw
+### AgentRemote
 
-- `openclaw/src/channels/session.ts`
-- `openclaw/src/media/host.ts`
+- `agentremote/src/channels/session.ts`
+- `agentremote/src/media/host.ts`
 
 ## Final Shape
 
@@ -571,7 +571,7 @@ Deliverable:
 
 Why third:
 
-- this is the closest remaining mismatch with OpenClaw's bounded session shape
+- this is the closest remaining mismatch with AgentRemote's bounded session shape
 
 ### Phase 4: Provider Consolidation
 

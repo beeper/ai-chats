@@ -11,7 +11,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/globmatch"
 )
 
-// PruningConfig configures context pruning behavior (OpenClaw-style).
+// PruningConfig configures context pruning behavior (AgentRemote-style).
 type PruningConfig struct {
 	Mode string        `yaml:"mode" json:"mode,omitempty"`
 	TTL  time.Duration `yaml:"ttl" json:"ttl,omitempty"`
@@ -58,7 +58,7 @@ type OverflowFlushConfig struct {
 	SystemPrompt        string `yaml:"system_prompt" json:"system_prompt,omitempty"`
 }
 
-// DefaultPruningConfig returns OpenClaw-like default settings.
+// DefaultPruningConfig returns AgentRemote-like default settings.
 func DefaultPruningConfig() *PruningConfig {
 	enabled := true
 	summarizationEnabled := true

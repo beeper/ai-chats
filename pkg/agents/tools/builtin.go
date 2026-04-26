@@ -18,19 +18,19 @@ var toolLookup = sync.OnceValue(func() map[string]*Tool {
 	return m
 })
 
-// Tool group constants for policy composition (OpenClaw-style shorthands).
+// Tool group constants for policy composition (AgentRemote-style shorthands).
 const (
-	GroupSearch    = toolpolicy.GroupSearch
-	GroupCalc      = toolpolicy.GroupCalc
-	GroupBuilder   = toolpolicy.GroupBuilder
-	GroupMessaging = toolpolicy.GroupMessaging
-	GroupSessions  = toolpolicy.GroupSessions
-	GroupMemory    = toolpolicy.GroupMemory
-	GroupWeb       = toolpolicy.GroupWeb
-	GroupMedia     = toolpolicy.GroupMedia
-	GroupStatus    = toolpolicy.GroupStatus
-	GroupOpenClaw  = toolpolicy.GroupOpenClaw
-	GroupFS        = toolpolicy.GroupFS
+	GroupSearch      = toolpolicy.GroupSearch
+	GroupCalc        = toolpolicy.GroupCalc
+	GroupBuilder     = toolpolicy.GroupBuilder
+	GroupMessaging   = toolpolicy.GroupMessaging
+	GroupSessions    = toolpolicy.GroupSessions
+	GroupMemory      = toolpolicy.GroupMemory
+	GroupWeb         = toolpolicy.GroupWeb
+	GroupMedia       = toolpolicy.GroupMedia
+	GroupStatus      = toolpolicy.GroupStatus
+	GroupAgentRemote = toolpolicy.GroupAgentRemote
+	GroupFS          = toolpolicy.GroupFS
 )
 
 // BuiltinTools returns all locally-executable builtin tools.

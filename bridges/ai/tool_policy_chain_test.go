@@ -2,7 +2,7 @@ package ai
 
 import "testing"
 
-func TestBuildToolPolicyContext_TreatsOpenClawReservedToolsAsCore(t *testing.T) {
+func TestBuildToolPolicyContext_TreatsAgentRemoteReservedToolsAsCore(t *testing.T) {
 	oc := &AIClient{}
 	ctx := oc.buildToolPolicyContext(nil)
 

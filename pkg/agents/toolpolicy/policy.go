@@ -8,7 +8,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
-// ToolProfileID defines access levels (OpenClaw-style).
+// ToolProfileID defines access levels (AgentRemote-style).
 type ToolProfileID string
 
 const (
@@ -18,7 +18,7 @@ const (
 	ProfileBoss      ToolProfileID = "boss"
 )
 
-// Tool group constants for policy composition (OpenClaw-style shorthands).
+// Tool group constants for policy composition (AgentRemote-style shorthands).
 const (
 	GroupSearch      = "group:search"
 	GroupCalc        = "group:calc"
@@ -33,13 +33,9 @@ const (
 	GroupAutomation  = "group:automation"
 	GroupNodes       = "group:nodes"
 	GroupStatus      = "group:status"
-	GroupOpenClaw    = "group:openclaw"
 	GroupAgentRemote = "group:agentremote"
-	GroupAIBridge    = "group:ai-bridge"
 	GroupFS          = "group:fs"
 )
-
-var agentRemoteExtras = []string{"gravatar_fetch", "gravatar_set", "beeper_docs", "beeper_send_feedback", "image_generate", "tts", "calculator"}
 
 // ToolGroups maps group names to tool names for policy composition.
 var ToolGroups = map[string][]string{
@@ -47,7 +43,7 @@ var ToolGroups = map[string][]string{
 	GroupCalc:      {"calculator"},
 	GroupBuilder:   {"create_agent", "fork_agent", "edit_agent", "delete_agent", "list_agents", "run_internal_command"},
 	GroupMessaging: {"message"},
-	// OpenClaw semantics: session management tools only.
+	// AgentRemote semantics: session management tools only.
 	GroupSessions:   {"sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"},
 	GroupMemory:     {"memory_search", "memory_get"},
 	GroupRuntime:    {"exec", "process"},
@@ -57,8 +53,7 @@ var ToolGroups = map[string][]string{
 	GroupAutomation: {"cron", "gateway"},
 	GroupNodes:      {"nodes"},
 	GroupStatus:     {"session_status"},
-	// Strict OpenClaw native tool set (excludes provider plugins + agentremote-only tools).
-	GroupOpenClaw: {
+	GroupAgentRemote: {
 		"browser",
 		"canvas",
 		"nodes",
@@ -76,11 +71,15 @@ var ToolGroups = map[string][]string{
 		"web_search",
 		"web_fetch",
 		"image",
+		"gravatar_fetch",
+		"gravatar_set",
+		"beeper_docs",
+		"beeper_send_feedback",
+		"image_generate",
+		"tts",
+		"calculator",
 	},
-	// AgentRemote extras (keep separate so group:openclaw stays portable with OpenClaw configs).
-	GroupAgentRemote: agentRemoteExtras,
-	GroupAIBridge:    agentRemoteExtras,
-	GroupFS:          {"read", "write", "edit", "apply_patch"},
+	GroupFS: {"read", "write", "edit", "apply_patch"},
 }
 
 var ownerOnlyToolNames = map[string]struct{}{
@@ -94,15 +93,15 @@ type toolProfilePolicy struct {
 
 // ToolProfiles define which tool groups each profile allows.
 var ToolProfiles = map[ToolProfileID]toolProfilePolicy{
-	// OpenClaw semantics: allow workspace tools + runtime + session tooling + memory + image.
+	// AgentRemote semantics: allow workspace tools + runtime + session tooling + memory + image.
 	ProfileCoding: {Allow: []string{GroupFS, GroupRuntime, GroupSessions, GroupMemory, "image"}},
-	// OpenClaw semantics: messaging + limited session inspection/sends.
+	// AgentRemote semantics: messaging + limited session inspection/sends.
 	ProfileMessaging: {Allow: []string{GroupMessaging, "sessions_list", "sessions_history", "sessions_send", "session_status"}},
 	ProfileFull:      {},
 	ProfileBoss:      {},
 }
 
-// ToolPolicyConfig matches OpenClaw's allow/deny policy (global or per-agent).
+// ToolPolicyConfig matches AgentRemote's allow/deny policy (global or per-agent).
 type ToolPolicyConfig struct {
 	Allow      []string                    `json:"allow,omitempty" yaml:"allow"`
 	AlsoAllow  []string                    `json:"also_allow,omitempty" yaml:"also_allow"`

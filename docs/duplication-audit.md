@@ -35,12 +35,12 @@ Why Pi matters:
 - one explicit event stream
 - application wiring at the edge, not in the middle
 
-### OpenClaw references
+### AgentRemote references
 
-- `openclaw/src/channels/session.ts`
-- `openclaw/src/media/host.ts`
+- `agentremote/src/channels/session.ts`
+- `agentremote/src/media/host.ts`
 
-Why OpenClaw matters:
+Why AgentRemote matters:
 
 - session logic is a bounded subsystem
 - media logic is a bounded subsystem

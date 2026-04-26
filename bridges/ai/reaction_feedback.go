@@ -11,7 +11,7 @@ import (
 )
 
 // ReactionFeedback represents a user reaction to an AI message.
-// Similar to OpenClaw's system events, these are queued and drained
+// Similar to AgentRemote's system events, these are queued and drained
 // when building the next prompt.
 type ReactionFeedback struct {
 	Emoji     string    // The emoji used (e.g., "👍", "👎")
@@ -27,7 +27,7 @@ type ReactionQueue struct {
 	mu       sync.Mutex
 	feedback []ReactionFeedback
 	maxSize  int
-	lastText string // For deduplication like OpenClaw
+	lastText string // For deduplication like AgentRemote
 }
 
 // reactionQueues stores per-room reaction feedback queues.

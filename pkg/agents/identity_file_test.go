@@ -15,16 +15,16 @@ func TestParseIdentityMarkdownIgnoresPlaceholders(t *testing.T) {
 
 func TestParseIdentityMarkdownParsesValues(t *testing.T) {
 	content := `
-- **Name:** OpenClaw
-- **Emoji:** 🦞
+- **Name:** Beep
+- **Emoji:** ✨
 - **Vibe:** warm and sharp
 `
 	identity := ParseIdentityMarkdown(content)
-	if identity.Name != "OpenClaw" {
-		t.Fatalf("expected name OpenClaw, got %q", identity.Name)
+	if identity.Name != "Beep" {
+		t.Fatalf("expected name Beep, got %q", identity.Name)
 	}
-	if identity.Emoji != "🦞" {
-		t.Fatalf("expected emoji 🦞, got %q", identity.Emoji)
+	if identity.Emoji != "✨" {
+		t.Fatalf("expected emoji ✨, got %q", identity.Emoji)
 	}
 	if identity.Vibe != "warm and sharp" {
 		t.Fatalf("expected vibe 'warm and sharp', got %q", identity.Vibe)

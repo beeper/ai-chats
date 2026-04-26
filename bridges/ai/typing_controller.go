@@ -16,7 +16,7 @@ const (
 )
 
 // TypingController manages typing indicators with TTL and refresh.
-// Similar to OpenClaw's TypingController pattern.
+// Similar to AgentRemote's TypingController pattern.
 type TypingController struct {
 	client   *AIClient
 	portal   *bridgev2.Portal

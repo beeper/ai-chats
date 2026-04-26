@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Based on OpenClaw's tool schema cleaning to keep providers happy.
+// Based on AgentRemote's tool schema cleaning to keep providers happy.
 var unsupportedSchemaKeywords = map[string]struct{}{
 	"patternProperties":    {},
 	"additionalProperties": {},

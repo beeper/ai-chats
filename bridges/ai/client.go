@@ -1117,7 +1117,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	}
 	extraSystemPrompt := strings.Join(extraParts, "\n\n")
 
-	// Build params for prompt generation (OpenClaw template)
+	// Build params for prompt generation (AgentRemote template)
 	params := agents.SystemPromptParams{
 		WorkspaceDir:      "/",
 		ExtraSystemPrompt: extraSystemPrompt,
@@ -1201,7 +1201,7 @@ func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.P
 	params.ReasoningTagHint = false
 	params.ReasoningLevel = ""
 
-	// Default thinking level (OpenClaw-style): low for reasoning-capable models, otherwise off.
+	// Default thinking level (AgentRemote-style): low for reasoning-capable models, otherwise off.
 	params.DefaultThinkLevel = oc.defaultThinkLevel(meta)
 
 	return agents.BuildSystemPrompt(params)
@@ -1218,7 +1218,7 @@ func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) *float64 {
 	return nil
 }
 
-// defaultThinkLevel resolves the default think level in an OpenClaw-compatible way:
+// defaultThinkLevel resolves the default think level in an AgentRemote-compatible way:
 // low for reasoning-capable models, off otherwise.
 func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 	switch effort := strings.ToLower(strings.TrimSpace(oc.effectiveReasoningEffort(meta))); effort {

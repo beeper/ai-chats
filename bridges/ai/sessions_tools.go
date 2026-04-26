@@ -181,11 +181,11 @@ func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Po
 		if messageLimit > 0 {
 			messages, err := oc.getAIHistoryMessages(ctx, candidate, messageLimit)
 			if err == nil && len(messages) > 0 {
-				openClawMessages := buildOpenClawSessionMessages(messages, false)
-				if len(openClawMessages) > messageLimit {
-					openClawMessages = openClawMessages[len(openClawMessages)-messageLimit:]
+				transcriptMessages := buildAgentRemoteSessionMessages(messages, false)
+				if len(transcriptMessages) > messageLimit {
+					transcriptMessages = transcriptMessages[len(transcriptMessages)-messageLimit:]
 				}
-				entry["messages"] = openClawMessages
+				entry["messages"] = transcriptMessages
 			}
 		}
 
@@ -269,7 +269,7 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	if v, err := tools.ReadInt(args, "limit", false); err == nil && v > 0 {
 		rawLimit = v
 	}
-	limit := normalizeOpenClawHistoryLimit(rawLimit)
+	limit := normalizeAgentRemoteHistoryLimit(rawLimit)
 	includeTools := false
 	if raw, ok := args["includeTools"]; ok {
 		if value, ok := raw.(bool); ok {
@@ -307,21 +307,21 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 		if chat != nil && chat.Type == beeperdesktopapi.ChatTypeSingle {
 			isGroup = false
 		}
-		openClawMessages := buildOpenClawDesktopSessionMessages(messages, desktopMessageBuildOptions{
+		transcriptMessages := buildAgentRemoteDesktopSessionMessages(messages, desktopMessageBuildOptions{
 			IsGroup:  isGroup,
 			Instance: instance,
 			Accounts: accounts,
 		})
-		if len(openClawMessages) > limit {
-			openClawMessages = openClawMessages[len(openClawMessages)-limit:]
+		if len(transcriptMessages) > limit {
+			transcriptMessages = transcriptMessages[len(transcriptMessages)-limit:]
 		}
-		openClawMessages = capOpenClawHistoryByJSONBytes(openClawMessages, openClawMaxHistoryBytes)
+		transcriptMessages = capAgentRemoteHistoryByJSONBytes(transcriptMessages, transcriptMaxHistoryBytes)
 		if !includeTools {
-			openClawMessages = stripOpenClawToolResults(openClawMessages)
+			transcriptMessages = stripAgentRemoteToolResults(transcriptMessages)
 		}
 		return tools.JSONResult(map[string]any{
 			"sessionKey": normalizeDesktopSessionKeyWithInstance(instance, chatID),
-			"messages":   openClawMessages,
+			"messages":   transcriptMessages,
 		}), nil
 	}
 
@@ -334,18 +334,18 @@ func (oc *AIClient) executeSessionsHistory(ctx context.Context, portal *bridgev2
 	if err != nil {
 		return tools.JSONErrorResult(err.Error()), nil
 	}
-	openClawMessages := buildOpenClawSessionMessages(messages, true)
-	if len(openClawMessages) > limit {
-		openClawMessages = openClawMessages[len(openClawMessages)-limit:]
+	transcriptMessages := buildAgentRemoteSessionMessages(messages, true)
+	if len(transcriptMessages) > limit {
+		transcriptMessages = transcriptMessages[len(transcriptMessages)-limit:]
 	}
-	openClawMessages = capOpenClawHistoryByJSONBytes(openClawMessages, openClawMaxHistoryBytes)
+	transcriptMessages = capAgentRemoteHistoryByJSONBytes(transcriptMessages, transcriptMaxHistoryBytes)
 	if !includeTools {
-		openClawMessages = stripOpenClawToolResults(openClawMessages)
+		transcriptMessages = stripAgentRemoteToolResults(transcriptMessages)
 	}
 
 	return tools.JSONResult(map[string]any{
 		"sessionKey": target.displayKey,
-		"messages":   openClawMessages,
+		"messages":   transcriptMessages,
 	}), nil
 }
 

@@ -1,7 +1,7 @@
 package tools
 
 // PluginIDForTool returns the plugin id for a tool when available.
-// This is used for OpenClaw-style plugin group expansion.
+// This is used for AgentRemote-style plugin group expansion.
 func PluginIDForTool(tool *Tool) (string, bool) {
 	if tool == nil {
 		return "", false

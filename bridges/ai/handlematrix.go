@@ -179,7 +179,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	pendingSent := false
 
-	// Ack reaction (OpenClaw-style scope gating)
+	// Ack reaction (AgentRemote-style scope gating)
 	ackReaction := strings.TrimSpace(meta.AckReactionEmoji)
 	if ackReaction == "" && oc.connector != nil && oc.connector.Config.Messages != nil {
 		ackReaction = strings.TrimSpace(oc.connector.Config.Messages.AckReaction)

@@ -332,7 +332,7 @@ func expandUserPath(value string) string {
 	return value
 }
 
-// Matches OpenClaw's message tool pattern with full action support.
+// Matches AgentRemote's message tool pattern with full action support.
 func executeMessage(ctx context.Context, args map[string]any) (string, error) {
 	action, ok := args["action"].(string)
 	if !ok || action == "" {
@@ -1411,7 +1411,7 @@ func executeCalculator(ctx context.Context, args map[string]any) (string, error)
 	return fmt.Sprintf("%.6g", result), nil
 }
 
-// Similar to OpenClaw's session_status tool.
+// Similar to AgentRemote's session_status tool.
 func executeSessionStatus(ctx context.Context, args map[string]any) (string, error) {
 	btc := GetBridgeToolContext(ctx)
 	if btc == nil {
@@ -1460,7 +1460,7 @@ func executeSessionStatus(ctx context.Context, args map[string]any) (string, err
 		agentInfo = fmt.Sprintf("\nAgent: %s", agentID)
 	}
 
-	// Build status card similar to OpenClaw
+	// Build status card similar to AgentRemote
 	status := fmt.Sprintf(`Session Status
 ==============
 Time: %s %s (%s)

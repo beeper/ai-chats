@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	openClawDefaultHistoryLimit = 200
-	openClawHardHistoryLimit    = 1000
-	openClawMaxHistoryBytes     = 6 * 1024 * 1024
+	transcriptDefaultHistoryLimit = 200
+	transcriptHardHistoryLimit    = 1000
+	transcriptMaxHistoryBytes     = 6 * 1024 * 1024
 )
 
-type openClawToolCall struct {
+type transcriptToolCall struct {
 	ID            string
 	Name          string
 	Input         map[string]any
@@ -28,13 +28,13 @@ type openClawToolCall struct {
 	ResultEventID string
 }
 
-func normalizeOpenClawHistoryLimit(raw int) int {
-	limit := openClawDefaultHistoryLimit
+func normalizeAgentRemoteHistoryLimit(raw int) int {
+	limit := transcriptDefaultHistoryLimit
 	if raw > 0 {
 		limit = raw
 	}
-	if limit > openClawHardHistoryLimit {
-		limit = openClawHardHistoryLimit
+	if limit > transcriptHardHistoryLimit {
+		limit = transcriptHardHistoryLimit
 	}
 	if limit < 1 {
 		limit = 1
@@ -42,7 +42,7 @@ func normalizeOpenClawHistoryLimit(raw int) int {
 	return limit
 }
 
-func stripOpenClawToolResults(messages []map[string]any) []map[string]any {
+func stripAgentRemoteToolResults(messages []map[string]any) []map[string]any {
 	filtered := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
 		if strings.TrimSpace(toString(msg["role"])) == "toolResult" {
@@ -53,7 +53,7 @@ func stripOpenClawToolResults(messages []map[string]any) []map[string]any {
 	return filtered
 }
 
-func capOpenClawHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[string]any {
+func capAgentRemoteHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[string]any {
 	if len(items) == 0 || maxBytes <= 0 {
 		return items
 	}
@@ -85,16 +85,16 @@ func capOpenClawHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[s
 	return items
 }
 
-func buildOpenClawSessionMessages(messages []*database.Message, includeTools bool) []map[string]any {
-	projected := projectOpenClawMessages(messages)
-	repaired := repairOpenClawToolPairing(projected)
+func buildAgentRemoteSessionMessages(messages []*database.Message, includeTools bool) []map[string]any {
+	projected := projectAgentRemoteMessages(messages)
+	repaired := repairAgentRemoteToolPairing(projected)
 	if !includeTools {
-		repaired = stripOpenClawToolResults(repaired)
+		repaired = stripAgentRemoteToolResults(repaired)
 	}
 	return repaired
 }
 
-func projectOpenClawMessages(messages []*database.Message) []map[string]any {
+func projectAgentRemoteMessages(messages []*database.Message) []map[string]any {
 	out := make([]map[string]any, 0, len(messages)*2)
 	for _, msg := range messages {
 		meta := messageMeta(msg)
@@ -114,10 +114,10 @@ func projectOpenClawMessages(messages []*database.Message) []map[string]any {
 			}
 			out = append(out, entry)
 		case "assistant":
-			assistant, calls := projectAssistantOpenClawMessage(meta, msg)
+			assistant, calls := projectAssistantAgentRemoteMessage(meta, msg)
 			out = append(out, assistant)
 			for idx, call := range calls {
-				toolResult := projectToolResultOpenClawMessage(call, msg, idx)
+				toolResult := projectToolResultAgentRemoteMessage(call, msg, idx)
 				out = append(out, toolResult)
 			}
 		}
@@ -125,9 +125,9 @@ func projectOpenClawMessages(messages []*database.Message) []map[string]any {
 	return out
 }
 
-func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Message) (map[string]any, []openClawToolCall) {
+func projectAssistantAgentRemoteMessage(meta *MessageMetadata, msg *database.Message) (map[string]any, []transcriptToolCall) {
 	content := make([]map[string]any, 0, 1+len(meta.ToolCalls))
-	calls := make([]openClawToolCall, 0, len(meta.ToolCalls))
+	calls := make([]transcriptToolCall, 0, len(meta.ToolCalls))
 
 	if canonicalBlocks, canonicalCalls := parseCanonicalAssistantBlocks(meta); len(canonicalBlocks) > 0 || len(canonicalCalls) > 0 {
 		content = append(content, canonicalBlocks...)
@@ -154,7 +154,7 @@ func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Messag
 				"name":      toolName,
 				"arguments": arguments,
 			})
-			calls = append(calls, openClawToolCall{
+			calls = append(calls, transcriptToolCall{
 				ID:            callID,
 				Name:          toolName,
 				Input:         arguments,
@@ -188,14 +188,14 @@ func projectAssistantOpenClawMessage(meta *MessageMetadata, msg *database.Messag
 	return entry, calls
 }
 
-func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []openClawToolCall) {
+func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []transcriptToolCall) {
 	if turnData, ok := canonicalTurnData(meta); ok {
 		messages := promptMessagesFromTurnData(turnData)
 		if len(messages) == 0 {
 			return nil, nil
 		}
 		content := make([]map[string]any, 0, len(messages))
-		calls := make([]openClawToolCall, 0, len(messages))
+		calls := make([]transcriptToolCall, 0, len(messages))
 		toolCallByID := make(map[string]ToolCallMetadata, len(meta.ToolCalls))
 		for _, tc := range meta.ToolCalls {
 			callID := strings.TrimSpace(tc.CallID)
@@ -235,7 +235,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 						"name":      toolName,
 						"arguments": arguments,
 					})
-					call := openClawToolCall{
+					call := transcriptToolCall{
 						ID:    callID,
 						Name:  toolName,
 						Input: arguments,
@@ -259,7 +259,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []o
 	return nil, nil
 }
 
-func projectToolResultOpenClawMessage(call openClawToolCall, msg *database.Message, index int) map[string]any {
+func projectToolResultAgentRemoteMessage(call transcriptToolCall, msg *database.Message, index int) map[string]any {
 	callID := strings.TrimSpace(call.ID)
 	if callID == "" {
 		callID = fmt.Sprintf("call_%s_%d", msg.MXID.String(), index)
@@ -268,8 +268,8 @@ func projectToolResultOpenClawMessage(call openClawToolCall, msg *database.Messa
 	if toolName == "" {
 		toolName = "unknown_tool"
 	}
-	resultText := renderOpenClawToolResultText(call)
-	isError := isOpenClawToolResultError(call)
+	resultText := renderAgentRemoteToolResultText(call)
+	isError := isAgentRemoteToolResultError(call)
 	toolResult := map[string]any{
 		"role":       "toolResult",
 		"toolCallId": callID,
@@ -292,7 +292,7 @@ func projectToolResultOpenClawMessage(call openClawToolCall, msg *database.Messa
 	return toolResult
 }
 
-func renderOpenClawToolResultText(call openClawToolCall) string {
+func renderAgentRemoteToolResultText(call transcriptToolCall) string {
 	if call.Output != nil {
 		if text, ok := call.Output["result"].(string); ok && strings.TrimSpace(text) != "" {
 			return text
@@ -307,7 +307,7 @@ func renderOpenClawToolResultText(call openClawToolCall) string {
 	return ""
 }
 
-func isOpenClawToolResultError(call openClawToolCall) bool {
+func isAgentRemoteToolResultError(call transcriptToolCall) bool {
 	status := strings.ToLower(strings.TrimSpace(call.ResultStatus))
 	if status == string(ResultStatusError) || status == string(ResultStatusDenied) || status == "failed" || status == "timeout" || status == "cancelled" {
 		return true
@@ -318,7 +318,7 @@ func isOpenClawToolResultError(call openClawToolCall) bool {
 	return false
 }
 
-func repairOpenClawToolPairing(messages []map[string]any) []map[string]any {
+func repairAgentRemoteToolPairing(messages []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(messages))
 	seenToolResults := make(map[string]struct{})
 
@@ -333,7 +333,7 @@ func repairOpenClawToolPairing(messages []map[string]any) []map[string]any {
 			continue
 		}
 
-		toolCalls := extractOpenClawToolCalls(msg)
+		toolCalls := extractAgentRemoteToolCalls(msg)
 		if len(toolCalls) == 0 {
 			out = append(out, msg)
 			continue
@@ -355,7 +355,7 @@ func repairOpenClawToolPairing(messages []map[string]any) []map[string]any {
 				break
 			}
 			if nextRole == "toolResult" {
-				id := extractOpenClawToolResultID(next)
+				id := extractAgentRemoteToolResultID(next)
 				if id != "" {
 					if _, ok := toolCallSet[id]; ok {
 						if _, dup := seenToolResults[id]; dup {
@@ -388,7 +388,7 @@ func repairOpenClawToolPairing(messages []map[string]any) []map[string]any {
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": "[openclaw] missing tool result in session history; inserted synthetic error result for transcript repair.",
+						"text": "[agentremote] missing tool result in session history; inserted synthetic error result for transcript repair.",
 					},
 				},
 			}
@@ -402,12 +402,12 @@ func repairOpenClawToolPairing(messages []map[string]any) []map[string]any {
 	return out
 }
 
-type openClawToolCallPair struct {
+type transcriptToolCallPair struct {
 	ID   string
 	Name string
 }
 
-func extractOpenClawToolCalls(msg map[string]any) []openClawToolCallPair {
+func extractAgentRemoteToolCalls(msg map[string]any) []transcriptToolCallPair {
 	contentRaw, ok := msg["content"]
 	if !ok {
 		return nil
@@ -425,7 +425,7 @@ func extractOpenClawToolCalls(msg map[string]any) []openClawToolCallPair {
 			}
 		}
 	}
-	out := make([]openClawToolCallPair, 0, len(blocks))
+	out := make([]transcriptToolCallPair, 0, len(blocks))
 	for _, block := range blocks {
 		blockType := strings.TrimSpace(toString(block["type"]))
 		if blockType != "toolCall" && blockType != "toolUse" && blockType != "functionCall" {
@@ -435,7 +435,7 @@ func extractOpenClawToolCalls(msg map[string]any) []openClawToolCallPair {
 		if id == "" {
 			continue
 		}
-		out = append(out, openClawToolCallPair{
+		out = append(out, transcriptToolCallPair{
 			ID:   id,
 			Name: strings.TrimSpace(toString(block["name"])),
 		})
@@ -443,7 +443,7 @@ func extractOpenClawToolCalls(msg map[string]any) []openClawToolCallPair {
 	return out
 }
 
-func extractOpenClawToolResultID(msg map[string]any) string {
+func extractAgentRemoteToolResultID(msg map[string]any) string {
 	if id := strings.TrimSpace(toString(msg["toolCallId"])); id != "" {
 		return id
 	}

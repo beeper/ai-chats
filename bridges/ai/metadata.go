@@ -241,7 +241,7 @@ type PortalMetadata struct {
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
 
-	// Per-session typing overrides (OpenClaw-style).
+	// Per-session typing overrides (AgentRemote-style).
 	TypingMode            string `json:"typing_mode,omitempty"` // never|instant|thinking|message
 	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"`
 }
@@ -335,7 +335,7 @@ type MessageMetadata struct {
 	sdk.BaseMessageMetadata
 	sdk.AssistantMessageMetadata
 
-	// Media understanding (OpenClaw-style)
+	// Media understanding (AgentRemote-style)
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
 	MediaUnderstandingDecisions []MediaUnderstandingDecision `json:"media_understanding_decisions,omitempty"`
 

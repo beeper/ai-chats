@@ -40,12 +40,12 @@ const (
 	SessionStatusName        = "session_status"
 	SessionStatusDescription = "Show a /status-equivalent session status card (usage + time + cost when available). Use for model-use questions (📊 session_status). Optional: set per-session model override (model=default resets overrides)."
 
-	// ImageName matches OpenClaw's image analysis tool (vision).
+	// ImageName matches AgentRemote's image analysis tool (vision).
 	ImageName                  = "image"
 	ImageDescription           = "Analyze an image with the configured image model (agents.defaults.imageModel). Provide a prompt and image path or URL."
 	ImageDescriptionVisionHint = "Analyze an image with a vision model. Only use this tool when the image was NOT already provided in the user's message. Images mentioned in the prompt are automatically visible to you."
 
-	// ImageGenerateName is an AI image generation tool (not in OpenClaw).
+	// ImageGenerateName is an AI image generation tool (not in AgentRemote).
 	ImageGenerateName        = "image_generate"
 	ImageGenerateDescription = "Generate or edit images from a text prompt. To edit an existing image, pass its media URL (from a [media_url: ...] tag or Media URL in a tool result) in input_images."
 
@@ -270,7 +270,7 @@ func SessionStatusSchema() map[string]any {
 	}
 }
 
-// ImageSchema returns the JSON schema for the OpenClaw image (vision) tool.
+// ImageSchema returns the JSON schema for the AgentRemote image (vision) tool.
 func ImageSchema() map[string]any {
 	return map[string]any{
 		"type": "object",

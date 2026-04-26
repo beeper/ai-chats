@@ -224,7 +224,7 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 
 	resolved := false
 	if f.deliverDecision != nil {
-		// Callback-based flow (OpenCode/OpenClaw).
+		// Callback-based flow (OpenCode/AgentRemote).
 		if err := f.deliverDecision(ctx, msg.Portal, p, match.Decision); err != nil {
 			if f.sendNotice != nil {
 				f.sendNotice(ctx, msg.Portal, ApprovalErrorToastText(err))

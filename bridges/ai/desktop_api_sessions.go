@@ -319,7 +319,7 @@ func (oc *AIClient) listDesktopSessions(ctx context.Context, instance string, op
 		if opts.MessageLimit > 0 {
 			messages, msgErr := oc.listDesktopMessages(ctx, client, chat.ID, opts.MessageLimit)
 			if msgErr == nil && len(messages) > 0 {
-				entry["messages"] = buildOpenClawDesktopSessionMessages(messages, desktopMessageBuildOptions{
+				entry["messages"] = buildAgentRemoteDesktopSessionMessages(messages, desktopMessageBuildOptions{
 					IsGroup:  chat.Type == beeperdesktopapi.ChatTypeGroup,
 					Accounts: accounts,
 				})
@@ -404,7 +404,7 @@ func renderDesktopSessionMessageText(msg shared.Message, isGroup bool) (string, 
 	return content, true
 }
 
-func buildOpenClawDesktopSessionMessages(messages []shared.Message, opts desktopMessageBuildOptions) []map[string]any {
+func buildAgentRemoteDesktopSessionMessages(messages []shared.Message, opts desktopMessageBuildOptions) []map[string]any {
 	result := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
 		contentText, ok := renderDesktopSessionMessageText(msg, opts.IsGroup)

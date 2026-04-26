@@ -78,7 +78,7 @@ func TestFilterDesktopChatsByResolveOptionsCanonicalAccountID(t *testing.T) {
 	}
 }
 
-func TestBuildOpenClawDesktopSessionMessages(t *testing.T) {
+func TestBuildAgentRemoteDesktopSessionMessages(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	messages := []shared.Message{
 		{
@@ -105,7 +105,7 @@ func TestBuildOpenClawDesktopSessionMessages(t *testing.T) {
 		},
 	}
 
-	projected := buildOpenClawDesktopSessionMessages(messages, desktopMessageBuildOptions{IsGroup: true})
+	projected := buildAgentRemoteDesktopSessionMessages(messages, desktopMessageBuildOptions{IsGroup: true})
 	if len(projected) != 2 {
 		t.Fatalf("expected 2 projected messages, got %d", len(projected))
 	}

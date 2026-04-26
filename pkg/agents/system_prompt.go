@@ -6,20 +6,6 @@ import (
 	"strings"
 )
 
-/*
-Original OpenClaw prompt snippets (reference copy, do not edit):
-
-- "You are a personal assistant running inside OpenClaw."
-- "OpenClaw is controlled via subcommands. Do not invent commands."
-- "To manage the Gateway daemon service (start/stop/restart):"
-  "- openclaw gateway status"
-  "- openclaw gateway start"
-  "- openclaw gateway stop"
-  "- openclaw gateway restart"
-  "- If unsure, ask the user to run `openclaw help` (or `openclaw gateway --help`) and paste the output."
-- "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed)."
-*/
-
 func buildSkillsSection(skillsPrompt string, isMinimal bool, readToolName string) []string {
 	if isMinimal {
 		return nil
@@ -185,7 +171,7 @@ func buildDocsSection(isMinimal bool, hasBeeperDocs bool) []string {
 }
 
 // BuildSystemPrompt assembles the complete prompt from params.
-// Matches OpenClaw's buildAgentSystemPrompt.
+// Matches AgentRemote's buildAgentSystemPrompt.
 func BuildSystemPrompt(params SystemPromptParams) string {
 	promptMode := params.PromptMode
 	if promptMode == "" {

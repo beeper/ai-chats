@@ -30,8 +30,6 @@ var abortTriggers = map[string]struct{}{
 	"останови":                {},
 	"остановить":              {},
 	"прекрати":                {},
-	"stop openclaw":           {},
-	"openclaw stop":           {},
 	"stop action":             {},
 	"stop current action":     {},
 	"stop run":                {},

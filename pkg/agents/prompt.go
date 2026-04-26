@@ -1,17 +1,17 @@
 package agents
 
 // ReactionGuidance controls reaction behavior in prompts.
-// Matches OpenClaw's reactionGuidance with level and channel.
+// Matches AgentRemote's reactionGuidance with level and channel.
 type ReactionGuidance struct {
 	Level   string // "minimal" or "extensive"
 	Channel string // e.g., "matrix", "signal"
 }
 
-// ResolvedTimeFormat mirrors OpenClaw's resolved time format type.
+// ResolvedTimeFormat mirrors AgentRemote's resolved time format type.
 type ResolvedTimeFormat string
 
 // SystemPromptParams contains all inputs for building a system prompt.
-// This matches OpenClaw's buildAgentSystemPrompt params.
+// This matches AgentRemote's buildAgentSystemPrompt params.
 type SystemPromptParams struct {
 	WorkspaceDir           string
 	DefaultThinkLevel      string
@@ -45,7 +45,7 @@ type RuntimeInfo struct {
 	Host         string   // Hostname
 	OS           string   // Host OS
 	Arch         string   // Host architecture
-	Node         string   // Runtime version (OpenClaw uses Node)
+	Node         string   // Runtime version (AgentRemote uses Node)
 	Model        string   // Current model being used
 	DefaultModel string   // Default model for the provider
 	Channel      string   // Communication channel
@@ -83,7 +83,7 @@ const SilentReplyToken = "NO_REPLY"
 // HeartbeatToken is the expected response for heartbeat polls.
 const HeartbeatToken = "HEARTBEAT_OK"
 
-// DefaultMaxAckChars is the max length for heartbeat acknowledgements (OpenClaw uses 300).
+// DefaultMaxAckChars is the max length for heartbeat acknowledgements (AgentRemote uses 300).
 const DefaultMaxAckChars = 300
 
 // DefaultSystemPrompt is the default prompt for general-purpose agents.

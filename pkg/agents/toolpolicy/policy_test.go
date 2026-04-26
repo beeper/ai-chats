@@ -27,8 +27,8 @@ func TestExpandToolGroups_Runtime(t *testing.T) {
 	}
 }
 
-func TestExpandToolGroups_OpenClawIsStrict(t *testing.T) {
-	got := ExpandToolGroups([]string{"group:openclaw"})
+func TestExpandToolGroups_AgentRemote(t *testing.T) {
+	got := ExpandToolGroups([]string{"group:agentremote"})
 	mustContain := []string{
 		"message",
 		"cron",
@@ -41,57 +41,26 @@ func TestExpandToolGroups_OpenClawIsStrict(t *testing.T) {
 		"canvas",
 		"nodes",
 		"gateway",
+		"beeper_docs",
+		"beeper_send_feedback",
+		"gravatar_fetch",
+		"gravatar_set",
+		"tts",
+		"image_generate",
+		"calculator",
 	}
 	for _, name := range mustContain {
-		found := false
-		for _, entry := range got {
-			if entry == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected group:openclaw to include %q, got %#v", name, got)
-		}
-	}
-
-	// AgentRemote extras must NOT be part of strict group:openclaw.
-	mustNotContain := []string{"beeper_docs", "beeper_send_feedback", "gravatar_fetch", "gravatar_set", "tts", "image_generate", "calculator"}
-	for _, name := range mustNotContain {
-		for _, entry := range got {
-			if entry == name {
-				t.Fatalf("expected group:openclaw to be strict and exclude %q, got %#v", name, got)
-			}
-		}
-	}
-}
-
-func TestExpandToolGroups_AgentRemoteExtras(t *testing.T) {
-	got := ExpandToolGroups([]string{"group:agentremote"})
-	mustContain := []string{"beeper_docs", "beeper_send_feedback", "gravatar_fetch", "gravatar_set", "tts", "image_generate", "calculator"}
-	for _, name := range mustContain {
-		found := false
-		for _, entry := range got {
-			if entry == name {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !containsString(got, name) {
 			t.Fatalf("expected group:agentremote to include %q, got %#v", name, got)
 		}
 	}
 }
 
-func TestExpandToolGroups_AIBridgeAlias(t *testing.T) {
-	got := ExpandToolGroups([]string{GroupAIBridge})
-	want := ExpandToolGroups([]string{GroupAgentRemote})
-	if len(got) != len(want) {
-		t.Fatalf("expected %s to match %s, got %#v want %#v", GroupAIBridge, GroupAgentRemote, got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("expected %s to match %s, got %#v want %#v", GroupAIBridge, GroupAgentRemote, got, want)
+func containsString(list []string, value string) bool {
+	for _, entry := range list {
+		if entry == value {
+			return true
 		}
 	}
+	return false
 }

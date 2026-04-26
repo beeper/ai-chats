@@ -66,7 +66,7 @@ const (
 	ReplyToModeAll   ReplyToMode = "all"
 )
 
-// QueueMode models OpenClaw-like queue behavior presets.
+// QueueMode models AgentRemote-like queue behavior presets.
 type QueueMode string
 
 const (
