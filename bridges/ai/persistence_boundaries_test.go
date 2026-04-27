@@ -117,15 +117,8 @@ func TestSaveUserMessage_PersistsConversationTurnOutsideBridgeMetadata(t *testin
 	if err != nil {
 		t.Fatalf("load bridge message row: %v", err)
 	}
-	if bridgeMsg == nil {
-		t.Fatalf("expected bridge message row")
-	}
-	bridgeMeta, ok := bridgeMsg.Metadata.(*MessageMetadata)
-	if !ok || bridgeMeta == nil {
-		t.Fatalf("expected bridge message metadata, got %#v", bridgeMsg.Metadata)
-	}
-	if bridgeMeta.Role != "" || bridgeMeta.Body != "" || len(bridgeMeta.CanonicalTurnData) != 0 {
-		t.Fatalf("expected bridge message metadata to stay transport-only, got %#v", bridgeMeta)
+	if bridgeMsg != nil {
+		t.Fatalf("expected bridgev2-owned message table to be untouched, got %#v", bridgeMsg)
 	}
 
 	transcriptMsg, err := client.loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
@@ -905,12 +898,12 @@ func TestHandleMatrixMessageRemove_DeletesTranscriptState(t *testing.T) {
 	evt := &event.Event{ID: id.EventID("$event-delete")}
 	client.saveUserMessage(ctx, evt, msg)
 
-	bridgeMsg, err := client.loadPortalMessagePartByMXID(ctx, portal, evt.ID)
+	bridgeMsg, err := client.loadAIConversationMessage(ctx, portal, msg.ID, evt.ID)
 	if err != nil {
-		t.Fatalf("load bridge message row: %v", err)
+		t.Fatalf("load transcript message row: %v", err)
 	}
 	if bridgeMsg == nil {
-		t.Fatalf("expected bridge message row")
+		t.Fatalf("expected transcript message row")
 	}
 
 	if err := client.HandleMatrixMessageRemove(ctx, &bridgev2.MatrixMessageRemove{

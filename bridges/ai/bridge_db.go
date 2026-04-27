@@ -198,18 +198,6 @@ func resolvePortalForAIDB(ctx context.Context, client *AIClient, portal *bridgev
 	if strings.TrimSpace(string(portal.PortalKey.ID)) == "" {
 		return portal, nil
 	}
-	if portal.Bridge.DB != nil {
-		dbPortal, err := portal.Bridge.DB.Portal.GetByKey(ctx, portal.PortalKey)
-		if err != nil {
-			return nil, err
-		}
-		if dbPortal != nil {
-			return hydratePortalRuntime(portal, &bridgev2.Portal{
-				Portal: dbPortal,
-				Bridge: portal.Bridge,
-			}), nil
-		}
-	}
 	resolved, err := portal.Bridge.GetPortalByKey(ctx, portal.PortalKey)
 	if err != nil {
 		return nil, err

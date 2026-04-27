@@ -45,7 +45,6 @@ func NewAIConnector() *OpenAIConnector {
 				return err
 			}
 			oc.applyRuntimeDefaults()
-			oc.primeUserLoginCache(ctx)
 			if proc, ok := oc.br.Commands.(*commands.Processor); ok {
 				registerCommandsWithOwnerGuard(proc, &oc.Config, &oc.br.Log, HelpSectionAI)
 				oc.br.Log.Info().Msg("Registered AI commands with command processor")

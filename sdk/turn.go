@@ -594,29 +594,6 @@ func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {
 	return merged
 }
 
-func (t *Turn) persistFinalMessage(finishReason string) {
-	finalCtx := t.finalizationContext()
-	if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
-		return
-	}
-	sender := t.resolveSender(finalCtx)
-	metadata := any(t.finalMetadata(finishReason))
-	if t.finalMetadataProvider != nil {
-		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
-			metadata = custom
-		}
-	}
-	UpsertAssistantMessage(finalCtx, UpsertAssistantMessageParams{
-		Login:            t.conv.login,
-		Portal:           t.conv.portal,
-		SenderID:         sender.Sender,
-		NetworkMessageID: t.networkMessageID,
-		InitialEventID:   t.initialEventID,
-		Metadata:         metadata,
-		Logger:           t.conv.login.Log.With().Str("component", "sdk_turn").Logger(),
-	})
-}
-
 func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	if t == nil {
 		return "", nil
@@ -703,7 +680,7 @@ func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
 	}
 }
 
-func (t *Turn) sendFinalEdit(ctx context.Context) {
+func (t *Turn) sendFinalEdit(ctx context.Context, finishReason string) {
 	if t == nil || t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
 		return
 	}
@@ -712,6 +689,12 @@ func (t *Turn) sendFinalEdit(ctx context.Context) {
 		return
 	}
 	sender := t.resolveSender(ctx)
+	metadata := any(t.finalMetadata(finishReason))
+	if t.finalMetadataProvider != nil {
+		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
+			metadata = custom
+		}
+	}
 	if err := SendEditViaPortal(
 		t.conv.login,
 		t.conv.portal,
@@ -721,12 +704,13 @@ func (t *Turn) sendFinalEdit(ctx context.Context) {
 		0,
 		"sdk_edit_target",
 		edit,
+		metadata,
 	); err != nil && t.conv.login != nil {
 		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to send final turn edit")
 	}
 }
 
-func (t *Turn) dispatchFinalEdit(ctx context.Context) {
+func (t *Turn) dispatchFinalEdit(ctx context.Context, finishReason string) {
 	if t == nil {
 		return
 	}
@@ -734,7 +718,7 @@ func (t *Turn) dispatchFinalEdit(ctx context.Context) {
 		t.sendFinalEditFunc(ctx)
 		return
 	}
-	t.sendFinalEdit(ctx)
+	t.sendFinalEdit(ctx, finishReason)
 }
 
 func supportedBaseMetadataFromMap(metadata map[string]any) BaseMessageMetadata {
@@ -825,8 +809,7 @@ func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason, fallbackBod
 	if t.session != nil {
 		t.session.End(finalCtx, endReason)
 	}
-	t.dispatchFinalEdit(finalCtx)
-	t.persistFinalMessage(finishReason)
+	t.dispatchFinalEdit(finalCtx, finishReason)
 }
 
 // ID returns the turn's unique identifier.

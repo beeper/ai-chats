@@ -621,7 +621,7 @@ func executeMessageEdit(ctx context.Context, args map[string]any, btc *BridgeToo
 	}
 
 	sender := btc.Client.senderForPortal(ctx, btc.Portal)
-	if err := sdk.SendEditViaPortal(btc.Client.UserLogin, btc.Portal, sender, targetPart.ID, time.Now(), 0, "ai_edit_target", editContent); err != nil {
+	if err := sdk.SendEditViaPortal(btc.Client.UserLogin, btc.Portal, sender, targetPart.ID, time.Now(), 0, "ai_edit_target", editContent, nil); err != nil {
 		return "", fmt.Errorf("couldn't edit the message: %w", err)
 	}
 

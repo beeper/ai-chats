@@ -62,7 +62,6 @@ func NewConnector() *CodexConnector {
 				return err
 			}
 			cc.applyRuntimeDefaults()
-			sdk.PrimeUserLoginCache(ctx, cc.br)
 			return nil
 		},
 		BridgeName: func() bridgev2.BridgeName {

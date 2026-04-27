@@ -74,6 +74,7 @@ func SendEditViaPortal(
 	streamOrder int64,
 	logKey string,
 	converted *bridgev2.ConvertedEdit,
+	dbMetadata any,
 ) error {
 	if portal == nil || portal.MXID == "" {
 		return fmt.Errorf("invalid portal")
@@ -93,6 +94,7 @@ func SendEditViaPortal(
 		StreamOrder:   timing.StreamOrder,
 		LogKey:        logKey,
 		PreBuilt:      converted,
+		DBMetadata:    dbMetadata,
 	})
 	if !result.Success {
 		if result.Error != nil {

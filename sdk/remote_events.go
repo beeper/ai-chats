@@ -30,6 +30,7 @@ type RemoteEdit struct {
 	// StreamOrder overrides timestamp-based ordering when the caller has a stable upstream order.
 	StreamOrder int64
 	PreBuilt    *bridgev2.ConvertedEdit
+	DBMetadata  any
 
 	// LogKey is the zerolog field name used in AddLogContext (e.g. "ai_edit_target", "codex_edit_target").
 	LogKey string
@@ -74,6 +75,9 @@ func (e *RemoteEdit) ConvertEdit(_ context.Context, _ *bridgev2.Portal, _ bridge
 		for i := range e.PreBuilt.ModifiedParts {
 			if e.PreBuilt.ModifiedParts[i].Part == nil && i < len(existing) {
 				e.PreBuilt.ModifiedParts[i].Part = existing[i]
+			}
+			if e.DBMetadata != nil && e.PreBuilt.ModifiedParts[i].Part != nil {
+				e.PreBuilt.ModifiedParts[i].Part.Metadata = e.DBMetadata
 			}
 		}
 	}

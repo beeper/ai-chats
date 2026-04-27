@@ -1188,11 +1188,6 @@ func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 		Msg("Handling message deletion")
 
 	var errs []error
-	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil && msg.TargetMessage.RowID != 0 {
-		if err := oc.UserLogin.Bridge.DB.Message.Delete(ctx, msg.TargetMessage.RowID); err != nil {
-			errs = append(errs, err)
-		}
-	}
 	if err := oc.deleteAITurnByExternalRef(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
 		errs = append(errs, err)
 	}

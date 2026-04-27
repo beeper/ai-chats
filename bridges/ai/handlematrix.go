@@ -230,6 +230,16 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	if shouldDebounce {
 		logCtx.Debug().Int("debounce_ms", debounceDelay).Msg("Debouncing inbound message")
+		userMessage := &database.Message{
+			ID:       sdk.MatrixMessageID(msg.Event.ID),
+			MXID:     msg.Event.ID,
+			Room:     portal.PortalKey,
+			SenderID: humanUserID(oc.UserLogin.ID),
+			Metadata: &MessageMetadata{
+				BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: body},
+			},
+			Timestamp: sdk.MatrixEventTimestamp(msg.Event),
+		}
 		entry := DebounceEntry{
 			Event:        msg.Event,
 			Portal:       portal,
@@ -242,6 +252,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			WasMentioned: wasMentioned,
 			AckEventID:   ackReactionEventID,
 			PendingSent:  pendingSent,
+			DBMessage:    userMessage,
 		}
 		// Let the client know the message is pending due to debounce.
 		if debounceDelay >= 0 && !pendingSent {
@@ -258,7 +269,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			entry.PendingSent = true
 		}
 		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)
-		return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 	}
 	if debounceKey != "" {
 		// Flush any pending debounced messages for this room+sender before immediate processing
@@ -323,7 +334,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 // HandleMatrixTyping currently ignores local typing updates.
@@ -402,11 +413,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	}
 	if edit.EditTarget != nil {
 		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)
-		if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil && oc.UserLogin.Bridge.DB.Message != nil {
-			if err := oc.UserLogin.Bridge.DB.Message.Update(ctx, edit.EditTarget); err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to update bridge message metadata after edit")
-			}
-		}
 	}
 	oc.notifySessionMutation(ctx, portal, meta, true)
 
@@ -702,7 +708,7 @@ func (oc *AIClient) handleMediaMessage(
 		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 			return nil, err
 		}
-		return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 	}
 
 	var understanding *mediaUnderstandingResult
@@ -828,7 +834,7 @@ func (oc *AIClient) handleMediaMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 func (oc *AIClient) dispatchMediaUnderstandingFallback(
@@ -973,7 +979,7 @@ func (oc *AIClient) handleTextFileMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

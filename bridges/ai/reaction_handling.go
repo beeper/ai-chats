@@ -51,7 +51,7 @@ func (oc *AIClient) HandleMatrixReaction(ctx context.Context, msg *bridgev2.Matr
 }
 
 func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.DB == nil || msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || msg == nil || msg.Event == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return nil
 	}
 	if sdk.IsMatrixBotUser(ctx, oc.UserLogin.Bridge, msg.Event.Sender) {
@@ -59,10 +59,6 @@ func (oc *AIClient) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev
 	}
 	if oc.approvalFlow.HandleReactionRemove(ctx, msg) {
 		return nil
-	}
-
-	if err := oc.UserLogin.Bridge.DB.Reaction.Delete(ctx, msg.TargetReaction); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to delete reaction from database")
 	}
 
 	emoji := msg.TargetReaction.Emoji

@@ -132,6 +132,10 @@ func TestAcceptPendingMessagesPersistsMessagesAndSendsSuccessMSS(t *testing.T) {
 		Timestamp: acceptedAt,
 		Metadata:  &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "one"}},
 	}
+	setCanonicalTurnDataFromPromptMessages(msg1.Metadata.(*MessageMetadata), []PromptMessage{{
+		Role:   PromptRoleUser,
+		Blocks: []PromptBlock{{Type: PromptBlockText, Text: "one"}},
+	}})
 	msg2 := &database.Message{
 		ID:        networkid.MessageID("mx:$two"),
 		MXID:      id.EventID("$two"),
@@ -140,6 +144,10 @@ func TestAcceptPendingMessagesPersistsMessagesAndSendsSuccessMSS(t *testing.T) {
 		Timestamp: acceptedAt.Add(time.Millisecond),
 		Metadata:  &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: "two"}},
 	}
+	setCanonicalTurnDataFromPromptMessages(msg2.Metadata.(*MessageMetadata), []PromptMessage{{
+		Role:   PromptRoleUser,
+		Blocks: []PromptBlock{{Type: PromptBlockText, Text: "two"}},
+	}})
 	state := &streamingState{roomID: roomID}
 	client.activeRoomRuns = map[id.RoomID]*roomRunState{
 		roomID: {
@@ -178,13 +186,13 @@ func TestAcceptPendingMessagesPersistsMessagesAndSendsSuccessMSS(t *testing.T) {
 	if got := client.consumeRoomRunStatusEvents(roomID); len(got) != 0 {
 		t.Fatalf("expected status event queue to be empty after acceptance, got %d", len(got))
 	}
-	for _, mxid := range []id.EventID{msg1.MXID, msg2.MXID} {
-		saved, err := client.UserLogin.Bridge.DB.Message.GetPartByMXID(context.Background(), mxid)
+	for _, msg := range []*database.Message{msg1, msg2} {
+		saved, err := client.loadAIConversationMessage(context.Background(), portal, msg.ID, msg.MXID)
 		if err != nil {
-			t.Fatalf("get saved message %s: %v", mxid, err)
+			t.Fatalf("get accepted message %s: %v", msg.MXID, err)
 		}
 		if saved == nil {
-			t.Fatalf("expected saved message for %s", mxid)
+			t.Fatalf("expected accepted message for %s", msg.MXID)
 		}
 	}
 }

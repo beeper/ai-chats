@@ -581,7 +581,7 @@ func (oc *AIClient) persistAcceptedUserMessage(
 		Str("room_receiver", string(msg.Room.Receiver)).
 		Str("sender_id", string(msg.SenderID)).
 		Str("meta", transcriptMetaSummary(meta)).
-		Msg("Saving user message before turn persistence")
+		Msg("Persisting accepted user turn")
 	if _, err := oc.UserLogin.Bridge.GetGhostByID(ctx, msg.SenderID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
@@ -603,21 +603,10 @@ func (oc *AIClient) persistAcceptedUserMessage(
 			return
 		}
 	}
-	oc.loggerForContext(ctx).Debug().
-		Str("message_id", string(msg.ID)).
-		Str("event_id", msg.MXID.String()).
-		Str("resolved_portal_id", string(portal.PortalKey.ID)).
-		Str("resolved_portal_receiver", string(portal.PortalKey.Receiver)).
-		Str("resolved_portal_mxid", portal.MXID.String()).
-		Msg("Resolved portal for AI turn persistence")
-	if err := oc.upsertTransportPortalMessage(ctx, portal, msg); err != nil {
-		oc.loggerForContext(ctx).Err(err).Msg("Failed to save transport user message to database")
-	}
 	oc.postSaveUserMessage(ctx, portal, nil, msg)
 }
 
-// saveUserMessage persists a user message to the bridge mapping tables and
-// mirrors the canonical turn into the AI-owned turn store.
+// saveUserMessage mirrors a bridgev2-saved user message into the AI-owned turn store.
 func (oc *AIClient) saveUserMessage(ctx context.Context, evt *event.Event, msg *database.Message) {
 	if evt != nil {
 		msg.MXID = evt.ID
@@ -1881,27 +1870,30 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		if entry.Event == nil {
 			continue
 		}
-		entryBody := oc.buildMatrixInboundBody(ctx, entry.Portal, entry.Meta, entry.Event, entry.RawBody, entry.SenderName, entry.RoomName, entry.IsGroup)
-		acceptedMessages = append(acceptedMessages, &database.Message{
-			ID:       sdk.MatrixMessageID(entry.Event.ID),
-			MXID:     entry.Event.ID,
-			Room:     entry.Portal.PortalKey,
-			SenderID: humanUserID(oc.UserLogin.ID),
-			Metadata: &MessageMetadata{
-				BaseMessageMetadata: sdk.BaseMessageMetadata{
-					Role: "user",
-					Body: entryBody,
-					CanonicalTurnData: sdk.TurnData{
-						Role: "user",
-						Parts: []sdk.TurnPart{{
-							Type: "text",
-							Text: entryBody,
-						}},
-					}.ToMap(),
+		userMessage := entry.DBMessage
+		if userMessage == nil {
+			entryBody := oc.buildMatrixInboundBody(ctx, entry.Portal, entry.Meta, entry.Event, entry.RawBody, entry.SenderName, entry.RoomName, entry.IsGroup)
+			userMessage = &database.Message{
+				ID:       sdk.MatrixMessageID(entry.Event.ID),
+				MXID:     entry.Event.ID,
+				Room:     entry.Portal.PortalKey,
+				SenderID: humanUserID(oc.UserLogin.ID),
+				Metadata: &MessageMetadata{
+					BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: entryBody},
 				},
-			},
-			Timestamp: sdk.MatrixEventTimestamp(entry.Event),
-		})
+				Timestamp: sdk.MatrixEventTimestamp(entry.Event),
+			}
+		}
+		if meta, ok := userMessage.Metadata.(*MessageMetadata); ok && len(meta.CanonicalTurnData) == 0 {
+			meta.CanonicalTurnData = sdk.TurnData{
+				Role: "user",
+				Parts: []sdk.TurnPart{{
+					Type: "text",
+					Text: meta.Body,
+				}},
+			}.ToMap()
+		}
+		acceptedMessages = append(acceptedMessages, userMessage)
 	}
 	queueItem := pendingQueueItem{
 		pending:          pending,

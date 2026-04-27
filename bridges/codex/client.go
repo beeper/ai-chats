@@ -557,7 +557,6 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		return nil, errors.New("portal has no room id")
 	}
 
-	// Save user message immediately; we return Pending=true.
 	userMsg := &database.Message{
 		ID:        sdk.MatrixMessageID(msg.Event.ID),
 		MXID:      msg.Event.ID,
@@ -573,9 +572,6 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 	if _, err := cc.UserLogin.Bridge.GetGhostByID(ctx, userMsg.SenderID); err != nil {
 		cc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
-	}
-	if err := cc.UserLogin.Bridge.DB.Message.Insert(ctx, userMsg); err != nil {
-		cc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to insert user message")
 	}
 
 	if !cc.acquireRoomIfQueueEmpty(roomID) {

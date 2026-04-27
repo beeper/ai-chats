@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"time"
@@ -38,13 +37,6 @@ type OpenAIConnector struct {
 
 	clientsMu sync.Mutex
 	clients   map[networkid.UserLoginID]bridgev2.NetworkAPI
-}
-
-func (oc *OpenAIConnector) primeUserLoginCache(ctx context.Context) {
-	if oc == nil {
-		return
-	}
-	sdk.PrimeUserLoginCache(ctx, oc.br)
 }
 
 func (oc *OpenAIConnector) applyRuntimeDefaults() {
