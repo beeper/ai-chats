@@ -269,7 +269,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			entry.PendingSent = true
 		}
 		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)
-		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
 	}
 	if debounceKey != "" {
 		// Flush any pending debounced messages for this room+sender before immediate processing
@@ -334,7 +334,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
 }
 
 // HandleMatrixTyping currently ignores local typing updates.
@@ -707,7 +707,7 @@ func (oc *AIClient) handleMediaMessage(
 		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 			return nil, err
 		}
-		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
 	}
 
 	var understanding *mediaUnderstandingResult
@@ -833,7 +833,7 @@ func (oc *AIClient) handleMediaMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
 }
 
 func (oc *AIClient) dispatchMediaUnderstandingFallback(
@@ -978,7 +978,7 @@ func (oc *AIClient) handleTextFileMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

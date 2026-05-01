@@ -1,12 +1,9 @@
 package bridgeentry
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"runtime"
 	"strings"
 
@@ -111,10 +108,6 @@ func initWithCanonicalBridgeID(def Definition, m *mxmain.BridgeMain) {
 	if bridgeID == "" {
 		m.Log.Fatal().Msg("Failed to resolve canonical bridge ID")
 	}
-	ctx := m.Log.WithContext(context.Background())
-	if err = migrateEmptyBridgeIDs(ctx, m.DB, bridgeID, m.Log); err != nil {
-		m.Log.Fatal().Err(err).Str("bridge_id", string(bridgeID)).Msg("Failed to migrate empty bridge IDs")
-	}
 
 	m.Matrix = matrix.NewConnector(m.Config)
 	m.Matrix.OnWebsocketReplaced = func() {
@@ -202,171 +195,4 @@ func validateConfig(m *mxmain.BridgeMain) error {
 		}
 		return nil
 	}
-}
-
-var safeSQLIdentifier = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
-
-func migrateEmptyBridgeIDs(ctx context.Context, db *dbutil.Database, target networkid.BridgeID, log *zerolog.Logger) error {
-	if db == nil || target == "" {
-		return nil
-	}
-	tables, err := bridgeIDTables(ctx, db)
-	if err != nil {
-		return err
-	}
-	if len(tables) == 0 {
-		return nil
-	}
-
-	type migrationPlan struct {
-		table      string
-		emptyCount int64
-	}
-	plans := make([]migrationPlan, 0, len(tables))
-	for _, table := range tables {
-		quoted, err := quoteIdentifier(table)
-		if err != nil {
-			return err
-		}
-		var emptyCount int64
-		if err = db.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE bridge_id=''", quoted)).Scan(&emptyCount); err != nil {
-			return err
-		}
-		if emptyCount == 0 {
-			continue
-		}
-		var targetCount int64
-		if err = db.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE bridge_id=$1", quoted), target).Scan(&targetCount); err != nil {
-			return err
-		}
-		if targetCount > 0 {
-			return fmt.Errorf("table %s has both empty and canonical bridge IDs; refusing ambiguous migration", table)
-		}
-		plans = append(plans, migrationPlan{table: table, emptyCount: emptyCount})
-	}
-	if len(plans) == 0 {
-		return nil
-	}
-
-	if log != nil {
-		log.Warn().
-			Str("bridge_id", string(target)).
-			Int("table_count", len(plans)).
-			Msg("Migrating rows persisted with empty bridge_id to canonical bridge ID")
-	}
-
-	return db.DoTxn(ctx, nil, func(ctx context.Context) error {
-		if db.Dialect == dbutil.SQLite {
-			// Rewrite all related bridge_id columns as one logical migration and defer
-			// FK validation until commit so parent/child tables can move together.
-			if _, err := db.Exec(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
-				return fmt.Errorf("enable deferred foreign keys: %w", err)
-			}
-		}
-		for _, plan := range plans {
-			quoted, err := quoteIdentifier(plan.table)
-			if err != nil {
-				return err
-			}
-			res, err := db.Exec(ctx, fmt.Sprintf("UPDATE %s SET bridge_id=$1 WHERE bridge_id=''", quoted), target)
-			if err != nil {
-				return fmt.Errorf("migrate %s: %w", plan.table, err)
-			}
-			if log != nil {
-				if affected, affErr := res.RowsAffected(); affErr == nil && affected > 0 {
-					log.Info().
-						Str("bridge_id", string(target)).
-						Str("table", plan.table).
-						Int64("rows", affected).
-						Msg("Migrated empty bridge_id rows")
-				}
-			}
-		}
-		return nil
-	})
-}
-
-func bridgeIDTables(ctx context.Context, db *dbutil.Database) ([]string, error) {
-	switch db.Dialect {
-	case dbutil.SQLite:
-		return sqliteBridgeIDTables(ctx, db)
-	case dbutil.Postgres:
-		return postgresBridgeIDTables(ctx, db)
-	default:
-		return nil, fmt.Errorf("unsupported database dialect %s", db.Dialect.String())
-	}
-}
-
-func sqliteBridgeIDTables(ctx context.Context, db *dbutil.Database) ([]string, error) {
-	rows, err := db.Query(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err = rows.Scan(&table); err != nil {
-			return nil, err
-		}
-		quoted, err := quoteIdentifier(table)
-		if err != nil {
-			return nil, err
-		}
-		colRows, err := db.Query(ctx, fmt.Sprintf("PRAGMA table_info(%s)", quoted))
-		if err != nil {
-			return nil, err
-		}
-		hasBridgeID := false
-		for colRows.Next() {
-			var cid int
-			var name, colType string
-			var notNull, pk int
-			var dflt sql.NullString
-			if err = colRows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
-				_ = colRows.Close()
-				return nil, err
-			}
-			if name == "bridge_id" {
-				hasBridgeID = true
-			}
-		}
-		if closeErr := colRows.Close(); closeErr != nil && err == nil {
-			return nil, closeErr
-		}
-		if hasBridgeID {
-			tables = append(tables, table)
-		}
-	}
-	return tables, rows.Err()
-}
-
-func postgresBridgeIDTables(ctx context.Context, db *dbutil.Database) ([]string, error) {
-	rows, err := db.Query(ctx, `
-		SELECT DISTINCT table_name
-		FROM information_schema.columns
-		WHERE table_schema='public' AND column_name='bridge_id'
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err = rows.Scan(&table); err != nil {
-			return nil, err
-		}
-		tables = append(tables, table)
-	}
-	return tables, rows.Err()
-}
-
-func quoteIdentifier(name string) (string, error) {
-	if !safeSQLIdentifier.MatchString(name) {
-		return "", fmt.Errorf("unsafe SQL identifier %q", name)
-	}
-	return `"` + name + `"`, nil
 }

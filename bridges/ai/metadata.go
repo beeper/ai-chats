@@ -10,7 +10,7 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	integrationmemory "github.com/beeper/agentremote/pkg/integrations/memory"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -222,13 +222,13 @@ type PortalMetadata struct {
 	DisclaimerSent   bool   `json:"disclaimer_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	AbortedLastRun                 bool                            `json:"aborted_last_run,omitempty"`
-	CompactionCount                int                             `json:"compaction_count,omitempty"`
-	SessionBootstrapByAgent        map[string]int64                `json:"session_bootstrap_by_agent,omitempty"`
-	InternalRoomKind               string                          `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
-	CompactionLastPromptTokens     int64                           `json:"compaction_last_prompt_tokens,omitempty"`
-	CompactionLastCompletionTokens int64                           `json:"compaction_last_completion_tokens,omitempty"`
-	MemoryModuleState              *integrationruntime.MemoryState `json:"memory_state,omitempty"`
+	AbortedLastRun                 bool                     `json:"aborted_last_run,omitempty"`
+	CompactionCount                int                      `json:"compaction_count,omitempty"`
+	SessionBootstrapByAgent        map[string]int64         `json:"session_bootstrap_by_agent,omitempty"`
+	InternalRoomKind               string                   `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
+	CompactionLastPromptTokens     int64                    `json:"compaction_last_prompt_tokens,omitempty"`
+	CompactionLastCompletionTokens int64                    `json:"compaction_last_completion_tokens,omitempty"`
+	MemoryModuleState              *integrationmemory.State `json:"memory_state,omitempty"`
 
 	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
 
@@ -261,19 +261,19 @@ func (m *PortalMetadata) InternalRoom() bool {
 	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
 }
 
-func (m *PortalMetadata) MemoryState() *integrationruntime.MemoryState {
+func (m *PortalMetadata) MemoryState() *integrationmemory.State {
 	if m == nil {
 		return nil
 	}
 	return m.MemoryModuleState
 }
 
-func (m *PortalMetadata) EnsureMemoryState() *integrationruntime.MemoryState {
+func (m *PortalMetadata) EnsureMemoryState() *integrationmemory.State {
 	if m == nil {
 		return nil
 	}
 	if m.MemoryModuleState == nil {
-		m.MemoryModuleState = &integrationruntime.MemoryState{}
+		m.MemoryModuleState = &integrationmemory.State{}
 	}
 	return m.MemoryModuleState
 }

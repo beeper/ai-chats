@@ -23,7 +23,6 @@ type CommandDefinition struct {
 	Name           string
 	Description    string
 	Args           string
-	Aliases        []string
 	RequiresPortal bool
 	RequiresLogin  bool
 	AdminOnly      bool

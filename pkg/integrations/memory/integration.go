@@ -143,7 +143,11 @@ func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.Co
 	if evt.Meta == nil {
 		return
 	}
-	state := evt.Meta.EnsureMemoryState()
+	meta, ok := evt.Meta.(Meta)
+	if !ok {
+		return
+	}
+	state := meta.EnsureMemoryState()
 	if state == nil {
 		return
 	}
@@ -226,13 +230,18 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			if call.Meta == nil {
 				return false
 			}
-			return call.Meta.MemoryState().AlreadyFlushed(call.Meta.CompactionCounter())
+			meta, ok := call.Meta.(Meta)
+			return ok && meta.MemoryState().AlreadyFlushed(call.Meta.CompactionCounter())
 		},
 		MarkFlushed: func(ctx context.Context, call iruntime.ContextOverflowCall) {
 			if call.Portal == nil || call.Meta == nil {
 				return
 			}
-			state := call.Meta.EnsureMemoryState()
+			meta, ok := call.Meta.(Meta)
+			if !ok {
+				return
+			}
+			state := meta.EnsureMemoryState()
 			if state == nil {
 				return
 			}
@@ -252,7 +261,8 @@ func (i *Integration) shouldBootstrapMemoryPromptContext(_ *bridgev2.Portal, met
 	if meta == nil {
 		return false
 	}
-	return meta.MemoryState().NeedsBootstrap()
+	memoryMeta, ok := meta.(Meta)
+	return ok && memoryMeta.MemoryState().NeedsBootstrap()
 }
 
 func (i *Integration) resolveMemoryBootstrapPaths(_ *bridgev2.Portal, _ iruntime.Meta) []string {
@@ -273,7 +283,11 @@ func (i *Integration) markMemoryPromptBootstrapped(ctx context.Context, portal *
 	if portal == nil || meta == nil {
 		return
 	}
-	state := meta.EnsureMemoryState()
+	memoryMeta, ok := meta.(Meta)
+	if !ok {
+		return
+	}
+	state := memoryMeta.EnsureMemoryState()
 	if state == nil {
 		return
 	}

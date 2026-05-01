@@ -1,20 +1,22 @@
-package runtime
+package memory
 
 import (
 	"testing"
 	"time"
+
+	iruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
 func TestMemoryStateApplyCompactionLifecycle(t *testing.T) {
 	now := time.UnixMilli(12345)
-	state := &MemoryState{}
+	state := &State{}
 
-	state.ApplyCompactionLifecycle(CompactionLifecycleStart, 0, "", now)
+	state.ApplyCompactionLifecycle(iruntime.CompactionLifecycleStart, 0, "", now)
 	if !state.CompactionInFlight {
 		t.Fatalf("expected compaction to be marked in flight")
 	}
 
-	state.ApplyCompactionLifecycle(CompactionLifecycleEnd, 7, "", now)
+	state.ApplyCompactionLifecycle(iruntime.CompactionLifecycleEnd, 7, "", now)
 	if state.CompactionInFlight {
 		t.Fatalf("expected compaction to be cleared after end")
 	}
@@ -25,7 +27,7 @@ func TestMemoryStateApplyCompactionLifecycle(t *testing.T) {
 		t.Fatalf("unexpected dropped count: got %d want %d", state.LastCompactionDroppedCount, 7)
 	}
 
-	state.ApplyCompactionLifecycle(CompactionLifecycleFail, 0, " boom \n", now)
+	state.ApplyCompactionLifecycle(iruntime.CompactionLifecycleFail, 0, " boom \n", now)
 	if state.CompactionInFlight {
 		t.Fatalf("expected compaction to be cleared after failure")
 	}
@@ -33,7 +35,7 @@ func TestMemoryStateApplyCompactionLifecycle(t *testing.T) {
 		t.Fatalf("unexpected compaction error: %q", state.LastCompactionError)
 	}
 
-	state.ApplyCompactionLifecycle(CompactionLifecycleRefresh, 0, "", now)
+	state.ApplyCompactionLifecycle(iruntime.CompactionLifecycleRefresh, 0, "", now)
 	if state.LastCompactionRefreshAt != now.UnixMilli() {
 		t.Fatalf("unexpected refresh timestamp: got %d want %d", state.LastCompactionRefreshAt, now.UnixMilli())
 	}
@@ -41,7 +43,7 @@ func TestMemoryStateApplyCompactionLifecycle(t *testing.T) {
 
 func TestMemoryStateOverflowAndBootstrapHelpers(t *testing.T) {
 	now := time.UnixMilli(23456)
-	state := &MemoryState{}
+	state := &State{}
 
 	if state.AlreadyFlushed(4) {
 		t.Fatalf("expected empty state to report not flushed")
@@ -57,7 +59,7 @@ func TestMemoryStateOverflowAndBootstrapHelpers(t *testing.T) {
 		t.Fatalf("expected different compaction counter to report not flushed")
 	}
 
-	if !(&MemoryState{}).NeedsBootstrap() {
+	if !(&State{}).NeedsBootstrap() {
 		t.Fatalf("expected zero bootstrap state to need bootstrap")
 	}
 	state.MarkBootstrapped(now)
@@ -70,10 +72,10 @@ func TestMemoryStateOverflowAndBootstrapHelpers(t *testing.T) {
 }
 
 func TestNilMemoryStateHelpers(t *testing.T) {
-	var state *MemoryState
+	var state *State
 	now := time.UnixMilli(34567)
 
-	state.ApplyCompactionLifecycle(CompactionLifecycleEnd, 3, "boom", now)
+	state.ApplyCompactionLifecycle(iruntime.CompactionLifecycleEnd, 3, "boom", now)
 	state.MarkOverflowFlushed(2, now)
 	state.MarkBootstrapped(now)
 

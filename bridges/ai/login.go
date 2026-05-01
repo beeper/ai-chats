@@ -273,6 +273,7 @@ func (ol *OpenAILogin) completeLogin(ctx context.Context, input loginCompletionI
 		"com.beeper.agentremote.ai.complete",
 		sdk.PersistLoginCompletionOptions{
 			NewLoginParams: &bridgev2.NewLoginParams{
+				DeleteOnConflict: ol.Override != nil,
 				LoadUserLogin: func(loadCtx context.Context, login *bridgev2.UserLogin) error {
 					if ol.Connector == nil {
 						return nil

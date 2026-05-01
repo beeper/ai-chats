@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
+	integrationmemory "github.com/beeper/agentremote/pkg/integrations/memory"
 )
 
 func TestClonePortalMetadataDeepCopiesConfig(t *testing.T) {
@@ -104,7 +104,7 @@ func TestPortalMetadataJSONRoundTrip(t *testing.T) {
 		InternalRoomKind:               "cron",
 		CompactionLastPromptTokens:     5000,
 		CompactionLastCompletionTokens: 1200,
-		MemoryModuleState: &integrationruntime.MemoryState{
+		MemoryModuleState: &integrationmemory.State{
 			CompactionInFlight:           true,
 			LastCompactionAt:             111,
 			LastCompactionDroppedCount:   4,
