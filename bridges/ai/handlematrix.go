@@ -403,7 +403,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		} else {
 			transcriptMeta.CanonicalTurnData = nil
 		}
-		transcriptMeta.CanonicalTurnData = cloneCanonicalTurnData(transcriptMeta.CanonicalTurnData)
 	} else {
 		transcriptMeta.CanonicalTurnData = nil
 	}
