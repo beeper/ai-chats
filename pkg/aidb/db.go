@@ -1,17 +1,21 @@
 package aidb
 
 import (
-	"context"
 	"embed"
-	"errors"
 
 	"go.mau.fi/util/dbutil"
 )
 
-const initSchemaFile = "001-init.sql"
+const VersionTable = "aichats_version"
 
 //go:embed *.sql
 var rawUpgrades embed.FS
+
+var UpgradeTable dbutil.UpgradeTable
+
+func init() {
+	UpgradeTable.RegisterFS(rawUpgrades)
+}
 
 // NewChild creates a child DB wrapper for the shared AI Chats tables.
 func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database {
@@ -21,18 +25,5 @@ func NewChild(base *dbutil.Database, log dbutil.DatabaseLogger) *dbutil.Database
 	if log == nil {
 		log = dbutil.NoopLogger
 	}
-	return base.Child("", dbutil.UpgradeTable{}, log)
-}
-
-// EnsureSchema applies the canonical AI Chats schema.
-func EnsureSchema(ctx context.Context, db *dbutil.Database) error {
-	if db == nil {
-		return errors.New("AI Chats database not initialized")
-	}
-	schema, err := rawUpgrades.ReadFile(initSchemaFile)
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec(ctx, string(schema))
-	return err
+	return base.Child(VersionTable, UpgradeTable, log)
 }

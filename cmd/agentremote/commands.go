@@ -109,24 +109,6 @@ func initCommands() {
 			Run: cmdStart,
 		},
 		{
-			Name: "up", Group: "Bridges",
-			Description: "Start a bridge in the background",
-			Usage:       "agentremote up <bridge> [flags]",
-			PosArgs:     "bridge",
-			Flags: []flagDef{
-				{Name: "profile", Help: "Profile name", Default: "default"},
-				{Name: "name", Help: "Instance name (for multiple instances of the same bridge)"},
-				{Name: "env", Help: "Override beeper env for this bridge", Values: envNames()},
-				{Name: "wait", Help: "Block until bridge is connected", IsBool: true},
-				{Name: "wait-timeout", Help: "Timeout for --wait", Default: "60s"},
-			},
-			Examples: []string{
-				"agentremote up ai",
-				"agentremote up codex --name test",
-			},
-			Run: cmdUp,
-		},
-		{
 			Name: "run", Group: "Bridges",
 			Description: "Run a bridge in the foreground",
 			Usage:       "agentremote run <bridge> [flags]",
@@ -171,20 +153,6 @@ func initCommands() {
 				"agentremote stop codex-test",
 			},
 			Run: cmdStop,
-		},
-		{
-			Name: "down", Group: "Bridges",
-			Description: "Stop a running bridge",
-			Usage:       "agentremote down <instance> [flags]",
-			PosArgs:     "instance",
-			Flags: []flagDef{
-				{Name: "profile", Help: "Profile name", Default: "default"},
-			},
-			Examples: []string{
-				"agentremote down ai",
-				"agentremote down codex-test",
-			},
-			Run: cmdDown,
 		},
 		{
 			Name: "stop-all", Group: "Bridges",
@@ -282,7 +250,6 @@ func initCommands() {
 			PosArgs:     "instance",
 			Flags: []flagDef{
 				{Name: "profile", Help: "Profile name", Default: "default"},
-				{Name: "remote", Help: "Deprecated: remote deletion always happens", IsBool: true},
 			},
 			Examples: []string{
 				"agentremote delete",

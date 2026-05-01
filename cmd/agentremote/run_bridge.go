@@ -25,6 +25,6 @@ func cmdInternalBridge(args []string) error {
 	os.Args = append([]string{def.Name}, args[1:]...)
 
 	m := def.Definition.NewMain(def.NewFunc())
-	bridgeentry.RunMain(def.Definition, m, Tag, Commit, BuildTime)
+	bridgeentry.RunMain(m, Tag, Commit, BuildTime)
 	return nil
 }

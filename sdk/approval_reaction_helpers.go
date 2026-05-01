@@ -2,34 +2,13 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
-
-// EnsureReactionContent lazily parses the reaction content from a MatrixReaction.
-func EnsureReactionContent(msg *bridgev2.MatrixReaction) *event.ReactionEventContent {
-	if msg == nil {
-		return nil
-	}
-	if msg.Content != nil {
-		return msg.Content
-	}
-	if msg.Event == nil || len(msg.Event.Content.VeryRaw) == 0 {
-		return nil
-	}
-	var parsed event.ReactionEventContent
-	if err := json.Unmarshal(msg.Event.Content.VeryRaw, &parsed); err != nil {
-		return nil
-	}
-	msg.Content = &parsed
-	return msg.Content
-}
 
 // PreHandleApprovalReaction implements the common PreHandleMatrixReaction logic
 // shared by all bridges. Matrix-side reactions are handled ephemerally and are
@@ -38,15 +17,14 @@ func PreHandleApprovalReaction(msg *bridgev2.MatrixReaction) (bridgev2.MatrixRea
 	if msg == nil || msg.Event == nil {
 		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
 	}
-	content := EnsureReactionContent(msg)
-	if content == nil {
+	if msg.Content == nil {
 		return bridgev2.MatrixReactionPreResponse{}, bridgev2.ErrReactionsNotSupported
 	}
 	return bridgev2.MatrixReactionPreResponse{
 		// Matrix-side reactions are handled ephemerally; do not persist a
 		// synthetic ghost sender for them.
 		SenderID:     "",
-		Emoji:        normalizeReactionKey(content.RelatesTo.Key),
+		Emoji:        normalizeReactionKey(msg.Content.RelatesTo.Key),
 		MaxReactions: 1,
 	}, nil
 }
@@ -60,7 +38,6 @@ type ReactionContext struct {
 
 // ExtractReactionContext pulls the emoji and target identifiers from a MatrixReaction.
 func ExtractReactionContext(msg *bridgev2.MatrixReaction) ReactionContext {
-	content := EnsureReactionContent(msg)
 	var rc ReactionContext
 	if msg != nil && msg.TargetMessage != nil {
 		rc.TargetMessageID = msg.TargetMessage.ID
@@ -68,13 +45,13 @@ func ExtractReactionContext(msg *bridgev2.MatrixReaction) ReactionContext {
 	if msg != nil && msg.PreHandleResp != nil {
 		rc.Emoji = msg.PreHandleResp.Emoji
 	}
-	if rc.Emoji == "" && content != nil {
-		rc.Emoji = normalizeReactionKey(content.RelatesTo.Key)
+	if rc.Emoji == "" && msg != nil && msg.Content != nil {
+		rc.Emoji = normalizeReactionKey(msg.Content.RelatesTo.Key)
 	}
 	if msg != nil && msg.TargetMessage != nil && msg.TargetMessage.MXID != "" {
 		rc.TargetEventID = msg.TargetMessage.MXID
-	} else if content != nil && content.RelatesTo.EventID != "" {
-		rc.TargetEventID = content.RelatesTo.EventID
+	} else if msg != nil && msg.Content != nil && msg.Content.RelatesTo.EventID != "" {
+		rc.TargetEventID = msg.Content.RelatesTo.EventID
 	}
 	return rc
 }

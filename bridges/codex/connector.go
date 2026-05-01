@@ -55,7 +55,7 @@ func (cc *CodexConnector) applyRuntimeDefaults() {
 		cc.Config.ModelCacheDuration = 6 * time.Hour
 	}
 	if cc.Config.Bridge.CommandPrefix == "" {
-		cc.Config.Bridge.CommandPrefix = "!ai"
+		cc.Config.Bridge.CommandPrefix = "!codex"
 	}
 	if cc.Config.Codex == nil {
 		cc.Config.Codex = &CodexConfig{}

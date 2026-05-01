@@ -40,7 +40,7 @@ type CodexClientInfo struct {
 
 const exampleNetworkConfig = `
 bridge:
-  command_prefix: "!ai"
+  command_prefix: "!codex"
 codex:
   enabled: true
   command: "codex"

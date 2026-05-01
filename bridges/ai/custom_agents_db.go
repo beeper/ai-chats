@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 )
+
+var errCustomAgentsDBUnavailable = errors.New("custom agents database is not available")
 
 func listCustomAgentsForLogin(ctx context.Context, login *bridgev2.UserLogin) (map[string]*AgentDefinitionContent, error) {
 	scope := loginScopeForLogin(login)
@@ -58,7 +61,7 @@ func saveCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, age
 		return nil
 	}
 	if scope == nil {
-		return nil
+		return errCustomAgentsDBUnavailable
 	}
 	agentID := strings.TrimSpace(agent.ID)
 	if agentID == "" {
@@ -87,7 +90,7 @@ func deleteCustomAgentForLogin(ctx context.Context, login *bridgev2.UserLogin, a
 		return nil
 	}
 	if scope == nil {
-		return nil
+		return errCustomAgentsDBUnavailable
 	}
 	_, err := scope.db.Exec(ctx, `
 		DELETE FROM `+aiCustomAgentsTable+`

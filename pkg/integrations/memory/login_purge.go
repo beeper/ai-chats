@@ -23,9 +23,6 @@ func PurgeTables(ctx context.Context, db *dbutil.Database, bridgeID, loginID str
 	exec(`DELETE FROM aichats_memory_chunks_fts WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)
 	exec(`DELETE FROM aichats_memory_session_files WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)
 	exec(`DELETE FROM aichats_memory_session_state WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)
-	exec(`DELETE FROM aichats_memory_chunks_vec WHERE id IN (
-           SELECT id FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2
-         )`, bridgeID, loginID)
 	exec(`DELETE FROM aichats_memory_embedding_cache WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)
 	exec(`DELETE FROM aichats_memory_chunks WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)
 	exec(`DELETE FROM aichats_memory_files WHERE bridge_id=$1 AND login_id=$2`, bridgeID, loginID)

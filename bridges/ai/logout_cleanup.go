@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/beeper/agentremote/sdk"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/bridgev2"
@@ -78,6 +79,9 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		`DELETE FROM `+aiLoginStateTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
+	if err := sdk.DeleteLoginConversationState(ctx, db, bridgeID, loginID); err != nil {
+		deleteErrs = append(deleteErrs, err)
+	}
 	recordDelete(
 		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,

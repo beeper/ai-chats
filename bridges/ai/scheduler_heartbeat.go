@@ -69,10 +69,6 @@ func (s *schedulerRuntime) RequestHeartbeatNow(ctx context.Context, reason strin
 		if state.NextRunAtMs > 0 && state.NextRunAtMs-nowMs <= int64(scheduleHeartbeatCoalesce/time.Millisecond) {
 			continue
 		}
-		if err := s.ensureHeartbeatRoomLocked(ctx, state); err != nil {
-			s.client.log.Warn().Err(err).Str("agent_id", agent.agentID).Msg("Failed to ensure heartbeat room for immediate wake")
-			continue
-		}
 		s.cancelScheduledTickLocked(heartbeatTimerKey(state.AgentID))
 		runAtMs := nowMs + int64(scheduleImmediateDelay/time.Millisecond)
 		runKey := buildTickRunKey(state.Revision, "wake", runAtMs)
@@ -128,9 +124,6 @@ func (s *schedulerRuntime) reconcileHeartbeatLocked(ctx context.Context) error {
 		state := upsertManagedHeartbeat(&store, agent.agentID, agent.heartbeat)
 		if state == nil || !state.Enabled {
 			continue
-		}
-		if err := s.ensureHeartbeatRoomLocked(ctx, state); err != nil {
-			return err
 		}
 		s.scheduleHeartbeatStateLocked(ctx, state, nowMs, true)
 	}

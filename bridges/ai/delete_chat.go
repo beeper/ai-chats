@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/beeper/agentremote/sdk"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 )
@@ -26,6 +27,9 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 	}
 	if sessionKey != "" {
 		oc.deletePersistedSessionArtifacts(ctx, portal, sessionKey)
+	}
+	if err := sdk.DeleteConversationState(ctx, portal); err != nil {
+		oc.log.Warn().Err(err).Str("portal_id", string(portal.PortalKey.ID)).Msg("failed to delete SDK conversation state")
 	}
 
 	if meta != nil {

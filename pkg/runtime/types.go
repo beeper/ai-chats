@@ -109,22 +109,6 @@ type QueueInlineOptions struct {
 	DropPolicy *QueueDropPolicy
 }
 
-// QueueDecisionAction is the runtime's final queue decision.
-type QueueDecisionAction string
-
-const (
-	QueueActionRunNow          QueueDecisionAction = "run_now"
-	QueueActionEnqueue         QueueDecisionAction = "enqueue"
-	QueueActionDrop            QueueDecisionAction = "drop"
-	QueueActionInterruptAndRun QueueDecisionAction = "interrupt_and_run"
-)
-
-// QueueDecision is a deterministic decision output for queue handling.
-type QueueDecision struct {
-	Action QueueDecisionAction
-	Reason string
-}
-
 // QueueBehavior controls steer/followup/collect semantics.
 type QueueBehavior struct {
 	Steer        bool

@@ -137,8 +137,8 @@ func newDBBackedTestAIClient(t *testing.T, provider string) *AIClient {
 	}
 
 	childDB := aidb.NewChild(bridge.DB.Database, dbutil.NoopLogger)
-	if err = aidb.EnsureSchema(context.Background(), childDB); err != nil {
-		t.Fatalf("ensure ai schema: %v", err)
+	if err = childDB.Upgrade(context.Background()); err != nil {
+		t.Fatalf("upgrade ai schema: %v", err)
 	}
 
 	user, err := bridge.GetUserByMXID(context.Background(), id.UserID("@alice:example.com"))
@@ -191,8 +191,9 @@ func newDBBackedLoginHarness(t *testing.T) (*OpenAIConnector, *bridgev2.Bridge, 
 	if err = bridge.DB.Upgrade(context.Background()); err != nil {
 		t.Fatalf("upgrade bridge db: %v", err)
 	}
-	if err = aidb.EnsureSchema(context.Background(), aidb.NewChild(bridge.DB.Database, dbutil.NoopLogger)); err != nil {
-		t.Fatalf("ensure ai schema: %v", err)
+	childDB := aidb.NewChild(bridge.DB.Database, dbutil.NoopLogger)
+	if err = childDB.Upgrade(context.Background()); err != nil {
+		t.Fatalf("upgrade ai schema: %v", err)
 	}
 
 	user, err := bridge.GetUserByMXID(context.Background(), id.UserID("@alice:example.com"))

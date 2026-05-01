@@ -481,12 +481,7 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 }
 
 func isCodexIdentifier(identifier string) bool {
-	switch strings.ToLower(strings.TrimSpace(identifier)) {
-	case "codex", "@codex", "codex:default", "codex:codex":
-		return true
-	default:
-		return false
-	}
+	return strings.EqualFold(strings.TrimSpace(identifier), "codex")
 }
 
 func (cc *CodexClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
@@ -545,11 +540,11 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 	}
 	if strings.TrimSpace(state.CodexThreadID) == "" || strings.TrimSpace(state.CodexCwd) == "" {
 		if err := cc.ensureCodexThread(ctx, portal, state); err != nil {
-			return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "", messageStatusForError, messageStatusReasonForError)
+			return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !codex reset.", "", messageStatusForError, messageStatusReasonForError)
 		}
 	}
 	if err := cc.ensureCodexThreadLoaded(ctx, portal, state); err != nil {
-		return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !ai reset.", "", messageStatusForError, messageStatusReasonForError)
+		return nil, sdk.MessageSendStatusError(err, "Codex thread unavailable. Try !codex reset.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
 	roomID := portal.MXID

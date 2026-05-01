@@ -115,8 +115,8 @@ func newHeartbeatSchedulerTestRuntime(t *testing.T, cfg Config) (*schedulerRunti
 	}
 
 	childDB := aidb.NewChild(bridgeDB.Database, dbutil.NoopLogger)
-	if err := aidb.EnsureSchema(context.Background(), childDB); err != nil {
-		t.Fatalf("ensure AI Chats schema: %v", err)
+	if err := childDB.Upgrade(context.Background()); err != nil {
+		t.Fatalf("upgrade AI Chats schema: %v", err)
 	}
 
 	enabled := true

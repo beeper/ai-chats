@@ -200,3 +200,26 @@ func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *
 	`, bridgeID, loginID, portalID, string(payload), time.Now().UnixMilli())
 	return err
 }
+
+func DeleteConversationState(ctx context.Context, portal *bridgev2.Portal) error {
+	db, bridgeID, loginID, portalID := conversationStateDB(portal)
+	if db == nil {
+		return nil
+	}
+	_, err := db.Exec(ctx, `
+		DELETE FROM `+sdkConversationStateTable+`
+		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
+	`, bridgeID, loginID, portalID)
+	return err
+}
+
+func DeleteLoginConversationState(ctx context.Context, db *dbutil.Database, bridgeID, loginID string) error {
+	if db == nil || bridgeID == "" || loginID == "" {
+		return nil
+	}
+	_, err := db.Exec(ctx, `
+		DELETE FROM `+sdkConversationStateTable+`
+		WHERE bridge_id=$1 AND login_id=$2
+	`, bridgeID, loginID)
+	return err
+}

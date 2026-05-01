@@ -209,12 +209,11 @@ func (c *sdkClient[SessionT, ConfigDataT]) HandleMatrixMessage(ctx context.Conte
 			runCtx = context.Background()
 		}
 	}
-	content, ok := msg.Event.Content.Parsed.(*event.MessageEventContent)
 	sdkMsg := &Message{
 		ID:        msg.Event.ID.String(),
 		Timestamp: time.UnixMilli(msg.Event.Timestamp),
 	}
-	if ok {
+	if content := msg.Content; content != nil {
 		sdkMsg.Text = content.Body
 		sdkMsg.HTML = content.FormattedBody
 		switch content.MsgType {

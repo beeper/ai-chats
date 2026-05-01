@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/agents"
 )
@@ -14,8 +12,6 @@ import (
 func cacheHeartbeatTestPortals(t *testing.T, client *AIClient, portals ...*bridgev2.Portal) {
 	t.Helper()
 
-	byKey := make(map[networkid.PortalKey]*bridgev2.Portal, len(portals))
-	byMXID := make(map[id.RoomID]*bridgev2.Portal, len(portals))
 	for _, portal := range portals {
 		if portal == nil {
 			continue
@@ -36,13 +32,7 @@ func cacheHeartbeatTestPortals(t *testing.T, client *AIClient, portals ...*bridg
 			}
 			portal = persisted
 		}
-		byKey[portal.PortalKey] = portal
-		if portal.MXID != "" {
-			byMXID[portal.MXID] = portal
-		}
 	}
-	setUnexportedField(client.UserLogin.Bridge, "portalsByKey", byKey)
-	setUnexportedField(client.UserLogin.Bridge, "portalsByMXID", byMXID)
 }
 
 func TestResolveHeartbeatDeliveryTargetFallsBackFromMismatchedSessionRoom(t *testing.T) {

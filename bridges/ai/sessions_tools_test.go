@@ -35,8 +35,8 @@ func TestResolveMatrixSessionTarget_ResolvesRoomAndPortalIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve room target: %v", err)
 	}
-	if byRoomID.portal != portal {
-		t.Fatalf("expected room lookup to return inserted portal, got %#v", byRoomID.portal)
+	if byRoomID.portal == nil || byRoomID.portal.MXID != portal.MXID {
+		t.Fatalf("expected room lookup to return inserted portal MXID %q, got %#v", portal.MXID, byRoomID.portal)
 	}
 	if byRoomID.displayKey != portal.MXID.String() {
 		t.Fatalf("expected room display key %q, got %q", portal.MXID, byRoomID.displayKey)
@@ -46,8 +46,8 @@ func TestResolveMatrixSessionTarget_ResolvesRoomAndPortalIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve portal key target: %v", err)
 	}
-	if byPortalID.portal != portal {
-		t.Fatalf("expected portal key lookup to return inserted portal, got %#v", byPortalID.portal)
+	if byPortalID.portal == nil || byPortalID.portal.PortalKey != portal.PortalKey {
+		t.Fatalf("expected portal key lookup to return inserted portal key %#v, got %#v", portal.PortalKey, byPortalID.portal)
 	}
 	if byPortalID.displayKey != portal.MXID.String() {
 		t.Fatalf("expected portal key display key %q, got %q", portal.MXID, byPortalID.displayKey)

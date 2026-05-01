@@ -421,10 +421,6 @@ func cmdStart(args []string) error {
 	return nil
 }
 
-func cmdUp(args []string) error {
-	return cmdStart(args)
-}
-
 func waitForBridge(profile, envOverride, beeperName string, timeout time.Duration) error {
 	cfg, err := getAuthWithOverride(profile, envOverride)
 	if err != nil {
@@ -508,10 +504,6 @@ func cmdStop(args []string) error {
 		fmt.Printf("%s is not running\n", instName)
 	}
 	return nil
-}
-
-func cmdDown(args []string) error {
-	return cmdStop(args)
 }
 
 func cmdStopAll(args []string) error {
@@ -905,7 +897,6 @@ func printRunningInstances(profile string) error {
 func cmdDelete(args []string) error {
 	fs := newFlagSet("delete")
 	profile := fs.String("profile", defaultProfile, "profile name")
-	remote := fs.Bool("remote", false, "deprecated: remote deletion always happens")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -917,7 +908,6 @@ func cmdDelete(args []string) error {
 		return fmt.Errorf("expected at most one instance name argument")
 	}
 	instName := posArgs[0]
-	_ = *remote
 
 	sp, err := getInstancePaths(*profile, instName)
 	if err != nil {

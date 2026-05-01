@@ -30,7 +30,7 @@ func TestNewChildNilBase(t *testing.T) {
 	}
 }
 
-func TestEnsureSchemaFresh(t *testing.T) {
+func TestUpgradeFresh(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
@@ -38,8 +38,8 @@ func TestEnsureSchemaFresh(t *testing.T) {
 		t.Fatalf("expected child DB")
 	}
 
-	if err := EnsureSchema(ctx, bridgeDB); err != nil {
-		t.Fatalf("ensure schema failed: %v", err)
+	if err := bridgeDB.Upgrade(ctx); err != nil {
+		t.Fatalf("upgrade failed: %v", err)
 	}
 
 	for _, table := range []string{
@@ -61,6 +61,7 @@ func TestEnsureSchemaFresh(t *testing.T) {
 		"aichats_tool_approval_rules",
 		"aichats_turns",
 		"aichats_turn_refs",
+		"sdk_conversation_state",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -72,17 +73,17 @@ func TestEnsureSchemaFresh(t *testing.T) {
 	}
 }
 
-func TestEnsureSchemaIdempotent(t *testing.T) {
+func TestUpgradeIdempotent(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
 	if bridgeDB == nil {
 		t.Fatalf("expected child DB")
 	}
-	if err := EnsureSchema(ctx, bridgeDB); err != nil {
-		t.Fatalf("ensure schema failed: %v", err)
+	if err := bridgeDB.Upgrade(ctx); err != nil {
+		t.Fatalf("upgrade failed: %v", err)
 	}
-	if err := EnsureSchema(ctx, bridgeDB); err != nil {
-		t.Fatalf("second ensure schema failed: %v", err)
+	if err := bridgeDB.Upgrade(ctx); err != nil {
+		t.Fatalf("second upgrade failed: %v", err)
 	}
 }

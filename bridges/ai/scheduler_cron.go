@@ -95,9 +95,6 @@ func (s *schedulerRuntime) CronAdd(ctx context.Context, jobInput integrationcron
 		Delivery:       normalizeCronDelivery(jobInput.Delivery),
 	}
 	record := scheduledCronJob{Job: job, Revision: 1}
-	if err := s.ensureCronRoomLocked(ctx, &record); err != nil {
-		return integrationcron.Job{}, err
-	}
 	s.scheduleCronRecordLocked(ctx, &record, nowMs, false)
 
 	store.Jobs = append(store.Jobs, record)
@@ -129,9 +126,6 @@ func (s *schedulerRuntime) CronUpdate(ctx context.Context, jobID string, patch i
 	}
 	s.cancelScheduledTickLocked(cronTimerKey(record.Job.ID))
 	record = updated
-	if err := s.ensureCronRoomLocked(ctx, &record); err != nil {
-		return integrationcron.Job{}, err
-	}
 	s.scheduleCronRecordLocked(ctx, &record, time.Now().UnixMilli(), false)
 	store.Jobs[idx] = record
 	if err := s.saveCronStoreLocked(ctx, store); err != nil {
@@ -204,9 +198,6 @@ func (s *schedulerRuntime) reconcileCronLocked(ctx context.Context) error {
 		record := &store.Jobs[idx]
 		if record.Revision <= 0 {
 			record.Revision = 1
-		}
-		if err := s.ensureCronRoomLocked(ctx, record); err != nil {
-			return err
 		}
 		s.scheduleCronRecordLocked(ctx, record, nowMs, true)
 	}
@@ -304,9 +295,10 @@ func (s *schedulerRuntime) executeCronJob(ctx context.Context, record *scheduled
 	if s == nil || s.client == nil || record == nil {
 		return "error", "missing scheduler", ""
 	}
-	portal := s.client.portalByRoomID(ctx, id.RoomID(record.RoomID))
-	if portal == nil || portal.MXID == "" {
-		return "error", "cron room not found", ""
+	target := s.resolveCronDeliveryTarget(record.Job.AgentID, record.Job.Delivery)
+	portal, ok := target.Portal.(*bridgev2.Portal)
+	if !ok || portal == nil || portal.MXID == "" {
+		return "error", "delivery target unavailable", ""
 	}
 	meta := clonePortalMetadata(portalMeta(portal))
 	if meta == nil {

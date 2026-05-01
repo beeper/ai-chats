@@ -41,7 +41,10 @@ func NewAIConnector() *OpenAIConnector {
 		},
 		StartConnector: func(ctx context.Context, _ *bridgev2.Bridge) error {
 			db := oc.bridgeDB()
-			if err := aidb.EnsureSchema(ctx, db); err != nil {
+			if db == nil {
+				return fmt.Errorf("ai database not initialized")
+			}
+			if err := db.Upgrade(ctx); err != nil {
 				return err
 			}
 			oc.applyRuntimeDefaults()

@@ -58,14 +58,14 @@ func NewConnector() *CodexConnector {
 			if db == nil {
 				return fmt.Errorf("codex database not initialized")
 			}
-			if err := aidb.EnsureSchema(ctx, db); err != nil {
+			if err := db.Upgrade(ctx); err != nil {
 				return err
 			}
 			cc.applyRuntimeDefaults()
 			return nil
 		},
 		BridgeName: func() bridgev2.BridgeName {
-			defaultCommandPrefix := "!ai"
+			defaultCommandPrefix := "!codex"
 			if trimmed := strings.TrimSpace(cc.Config.Bridge.CommandPrefix); trimmed != "" {
 				defaultCommandPrefix = trimmed
 			}

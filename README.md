@@ -39,7 +39,7 @@ agentremote run codex
 
 Useful commands:
 
-- `agentremote up <bridge>` starts a bridge in the background
+- `agentremote start <bridge>` starts a bridge in the background
 - `agentremote status` shows local and remote bridge state
 - `agentremote logs <instance> --follow` tails logs
 - `agentremote stop <instance>` stops a running instance

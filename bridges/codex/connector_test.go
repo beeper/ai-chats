@@ -35,8 +35,8 @@ func TestGetCapabilitiesEnablesContactListProvisioning(t *testing.T) {
 
 func TestGetNameUsesDefaultCommandPrefixBeforeStartup(t *testing.T) {
 	conn := NewConnector()
-	if got := conn.GetName().DefaultCommandPrefix; got != "!ai" {
-		t.Fatalf("expected default command prefix !ai, got %q", got)
+	if got := conn.GetName().DefaultCommandPrefix; got != "!codex" {
+		t.Fatalf("expected default command prefix !codex, got %q", got)
 	}
 }
 

@@ -37,41 +37,11 @@ type Message struct {
 	Metadata  map[string]any
 }
 
-// MessageEdit represents an edit to a previously sent message.
-type MessageEdit struct {
-	OriginalID string
-	NewText    string
-	NewHTML    string
-}
-
-// Reaction represents a user reaction on a message.
-type Reaction struct {
-	MessageID string
-	Emoji     string
-	Sender    string
-}
-
 // LoginInfo contains information about a bridge login.
 type LoginInfo struct {
 	UserID   string
 	Domain   string
 	Login    *bridgev2.UserLogin
-	Metadata map[string]any
-}
-
-// UserInfo describes a user/agent/model for search results.
-type UserInfo struct {
-	ID       string
-	Name     string
-	Avatar   string
-	Metadata map[string]any
-}
-
-// ChatInfo describes a chat/portal.
-type ChatInfo struct {
-	ID       string
-	Name     string
-	Topic    string
 	Metadata map[string]any
 }
 
@@ -191,14 +161,6 @@ func UserMessageSource(eventID string) *SourceRef {
 	return &SourceRef{Kind: SourceKindUserMessage, EventID: eventID}
 }
 
-// ModelInfo describes an AI model.
-type ModelInfo struct {
-	ID           string
-	Name         string
-	Provider     string
-	Capabilities []string
-}
-
 // ProviderIdentity controls provider-specific IDs and status naming used by the SDK runtime.
 type ProviderIdentity struct {
 	IDPrefix      string
@@ -226,15 +188,9 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	// msg is the incoming message; turn is the pre-created Turn for streaming responses.
 	OnMessage func(session SessionT, conv *Conversation, msg *Message, turn *Turn) error
 
-	// Event hooks (optional)
+	// Session hooks (optional)
 	OnConnect    func(ctx context.Context, login *LoginInfo) (SessionT, error) // returns session state
 	OnDisconnect func(session SessionT)
-	OnReaction   func(session SessionT, conv *Conversation, reaction *Reaction) error
-	OnTyping     func(session SessionT, conv *Conversation, typing bool)
-	OnEdit       func(session SessionT, conv *Conversation, edit *MessageEdit) error
-	OnDelete     func(session SessionT, conv *Conversation, msgID string) error
-	OnRoomName   func(session SessionT, conv *Conversation, name string) (bool, error)
-	OnRoomTopic  func(session SessionT, conv *Conversation, topic string) (bool, error)
 
 	// Turn management (optional)
 	TurnManagement *TurnConfig
