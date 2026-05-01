@@ -24,21 +24,6 @@ func transcriptMetaSummary(meta *MessageMetadata) string {
 	)
 }
 
-func cloneCanonicalTurnData(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return nil
-	}
-	data, err := json.Marshal(src)
-	if err != nil {
-		return nil
-	}
-	var clone map[string]any
-	if err = json.Unmarshal(data, &clone); err != nil {
-		return nil
-	}
-	return clone
-}
-
 func cloneMessageMetadata(src *MessageMetadata) *MessageMetadata {
 	if src == nil {
 		return nil
