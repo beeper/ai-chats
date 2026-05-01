@@ -381,9 +381,13 @@ func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly
 	}
 
 	if snapshot.dropPolicy == airuntime.QueueDropSummarize && snapshot.droppedCount > 0 {
-		item := snapshot.items[0]
+		var item pendingQueueItem
 		if snapshot.lastItem != nil {
 			item = *snapshot.lastItem
+		} else if len(snapshot.items) > 0 {
+			item = snapshot.items[0]
+		} else {
+			return nil
 		}
 		if textOnly && item.pending.Type != pendingTypeText {
 			return nil

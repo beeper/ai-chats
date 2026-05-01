@@ -94,11 +94,18 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		logger.Warn().Err(err).Str("login_id", loginID).Msg("failed to purge some login-owned AI state")
 	}
 	if client, ok := login.Client.(*AIClient); ok && client != nil {
-		client.clearLoginState(ctx)
-		client.loginConfigMu.Lock()
-		client.loginConfig = &aiLoginConfig{}
-		client.loginConfigMu.Unlock()
+		client.purgeLoginRuntimeState(ctx)
 	}
+}
+
+func (oc *AIClient) purgeLoginRuntimeState(ctx context.Context) {
+	if oc == nil {
+		return
+	}
+	oc.clearLoginState(ctx)
+	oc.loginConfigMu.Lock()
+	oc.loginConfig = &aiLoginConfig{}
+	oc.loginConfigMu.Unlock()
 }
 
 func execDelete(ctx context.Context, db *dbutil.Database, logger *zerolog.Logger, query string, args ...any) error {

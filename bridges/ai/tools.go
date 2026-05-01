@@ -31,7 +31,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
@@ -639,27 +638,11 @@ func executeMessageDelete(ctx context.Context, args map[string]any, btc *BridgeT
 
 	targetEventID := id.EventID(messageID)
 
-	targetPart, err := btc.Client.loadPortalMessagePartByMXID(ctx, btc.Portal, targetEventID)
-	if err != nil {
-		return "", fmt.Errorf("couldn't find the message to delete: %w", err)
-	}
-	if targetPart == nil {
-		return "", fmt.Errorf("couldn't find the message to delete: %s", messageID)
-	}
-	sender := btc.Client.senderForPortal(ctx, btc.Portal)
-	result := btc.Client.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessageRemove,
-			PortalKey: btc.Portal.PortalKey,
-			Sender:    sender,
-		},
-		TargetMessage: targetPart.ID,
-	})
-	if !result.Success {
-		if result.Error != nil {
-			return "", fmt.Errorf("couldn't delete the message: %w", result.Error)
+	if err := btc.Client.redactEventViaPortal(ctx, btc.Portal, targetEventID); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return "", err
 		}
-		return "", fmt.Errorf("couldn't delete the message")
+		return "", fmt.Errorf("couldn't delete the message: %w", err)
 	}
 
 	return jsonActionResult("delete", map[string]any{

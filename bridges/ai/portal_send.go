@@ -69,3 +69,28 @@ func (oc *AIClient) redactEventViaPortal(ctx context.Context, portal *bridgev2.P
 	}
 	return nil
 }
+
+func (oc *AIClient) redactNetworkMessageViaPortal(ctx context.Context, portal *bridgev2.Portal, targetMessageID networkid.MessageID) error {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return fmt.Errorf("bridge unavailable")
+	}
+	if portal == nil || portal.MXID == "" || targetMessageID == "" {
+		return fmt.Errorf("invalid portal or message ID")
+	}
+	sender := oc.senderForPortal(ctx, portal)
+	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: portal.PortalKey,
+			Sender:    sender,
+		},
+		TargetMessage: targetMessageID,
+	})
+	if !result.Success {
+		if result.Error != nil {
+			return fmt.Errorf("redact failed: %w", result.Error)
+		}
+		return fmt.Errorf("redact failed")
+	}
+	return nil
+}

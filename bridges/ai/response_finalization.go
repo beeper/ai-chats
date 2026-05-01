@@ -2,13 +2,11 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
@@ -269,7 +267,6 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 	if portal.MXID == "" || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return
 	}
-	sender := oc.senderForPortal(ctx, portal)
 	targetMessageID := state.turn.NetworkMessageID()
 	if targetMessageID == "" {
 		if state.turn.InitialEventID() == "" {
@@ -286,19 +283,7 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 		}
 		targetMessageID = part.ID
 	}
-	result := oc.UserLogin.QueueRemoteEvent(&simplevent.MessageRemove{
-		EventMeta: simplevent.EventMeta{
-			Type:      bridgev2.RemoteEventMessageRemove,
-			PortalKey: portal.PortalKey,
-			Sender:    sender,
-		},
-		TargetMessage: targetMessageID,
-	})
-	if !result.Success {
-		err := fmt.Errorf("redact failed")
-		if result.Error != nil {
-			err = fmt.Errorf("redact failed: %w", result.Error)
-		}
+	if err := oc.redactNetworkMessageViaPortal(ctx, portal, targetMessageID); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message")
 	}
 }

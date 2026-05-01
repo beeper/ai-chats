@@ -310,6 +310,61 @@ func TestDispatchOrQueueQueueAcceptReturnsNil(t *testing.T) {
 	if got := len(queue.items); got != 1 {
 		t.Fatalf("expected queue length 1 after accept, got %d", got)
 	}
+	if queue.items[0].pending.Portal != portal {
+		t.Fatalf("expected queued item portal to be filled")
+	}
+	if queue.items[0].pending.Event != evt {
+		t.Fatalf("expected queued item event to be filled")
+	}
+}
+
+func TestDispatchOrQueueSteerBacklogDoesNotDoubleAccept(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	msg := &database.Message{ID: "msg"}
+	oc := &AIClient{
+		activeRoomRuns: map[id.RoomID]*roomRunState{roomID: {streaming: true}},
+		pendingQueues:  map[id.RoomID]*pendingQueue{},
+	}
+
+	evt := &event.Event{ID: id.EventID("$new")}
+	portal := &bridgev2.Portal{Portal: &database.Portal{}}
+	portal.MXID = roomID
+	queueItem := pendingQueueItem{
+		pending:          pendingMessage{Type: pendingTypeText, MessageBody: "new"},
+		acceptedMessages: []*database.Message{msg},
+		messageID:        string(evt.ID),
+	}
+
+	err := oc.dispatchOrQueueCore(
+		context.Background(),
+		evt,
+		portal,
+		nil,
+		queueItem,
+		airuntime.QueueSettings{Mode: airuntime.QueueModeSteerBacklog, Cap: 10, DropPolicy: airuntime.QueueDropOld},
+		PromptContext{},
+	)
+
+	if err != nil {
+		t.Fatalf("expected nil error for steer+backlog, got %v", err)
+	}
+	run := oc.getRoomRun(roomID)
+	if run == nil {
+		t.Fatalf("expected active run")
+	}
+	if got := len(run.acceptedUserMessages); got != 1 {
+		t.Fatalf("expected steering to register one accepted message, got %d", got)
+	}
+	queue := oc.pendingQueues[roomID]
+	if queue == nil || len(queue.items) != 1 {
+		t.Fatalf("expected one follow-up queued item, got %#v", queue)
+	}
+	if got := len(queue.items[0].acceptedMessages); got != 0 {
+		t.Fatalf("expected queued follow-up not to duplicate accepted messages, got %d", got)
+	}
+	if got := len(queue.items[0].pending.StatusEvents); got != 0 {
+		t.Fatalf("expected queued follow-up not to duplicate status events, got %d", got)
+	}
 }
 
 func TestDispatchOrQueueQueuesBehindExistingPendingWork(t *testing.T) {
@@ -388,5 +443,50 @@ func TestRemovePendingQueueBySourceEventClearsRemovedLastItem(t *testing.T) {
 	}
 	if got := snapshot.lastItem.pending.sourceEventID(); got != id.EventID("$one") {
 		t.Fatalf("expected lastItem to point at remaining item, got %q", got)
+	}
+}
+
+func TestTakePendingQueueDispatchCandidateSummaryOnlyDoesNotPanic(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	last := pendingQueueItem{pending: pendingMessage{Type: pendingTypeText, MessageBody: "last"}}
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				mode:         airuntime.QueueModeBacklog,
+				dropPolicy:   airuntime.QueueDropSummarize,
+				droppedCount: 1,
+				summaryLines: []string{"dropped"},
+				lastItem:     &last,
+			},
+		},
+	}
+
+	candidate := oc.takePendingQueueDispatchCandidate(roomID, false)
+	if candidate == nil {
+		t.Fatalf("expected synthetic candidate")
+	}
+	if !candidate.synthetic {
+		t.Fatalf("expected synthetic candidate")
+	}
+	if len(candidate.items) != 1 || candidate.items[0].pending.MessageBody != "last" {
+		t.Fatalf("unexpected synthetic item: %#v", candidate.items)
+	}
+}
+
+func TestTakePendingQueueDispatchCandidateSummaryWithoutReplayItemDoesNotPanic(t *testing.T) {
+	roomID := id.RoomID("!room:example.com")
+	oc := &AIClient{
+		pendingQueues: map[id.RoomID]*pendingQueue{
+			roomID: {
+				mode:         airuntime.QueueModeBacklog,
+				dropPolicy:   airuntime.QueueDropSummarize,
+				droppedCount: 1,
+				summaryLines: []string{"dropped"},
+			},
+		},
+	}
+
+	if candidate := oc.takePendingQueueDispatchCandidate(roomID, false); candidate != nil {
+		t.Fatalf("expected no candidate without a replay item, got %#v", candidate)
 	}
 }

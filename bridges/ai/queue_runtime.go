@@ -172,6 +172,10 @@ func (oc *AIClient) dispatchOrQueueCore(
 	promptContext PromptContext,
 ) error {
 	roomID := portal.MXID
+	queueItem.pending.Portal = portal
+	queueItem.pending.Meta = meta
+	queueItem.pending.Event = evt
+
 	behavior := airuntime.ResolveQueueBehavior(queueSettings.Mode)
 	shouldSteer := behavior.Steer
 	shouldFollowup := behavior.Followup
@@ -185,11 +189,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 	directRun := !roomBusy && oc.acquireRoom(roomID)
 	if directRun {
 		oc.stopQueueTyping(roomID)
-		queuedItem := queueItem
-		queuedItem.pending.Portal = portal
-		queuedItem.pending.Meta = meta
-		queuedItem.pending.Event = evt
-		oc.dispatchPromptRun(ctx, roomID, queuedItem, promptContext)
+		oc.dispatchPromptRun(ctx, roomID, queueItem, promptContext)
 		return nil
 	}
 
@@ -203,6 +203,11 @@ func (oc *AIClient) dispatchOrQueueCore(
 	if queueNeeded {
 		if behavior.BacklogAfter {
 			queueItem.backlogAfter = true
+		}
+		if steered {
+			queueItem.acceptedMessages = nil
+			queueItem.pending.StatusEvents = nil
+			queueItem.pending.PendingSent = true
 		}
 		enqueued := oc.enqueuePendingItem(roomID, queueItem, queueSettings)
 		if !enqueued {
