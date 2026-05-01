@@ -10,20 +10,12 @@ import (
 )
 
 func (oc *AIClient) sendSuccessMessageStatus(ctx context.Context, portal *bridgev2.Portal, events []*event.Event) {
-	if portal == nil || portal.Bridge == nil {
-		return
-	}
 	msgStatus := bridgev2.MessageStatus{
 		Status:    event.MessageStatusSuccess,
 		IsCertain: true,
 	}
 	for _, statusEvt := range events {
-		if statusEvt == nil {
-			continue
-		}
-		if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-		}
+		sdk.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
 	}
 }
 

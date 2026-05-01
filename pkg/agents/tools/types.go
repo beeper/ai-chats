@@ -10,23 +10,10 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
-// ToolType is an alias for toolspec.ToolType for backwards compatibility.
-type ToolType = toolspec.ToolType
-
-// ToolInfo is an alias for toolspec.ToolInfo for backwards compatibility.
-type ToolInfo = toolspec.ToolInfo
-
-const (
-	ToolTypeBuiltin  = toolspec.ToolTypeBuiltin
-	ToolTypeProvider = toolspec.ToolTypeProvider
-	ToolTypePlugin   = toolspec.ToolTypePlugin
-	ToolTypeMCP      = toolspec.ToolTypeMCP
-)
-
 // Tool wraps an MCP tool with execution logic and metadata.
 type Tool struct {
 	mcp.Tool                                                                  // Name, Description, InputSchema
-	Type     ToolType                                                         // builtin, provider, plugin, mcp
+	Type     toolspec.ToolType                                                // builtin, provider, plugin, mcp
 	Group    string                                                           // group:search, group:code, etc.
 	PluginID string                                                           // Optional plugin id for grouping
 	Execute  func(ctx context.Context, input map[string]any) (*Result, error) // nil for provider tools

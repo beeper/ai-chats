@@ -10,6 +10,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 // processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
@@ -113,7 +115,7 @@ func (oc *AIClient) ensureActiveToolCall(
 	activeTools *streamToolRegistry,
 	key string,
 	name string,
-	toolType ToolType,
+	toolType matrixevents.ToolType,
 	initialInput string,
 ) *activeToolCall {
 	tool, created := activeTools.Upsert(key, func(canonicalKey string) *activeToolCall {
@@ -152,13 +154,13 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	delta string,
 ) {
 	lifecycle := oc.toolLifecycle(portal, state)
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, "")
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, "")
 	if tool == nil {
 		return
 	}
 	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
-	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == ToolTypeProvider)
+	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == matrixevents.ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -174,7 +176,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	approvalFallbackForNonObject bool,
 	logSuffix string,
 ) {
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, arguments)
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, arguments)
 	if tool == nil {
 		return
 	}
@@ -231,9 +233,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		state.writer().Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		state.writer().Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == matrixevents.ToolTypeProvider)
 	}
-	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == matrixevents.ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	result := ""
@@ -277,7 +279,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	lifecycle.completeResult(
 		ctx,
 		tool,
-		tool.toolType == ToolTypeProvider,
+		tool.toolType == matrixevents.ToolTypeProvider,
 		resultStatus,
 		result,
 		result,

@@ -13,6 +13,8 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
@@ -358,44 +360,44 @@ func (oc *AIClient) processResponseStreamEvent(
 		}
 
 	case "response.file_search_call.searching", "response.file_search_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", ToolTypeProvider, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", matrixevents.ToolTypeProvider, true, "")
 
 	case "response.file_search_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", ToolTypeProvider, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", matrixevents.ToolTypeProvider, false, "")
 
 	case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", ToolTypeProvider, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", matrixevents.ToolTypeProvider, true, "")
 
 	case "response.code_interpreter_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", ToolTypeProvider, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", matrixevents.ToolTypeProvider, false, "")
 
 	case "response.mcp_list_tools.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, true, "")
 
 	case "response.mcp_list_tools.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, false, "")
 
 	case "response.mcp_list_tools.failed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", ToolTypeMCP, false, "MCP list tools failed")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, false, "MCP list tools failed")
 
 	case "response.mcp_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", ToolTypeMCP, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", matrixevents.ToolTypeMCP, true, "")
 
 	case "response.mcp_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", ToolTypeMCP, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", matrixevents.ToolTypeMCP, false, "")
 
 	case "response.web_search_call.searching", "response.web_search_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", ToolTypeProvider, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", matrixevents.ToolTypeProvider, true, "")
 
 	case "response.web_search_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", ToolTypeProvider, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", matrixevents.ToolTypeProvider, false, "")
 
 	case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", ToolTypeProvider, true, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", matrixevents.ToolTypeProvider, true, "")
 		log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
 
 	case "response.image_generation_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", ToolTypeProvider, false, "")
+		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", matrixevents.ToolTypeProvider, false, "")
 		log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
 
 	case "response.image_generation_call.partial_image":
@@ -476,7 +478,7 @@ func (oc *AIClient) handleProviderToolInProgress(
 	activeTools *streamToolRegistry,
 	itemID string,
 	toolName string,
-	toolType ToolType,
+	toolType matrixevents.ToolType,
 ) {
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), toolName, toolType, "")
 	if tool == nil {
@@ -494,7 +496,7 @@ func (oc *AIClient) handleProviderToolCompleted(
 	activeTools *streamToolRegistry,
 	itemID string,
 	toolName string,
-	toolType ToolType,
+	toolType matrixevents.ToolType,
 	failureText string,
 ) {
 	// Look up or lazily create the tool. We pass nil meta because

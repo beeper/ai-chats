@@ -89,7 +89,7 @@ type AgentStoreInterface interface {
 	SaveAgent(ctx context.Context, agent AgentData) error
 	DeleteAgent(ctx context.Context, agentID string) error
 	ListModels(ctx context.Context) ([]ModelData, error)
-	ListAvailableTools(ctx context.Context) ([]ToolInfo, error)
+	ListAvailableTools(ctx context.Context) ([]toolspec.ToolInfo, error)
 	RunInternalCommand(ctx context.Context, roomID string, command string) (string, error)
 	// Room management
 	CreateRoom(ctx context.Context, room RoomData) (string, error)
@@ -149,7 +149,7 @@ var CreateAgentTool = &Tool{
 			"subagents":     subagentSchema(),
 		}, "name"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -164,7 +164,7 @@ var ForkAgentTool = &Tool{
 			"new_name":  toolspec.StringProperty("Name for the new agent (defaults to '[Original Name] (Fork)')"),
 		}, "source_id"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -184,7 +184,7 @@ var EditAgentTool = &Tool{
 			"subagents":     subagentSchema(),
 		}, "agent_id"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -198,7 +198,7 @@ var DeleteAgentTool = &Tool{
 			"agent_id": toolspec.StringProperty("ID of the agent to delete"),
 		}, "agent_id"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -210,7 +210,7 @@ var ListAgentsTool = &Tool{
 		Annotations: &mcp.ToolAnnotations{Title: "List Agents"},
 		InputSchema: toolspec.EmptyObjectSchema(),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -222,7 +222,7 @@ var ListModelsTool = &Tool{
 		Annotations: &mcp.ToolAnnotations{Title: "List Models"},
 		InputSchema: toolspec.EmptyObjectSchema(),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 
@@ -237,7 +237,7 @@ var RunInternalCommandTool = &Tool{
 			"room_id": toolspec.StringProperty("Optional target room ID (defaults to the current room)"),
 		}, "command"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupBuilder,
 }
 
@@ -254,7 +254,7 @@ var ModifyRoomTool = &Tool{
 			"system_prompt": toolspec.StringProperty("New system prompt override for this room"),
 		}, "room_id"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 
@@ -274,7 +274,7 @@ var SessionsListTool = &Tool{
 			"messageLimit":  toolspec.NumberProperty("Include the last N messages for each session"),
 		}),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 
@@ -290,7 +290,7 @@ var SessionsHistoryTool = &Tool{
 			"includeTools": toolspec.BooleanProperty("Whether to include tool calls in the returned history"),
 		}, "sessionKey"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 
@@ -308,7 +308,7 @@ var SessionsSendTool = &Tool{
 			"timeoutSeconds": toolspec.NumberProperty("Optional timeout for the remote session"),
 		}, "message"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 
@@ -332,7 +332,7 @@ var SessionsSpawnTool = &Tool{
 			},
 		}, "task"),
 	},
-	Type:  ToolTypeBuiltin,
+	Type:  toolspec.ToolTypeBuiltin,
 	Group: GroupSessions,
 }
 

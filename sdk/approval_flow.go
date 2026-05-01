@@ -164,20 +164,15 @@ func (f *ApprovalFlow[D]) HandleReaction(ctx context.Context, msg *bridgev2.Matr
 		match = f.matchFallbackReaction(msg.Portal.MXID, msg.Event.Sender, rc.Emoji, now)
 		if !match.KnownPrompt {
 			if isApprovalReactionKey(rc.Emoji) && f.hasPendingApprovalForOwner(msg.Portal.MXID, msg.Event.Sender, now) {
-				status := bridgev2.MessageStatus{
-					Status:      event.MessageStatusFail,
-					ErrorReason: event.MessageStatusGenericError,
-					Message:     approvalWrongTargetMSSMessage,
-					IsCertain:   true,
-				}
 				if f.testSendMessageStatus != nil {
-					f.testSendMessageStatus(ctx, msg.Portal, msg.Event, status)
-				} else {
-					if msg.Portal != nil && msg.Portal.Bridge != nil {
-						if info := StatusEventInfoFromPortalEvent(msg.Portal, msg.Event); info != nil {
-							msg.Portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-						}
-					}
+					f.testSendMessageStatus(ctx, msg.Portal, msg.Event, bridgev2.MessageStatus{
+						Status:      event.MessageStatusFail,
+						ErrorReason: event.MessageStatusGenericError,
+						Message:     approvalWrongTargetMSSMessage,
+						IsCertain:   true,
+					})
+				} else if f.sendNotice != nil {
+					f.sendNotice(ctx, msg.Portal, approvalWrongTargetMSSMessage)
 				}
 				f.redactSingleReaction(msg)
 				return true
@@ -303,20 +298,15 @@ func (f *ApprovalFlow[D]) handleResolvedApprovalReactionChange(
 	if _, ok := f.resolvedPromptByTarget(targetMessageID); !ok {
 		return false
 	}
-	status := bridgev2.MessageStatus{
-		Status:      event.MessageStatusFail,
-		ErrorReason: event.MessageStatusGenericError,
-		Message:     approvalResolvedMSSMessage,
-		IsCertain:   true,
-	}
 	if f.testSendMessageStatus != nil {
-		f.testSendMessageStatus(ctx, portal, evt, status)
-	} else {
-		if portal != nil && portal.Bridge != nil {
-			if info := StatusEventInfoFromPortalEvent(portal, evt); info != nil {
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-			}
-		}
+		f.testSendMessageStatus(ctx, portal, evt, bridgev2.MessageStatus{
+			Status:      event.MessageStatusFail,
+			ErrorReason: event.MessageStatusGenericError,
+			Message:     approvalResolvedMSSMessage,
+			IsCertain:   true,
+		})
+	} else if f.sendNotice != nil {
+		f.sendNotice(ctx, portal, approvalResolvedMSSMessage)
 	}
 	if reaction != nil {
 		f.redactSingleReaction(reaction)

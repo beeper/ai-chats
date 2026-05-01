@@ -105,7 +105,7 @@ func SendEditViaPortal(
 	return nil
 }
 
-// RedactEventAsSender redacts an event ID in a room using the intent resolved for sender.
+// RedactEventAsSender removes an event through bridgev2's remote event queue.
 func RedactEventAsSender(
 	ctx context.Context,
 	login *bridgev2.UserLogin,
@@ -116,14 +116,31 @@ func RedactEventAsSender(
 	if login == nil || portal == nil || portal.MXID == "" || targetEventID == "" {
 		return fmt.Errorf("invalid redaction target")
 	}
-	intent, ok := portal.GetIntentFor(ctx, sender, login, bridgev2.RemoteEventMessageRemove)
-	if !ok || intent == nil {
-		return fmt.Errorf("intent resolution failed")
+	if login.Bridge == nil || login.Bridge.DB == nil || login.Bridge.DB.Message == nil {
+		return fmt.Errorf("bridge message database unavailable")
 	}
-	_, err := intent.SendMessage(ctx, portal.MXID, event.EventRedaction, &event.Content{
-		Parsed: &event.RedactionEventContent{Redacts: targetEventID},
-	}, nil)
-	return err
+	part, err := login.Bridge.DB.Message.GetPartByMXID(ctx, targetEventID)
+	if err != nil {
+		return fmt.Errorf("message lookup failed: %w", err)
+	}
+	if part == nil {
+		return fmt.Errorf("message not found for event %s", targetEventID)
+	}
+	result := login.QueueRemoteEvent(&simplevent.MessageRemove{
+		EventMeta: simplevent.EventMeta{
+			Type:      bridgev2.RemoteEventMessageRemove,
+			PortalKey: portal.PortalKey,
+			Sender:    sender,
+		},
+		TargetMessage: part.ID,
+	})
+	if !result.Success {
+		if result.Error != nil {
+			return fmt.Errorf("redact failed: %w", result.Error)
+		}
+		return fmt.Errorf("redact failed")
+	}
+	return nil
 }
 
 func SendSystemMessage(

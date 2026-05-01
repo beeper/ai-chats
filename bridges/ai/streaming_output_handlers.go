@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
@@ -134,7 +135,7 @@ func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
 	if tool == nil {
 		return
 	}
-	lifecycle.appendInputDelta(ctx, tool, tool.toolName, delta, tool.toolType == ToolTypeProvider)
+	lifecycle.appendInputDelta(ctx, tool, tool.toolName, delta, tool.toolType == matrixevents.ToolTypeProvider)
 }
 
 func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
@@ -154,7 +155,7 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
 		tool.input.WriteString(inputText)
 	}
-	lifecycle.emitInput(ctx, tool, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == ToolTypeProvider)
+	lifecycle.emitInput(ctx, tool, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == matrixevents.ToolTypeProvider)
 }
 
 func (oc *AIClient) handleMCPCallFailedFromOutputItem(

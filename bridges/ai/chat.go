@@ -8,6 +8,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/toolspec"
@@ -83,7 +84,7 @@ func (oc *AIClient) buildAvailableTools(meta *PortalMetadata) []ToolInfo {
 			lookupCtx, cancel := context.WithTimeout(context.Background(), mcpDiscoveryTimeout)
 			if dynamicTool, ok := oc.lookupMCPToolDefinition(lookupCtx, name); ok {
 				description = dynamicTool.Description
-				toolType = string(ToolTypeMCP)
+				toolType = string(matrixevents.ToolTypeMCP)
 			}
 			cancel()
 		}

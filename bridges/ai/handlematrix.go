@@ -217,7 +217,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		body = oc.buildGroupHistoryContext(portal.MXID, body, oc.resolveGroupHistoryLimit())
 	}
 
-	// Check if this message should be debounced
 	debounceDelay := meta.DebounceMs
 	if debounceDelay == 0 {
 		debounceDelay = oc.resolveInboundDebounceMs("matrix")
@@ -227,7 +226,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if oc.inboundDebouncer != nil {
 		debounceKey = BuildDebounceKey(portal.MXID, msg.Event.Sender)
 	}
-
 	if shouldDebounce {
 		logCtx.Debug().Int("debounce_ms", debounceDelay).Msg("Debouncing inbound message")
 		userMessage := &database.Message{
@@ -251,25 +249,14 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			IsGroup:      isGroup,
 			WasMentioned: wasMentioned,
 			AckEventID:   ackReactionEventID,
-			PendingSent:  pendingSent,
 			DBMessage:    userMessage,
 		}
-		// Let the client know the message is pending due to debounce.
-		if debounceDelay >= 0 && !pendingSent {
-			if portal != nil && portal.Bridge != nil {
-				if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
-					status := bridgev2.MessageStatus{
-						Status:    event.MessageStatusPending,
-						Message:   "Combining messages...",
-						IsCertain: true,
-					}
-					portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-				}
-			}
+		if !pendingSent {
+			oc.sendPendingMessageStatus(ctx, portal, []*event.Event{msg.Event}, "Combining messages...")
 			entry.PendingSent = true
 		}
 		oc.inboundDebouncer.EnqueueWithDelay(debounceKey, entry, true, debounceDelay)
-		return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 	}
 	if debounceKey != "" {
 		// Flush any pending debounced messages for this room+sender before immediate processing

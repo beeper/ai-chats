@@ -1,6 +1,8 @@
 package sdk
 
 import (
+	"context"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -19,4 +21,17 @@ func StatusEventInfoFromPortalEvent(portal *bridgev2.Portal, evt *event.Event) *
 		info.RoomID = portal.MXID
 	}
 	return info
+}
+
+// SendMessageStatus is the single boundary for Matrix message status emission.
+// Bridge code should use this helper instead of reaching through Bridge.Matrix.
+func SendMessageStatus(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, status bridgev2.MessageStatus) {
+	if portal == nil || portal.Bridge == nil || portal.Bridge.Matrix == nil {
+		return
+	}
+	info := StatusEventInfoFromPortalEvent(portal, evt)
+	if info == nil {
+		return
+	}
+	portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
 }

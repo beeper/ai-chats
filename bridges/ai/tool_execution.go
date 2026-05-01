@@ -11,6 +11,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -20,7 +21,7 @@ type activeToolCall struct {
 	callID      string
 	approvalID  string
 	toolName    string
-	toolType    ToolType
+	toolType    matrixevents.ToolType
 	input       strings.Builder
 	startedAtMs int64
 	result      string // Result from tool execution (for continuation)

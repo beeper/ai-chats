@@ -86,15 +86,6 @@ type codexActiveTurn struct {
 	model       string
 }
 
-type codexPendingMessage struct {
-	event  *event.Event
-	portal *bridgev2.Portal
-	state  *codexPortalState
-	body   string
-}
-
-type codexPendingQueue []*codexPendingMessage
-
 type CodexClient struct {
 	sdk.ClientBase
 	UserLogin *bridgev2.UserLogin
@@ -126,9 +117,8 @@ type CodexClient struct {
 
 	scheduleBootstrapOnce func() // starts bootstrap goroutine exactly once
 
-	roomMu          sync.Mutex
-	activeRooms     map[id.RoomID]bool
-	pendingMessages map[id.RoomID]codexPendingQueue
+	roomMu      sync.Mutex
+	activeRooms map[id.RoomID]bool
 }
 
 func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*CodexClient, error) {
@@ -144,16 +134,15 @@ func newCodexClient(login *bridgev2.UserLogin, connector *CodexConnector) (*Code
 	}
 	log := login.Log.With().Str("component", "codex").Logger()
 	cc := &CodexClient{
-		UserLogin:       login,
-		connector:       connector,
-		log:             log,
-		notifCh:         make(chan codexNotif, 4096),
-		notifDone:       make(chan struct{}),
-		loadedThreads:   make(map[string]bool),
-		activeTurns:     make(map[string]*codexActiveTurn),
-		turnSubs:        make(map[string]chan codexNotif),
-		activeRooms:     make(map[id.RoomID]bool),
-		pendingMessages: make(map[id.RoomID]codexPendingQueue),
+		UserLogin:     login,
+		connector:     connector,
+		log:           log,
+		notifCh:       make(chan codexNotif, 4096),
+		notifDone:     make(chan struct{}),
+		loadedThreads: make(map[string]bool),
+		activeTurns:   make(map[string]*codexActiveTurn),
+		turnSubs:      make(map[string]chan codexNotif),
+		activeRooms:   make(map[id.RoomID]bool),
 	}
 	cc.InitClientBase(login, cc)
 	cc.HumanUserIDPrefix = "codex-user"
@@ -281,7 +270,6 @@ func (cc *CodexClient) Disconnect() {
 
 	cc.roomMu.Lock()
 	cc.activeRooms = make(map[id.RoomID]bool)
-	cc.pendingMessages = make(map[id.RoomID]codexPendingQueue)
 	cc.roomMu.Unlock()
 }
 
@@ -569,46 +557,19 @@ func (cc *CodexClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Ma
 		cc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to ensure user ghost before saving message")
 	}
 
-	if !cc.acquireRoomIfQueueEmpty(roomID) {
-		if portal != nil && portal.Bridge != nil {
-			if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
-				status := bridgev2.MessageStatus{
-					Status:    event.MessageStatusPending,
-					Message:   "Queued — waiting for current turn to finish...",
-					IsCertain: true,
-				}
-				portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-			}
-		}
-		cc.queuePendingCodex(roomID, &codexPendingMessage{
-			event:  msg.Event,
-			portal: portal,
-			state:  state,
-			body:   body,
-		})
-		return &bridgev2.MatrixMessageResponse{
-			DB:      userMsg,
-			Pending: true,
-		}, nil
-	}
-
-	if portal != nil && portal.Bridge != nil {
-		if info := sdk.StatusEventInfoFromPortalEvent(portal, msg.Event); info != nil {
-			status := bridgev2.MessageStatus{
-				Status:    event.MessageStatusPending,
-				Message:   "Processing...",
-				IsCertain: true,
-			}
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-		}
+	if !cc.acquireRoomIfIdle(roomID) {
+		err := fmt.Errorf("a Codex turn is already running in this room")
+		return nil, bridgev2.WrapErrorInStatus(err).
+			WithStatus(event.MessageStatusRetriable).
+			WithErrorReason(event.MessageStatusGenericError).
+			WithMessage("A Codex turn is already running. Try again when it finishes.").
+			WithIsCertain(true).
+			WithSendNotice(false)
 	}
 
 	go func() {
-		func() {
-			defer cc.releaseRoom(roomID)
-			cc.runTurn(cc.backgroundContext(ctx), portal, state, msg.Event, body)
-		}()
-		cc.processPendingCodex(roomID)
+		defer cc.releaseRoom(roomID)
+		cc.runTurn(cc.backgroundContext(ctx), portal, state, msg.Event, body)
 	}()
 
 	return &bridgev2.MatrixMessageResponse{
@@ -678,16 +639,6 @@ func (cc *CodexClient) runTurn(ctx context.Context, portal *bridgev2.Portal, por
 		turn.EndWithError("Codex turn/start response missing turn id")
 		return
 	}
-	if portal != nil && portal.Bridge != nil {
-		if info := sdk.StatusEventInfoFromPortalEvent(portal, sourceEvent); info != nil {
-			status := bridgev2.MessageStatus{
-				Status:    event.MessageStatusSuccess,
-				IsCertain: true,
-			}
-			portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
-		}
-	}
-
 	turnCh := cc.subscribeTurn(threadID, turnID)
 	defer cc.unsubscribeTurn(threadID, turnID)
 
@@ -1850,10 +1801,10 @@ func (cc *CodexClient) sendSystemNotice(ctx context.Context, portal *bridgev2.Po
 	}
 }
 
-func (cc *CodexClient) acquireRoomIfQueueEmpty(roomID id.RoomID) bool {
+func (cc *CodexClient) acquireRoomIfIdle(roomID id.RoomID) bool {
 	cc.roomMu.Lock()
 	defer cc.roomMu.Unlock()
-	if cc.activeRooms[roomID] || len(cc.pendingMessages[roomID]) > 0 {
+	if cc.activeRooms[roomID] {
 		return false
 	}
 	cc.activeRooms[roomID] = true
@@ -1864,78 +1815,6 @@ func (cc *CodexClient) releaseRoom(roomID id.RoomID) {
 	cc.roomMu.Lock()
 	defer cc.roomMu.Unlock()
 	delete(cc.activeRooms, roomID)
-}
-
-func (cc *CodexClient) queuePendingCodex(roomID id.RoomID, pm *codexPendingMessage) {
-	cc.roomMu.Lock()
-	defer cc.roomMu.Unlock()
-	cc.pendingMessages[roomID] = append(cc.pendingMessages[roomID], pm)
-}
-
-func (cc *CodexClient) beginPendingCodex(roomID id.RoomID) *codexPendingMessage {
-	cc.roomMu.Lock()
-	defer cc.roomMu.Unlock()
-	if cc.activeRooms[roomID] {
-		return nil
-	}
-	queue := cc.pendingMessages[roomID]
-	if len(queue) == 0 {
-		delete(cc.pendingMessages, roomID)
-		return nil
-	}
-	cc.activeRooms[roomID] = true
-	return queue[0]
-}
-
-func (cc *CodexClient) popPendingCodex(roomID id.RoomID) *codexPendingMessage {
-	cc.roomMu.Lock()
-	defer cc.roomMu.Unlock()
-	queue := cc.pendingMessages[roomID]
-	if len(queue) == 0 {
-		return nil
-	}
-	pm := queue[0]
-	if len(queue) == 1 {
-		delete(cc.pendingMessages, roomID)
-	} else {
-		cc.pendingMessages[roomID] = queue[1:]
-	}
-	return pm
-}
-
-func (cc *CodexClient) processPendingCodex(roomID id.RoomID) {
-	pm := cc.beginPendingCodex(roomID)
-	if pm == nil {
-		return
-	}
-	ctx := cc.backgroundContext(context.Background())
-	if err := cc.ensureRPC(ctx); err != nil {
-		cc.log.Warn().Err(err).Stringer("room", roomID).Msg("Pending codex message: RPC unavailable")
-		cc.releaseRoom(roomID)
-		return
-	}
-	state, err := loadCodexPortalState(ctx, pm.portal)
-	if err != nil || state == nil {
-		// Bad portal — discard.
-		cc.popPendingCodex(roomID)
-		cc.releaseRoom(roomID)
-		cc.processPendingCodex(roomID)
-		return
-	}
-	if err := cc.ensureCodexThreadLoaded(ctx, pm.portal, state); err != nil {
-		cc.log.Warn().Err(err).Stringer("room", roomID).Msg("Pending codex message: thread load failed")
-		cc.releaseRoom(roomID)
-		return
-	}
-	// Committed — now pop.
-	cc.popPendingCodex(roomID)
-	go func() {
-		func() {
-			defer cc.releaseRoom(roomID)
-			cc.runTurn(ctx, pm.portal, state, pm.event, pm.body)
-		}()
-		cc.processPendingCodex(roomID)
-	}()
 }
 
 // Streaming helpers (Codex -> Matrix AI SDK chunk mapping)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
@@ -54,7 +55,7 @@ type responseToolDescriptor struct {
 	callID           string
 	approvalID       string
 	toolName         string
-	toolType         ToolType
+	toolType         matrixevents.ToolType
 	input            any
 	providerExecuted bool
 	dynamic          bool
@@ -72,25 +73,25 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc = responseFunctionToolDescriptor(item, false, parseJSONOrRaw(item.Arguments))
 	case "web_search_call":
 		desc.toolName = ToolNameWebSearch
-		desc.toolType = ToolTypeProvider
+		desc.toolType = matrixevents.ToolTypeProvider
 		desc.providerExecuted = true
 		desc.input = map[string]any{}
 		desc.ok = true
 	case "file_search_call":
 		desc.toolName = "file_search"
-		desc.toolType = ToolTypeProvider
+		desc.toolType = matrixevents.ToolTypeProvider
 		desc.providerExecuted = true
 		desc.input = map[string]any{}
 		desc.ok = true
 	case "image_generation_call":
 		desc.toolName = "image_generation"
-		desc.toolType = ToolTypeProvider
+		desc.toolType = matrixevents.ToolTypeProvider
 		desc.providerExecuted = true
 		desc.input = map[string]any{}
 		desc.ok = true
 	case "code_interpreter_call":
 		desc.toolName = "code_interpreter"
-		desc.toolType = ToolTypeProvider
+		desc.toolType = matrixevents.ToolTypeProvider
 		desc.providerExecuted = true
 		desc.input = map[string]any{
 			"containerId": item.ContainerID,
@@ -99,7 +100,7 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.ok = true
 	case "computer_call":
 		desc.toolName = "computer_use"
-		desc.toolType = ToolTypeProvider
+		desc.toolType = matrixevents.ToolTypeProvider
 		desc.providerExecuted = true
 		desc.input = map[string]any{}
 		desc.ok = true
@@ -113,7 +114,7 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc = responseFunctionToolDescriptor(item, true, parseJSONOrRaw(item.Input))
 	case "mcp_call":
 		desc.toolName = "mcp." + strings.TrimSpace(item.Name)
-		desc.toolType = ToolTypeMCP
+		desc.toolType = matrixevents.ToolTypeMCP
 		desc.providerExecuted = true
 		desc.dynamic = true
 		desc.approvalID = strings.TrimSpace(item.ApprovalRequestID)
@@ -131,14 +132,14 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.ok = strings.TrimSpace(item.Name) != ""
 	case "mcp_list_tools":
 		desc.toolName = "mcp.list_tools"
-		desc.toolType = ToolTypeMCP
+		desc.toolType = matrixevents.ToolTypeMCP
 		desc.providerExecuted = true
 		desc.dynamic = true
 		desc.input = map[string]any{}
 		desc.ok = true
 	case "mcp_approval_request":
 		desc.toolName = "mcp." + strings.TrimSpace(item.Name)
-		desc.toolType = ToolTypeMCP
+		desc.toolType = matrixevents.ToolTypeMCP
 		desc.providerExecuted = true
 		desc.dynamic = true
 		desc.approvalID = strings.TrimSpace(item.ID)
@@ -175,7 +176,7 @@ func responseFunctionToolDescriptor(item responses.ResponseOutputItemUnion, dyna
 		itemID:           item.ID,
 		callID:           callID,
 		toolName:         toolName,
-		toolType:         ToolTypeFunction,
+		toolType:         matrixevents.ToolTypeFunction,
 		input:            input,
 		providerExecuted: false,
 		dynamic:          dynamic,
@@ -193,7 +194,7 @@ func providerDynamicResponseToolDescriptor(item responses.ResponseOutputItemUnio
 		itemID:           item.ID,
 		callID:           callID,
 		toolName:         toolName,
-		toolType:         ToolTypeProvider,
+		toolType:         matrixevents.ToolTypeProvider,
 		input:            jsonutil.ToMap(item),
 		providerExecuted: true,
 		dynamic:          true,

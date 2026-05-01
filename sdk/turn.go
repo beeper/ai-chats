@@ -568,20 +568,16 @@ func (t *Turn) SetStreamPublisherFunc(fn func(ctx context.Context) (bridgev2.Bee
 
 // SendStatus emits a bridge-level status update for the source event when possible.
 func (t *Turn) SendStatus(status event.MessageStatus, message string) {
-	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
+	if t.conv == nil || t.conv.portal == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
-	if t.conv.portal.Bridge == nil || t.conv.portal.Bridge.Matrix == nil {
-		return
-	}
-	statusContent := bridgev2.MessageStatus{
+	SendMessageStatus(t.turnCtx, t.conv.portal, &event.Event{
+		ID:     id.EventID(t.source.EventID),
+		RoomID: t.conv.portal.MXID,
+	}, bridgev2.MessageStatus{
 		Status:    status,
 		Message:   message,
 		IsCertain: true,
-	}
-	t.conv.portal.Bridge.Matrix.SendMessageStatus(t.turnCtx, &statusContent, &bridgev2.MessageStatusEventInfo{
-		RoomID:        t.conv.portal.MXID,
-		SourceEventID: id.EventID(t.source.EventID),
 	})
 }
 

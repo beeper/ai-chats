@@ -46,21 +46,14 @@ func (oc *AIClient) notifyMatrixSendFailure(ctx context.Context, portal *bridgev
 		}
 	}
 	if len(statusEvents) > 0 {
-		status := messageStatusForError(err)
-		reason := messageStatusReasonForError(err)
-
 		msgStatus := bridgev2.WrapErrorInStatus(err).
-			WithStatus(status).
-			WithErrorReason(reason).
+			WithStatus(messageStatusForError(err)).
+			WithErrorReason(messageStatusReasonForError(err)).
 			WithMessage(errorMessage).
 			WithIsCertain(true).
 			WithSendNotice(true)
 		for _, statusEvt := range statusEvents {
-			if statusEvt != nil && portal != nil && portal.Bridge != nil {
-				if info := sdk.StatusEventInfoFromPortalEvent(portal, statusEvt); info != nil {
-					portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-				}
-			}
+			sdk.SendMessageStatus(ctx, portal, statusEvt, msgStatus)
 		}
 	}
 

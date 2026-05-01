@@ -87,13 +87,6 @@ func ReadStringSlice(params map[string]any, key string, required bool) ([]string
 	return nil, nil
 }
 
-// ReadStringArray reads a string array parameter, returning nil if not present.
-// Convenience wrapper around ReadStringSlice that ignores errors.
-func ReadStringArray(params map[string]any, key string) []string {
-	arr, _ := ReadStringSlice(params, key, false)
-	return arr
-}
-
 // ReadMap reads a map parameter from input.
 func ReadMap(params map[string]any, key string, required bool) (map[string]any, error) {
 	v, ok := params[key]

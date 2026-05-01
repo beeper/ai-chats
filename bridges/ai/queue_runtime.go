@@ -59,23 +59,13 @@ func queueStatusEvents(primary *event.Event, extras []*event.Event) []*event.Eve
 }
 
 func (oc *AIClient) sendPendingMessageStatus(ctx context.Context, portal *bridgev2.Portal, events []*event.Event, message string) {
-	if portal == nil || portal.Bridge == nil {
-		return
+	status := bridgev2.MessageStatus{
+		Status:    event.MessageStatusPending,
+		Message:   message,
+		IsCertain: true,
 	}
 	for _, evt := range events {
-		if evt == nil {
-			continue
-		}
-		info := sdk.StatusEventInfoFromPortalEvent(portal, evt)
-		if info == nil {
-			continue
-		}
-		status := bridgev2.MessageStatus{
-			Status:    event.MessageStatusPending,
-			Message:   message,
-			IsCertain: true,
-		}
-		portal.Bridge.Matrix.SendMessageStatus(ctx, &status, info)
+		sdk.SendMessageStatus(ctx, portal, evt, status)
 	}
 }
 
@@ -221,7 +211,7 @@ func (oc *AIClient) dispatchOrQueueCore(
 		}
 		if !queueItem.pending.PendingSent {
 			statusEvents := queueStatusEvents(evt, queueItem.pending.StatusEvents)
-			oc.sendPendingMessageStatus(ctx, portal, statusEvents, "Queued — waiting for current turn to finish...")
+			oc.sendPendingMessageStatus(ctx, portal, statusEvents, "Queued - waiting for current turn to finish...")
 		}
 		oc.startQueueTyping(oc.backgroundContext(context.Background()), queueItem.pending.Portal, queueItem.pending.Meta, queueItem.pending.Typing)
 	}
@@ -244,23 +234,10 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 			return
 		}
 		if snapshot.debounceMs > 0 {
-			for {
-				current := oc.getQueueSnapshot(roomID)
-				if current == nil {
-					return
-				}
-				since := time.Now().UnixMilli() - current.lastEnqueuedAt
-				if since >= int64(current.debounceMs) {
-					break
-				}
-				wait := current.debounceMs - int(since)
-				if wait < 0 {
-					wait = 0
-				}
-				time.Sleep(time.Duration(wait) * time.Millisecond)
-			}
+			timer := time.NewTimer(time.Duration(snapshot.debounceMs) * time.Millisecond)
+			defer timer.Stop()
+			<-timer.C
 		}
-
 		if !oc.acquireRoom(roomID) {
 			return
 		}

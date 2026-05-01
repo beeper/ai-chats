@@ -7,6 +7,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -71,7 +72,7 @@ func TestUpsertActiveToolFromDescriptor_RecreatesNilMapEntry(t *testing.T) {
 		itemID:      "item_123",
 		callID:      "call_123",
 		toolName:    "web_search",
-		toolType:    ToolTypeFunction,
+		toolType:    matrixevents.ToolTypeFunction,
 	})
 	if !created {
 		t.Fatalf("expected nil map entry to be recreated")

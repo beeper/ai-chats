@@ -61,7 +61,6 @@ func TestUpgradeFresh(t *testing.T) {
 		"aichats_tool_approval_rules",
 		"aichats_turns",
 		"aichats_turn_refs",
-		"sdk_conversation_state",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {

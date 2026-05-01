@@ -9,6 +9,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 type streamTurnActions struct {
@@ -161,12 +163,12 @@ func (a streamTurnActions) functionToolInputDone(itemID, name, arguments string)
 	)
 }
 
-func (a streamTurnActions) providerToolInProgress(itemID, toolName string, toolType ToolType) {
+func (a streamTurnActions) providerToolInProgress(itemID, toolName string, toolType matrixevents.ToolType) {
 	a.touchTool()
 	a.oc.handleProviderToolInProgress(a.ctx, a.portal, a.state, a.meta, a.activeTools, itemID, toolName, toolType)
 }
 
-func (a streamTurnActions) providerToolCompleted(itemID, toolName string, toolType ToolType, failureText string) {
+func (a streamTurnActions) providerToolCompleted(itemID, toolName string, toolType matrixevents.ToolType, failureText string) {
 	a.touch()
 	a.oc.handleProviderToolCompleted(a.ctx, a.portal, a.state, a.activeTools, itemID, toolName, toolType, failureText)
 }
@@ -221,7 +223,7 @@ func (a streamTurnActions) toolResultCompleted(tool *activeToolCall, item respon
 
 // emitProviderToolLifecycle handles the common in_progress/completed pattern for
 // provider-managed and MCP tool events, reducing repeated cases in the event switch.
-func (a streamTurnActions) emitProviderToolLifecycle(itemID, toolName string, toolType ToolType, isInProgress bool, failureText string) {
+func (a streamTurnActions) emitProviderToolLifecycle(itemID, toolName string, toolType matrixevents.ToolType, isInProgress bool, failureText string) {
 	if isInProgress {
 		a.providerToolInProgress(itemID, toolName, toolType)
 	} else {
@@ -257,7 +259,7 @@ func chatToolDescriptor(toolDelta openai.ChatCompletionChunkChoiceDeltaToolCall)
 		itemID:      chatToolRegistryKey(toolDelta.Index),
 		callID:      strings.TrimSpace(toolDelta.ID),
 		toolName:    strings.TrimSpace(toolDelta.Function.Name),
-		toolType:    ToolTypeFunction,
+		toolType:    matrixevents.ToolTypeFunction,
 		ok:          true,
 	}
 	if desc.callID == "" {

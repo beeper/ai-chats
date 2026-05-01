@@ -83,7 +83,10 @@ func (oc *AIClient) resolveMatrixSessionTarget(ctx context.Context, currentPorta
 }
 
 func (oc *AIClient) executeSessionsList(ctx context.Context, portal *bridgev2.Portal, args map[string]any) (*tools.Result, error) {
-	kindsRaw := tools.ReadStringArray(args, "kinds")
+	kindsRaw, err := tools.ReadStringSlice(args, "kinds", false)
+	if err != nil {
+		return nil, err
+	}
 	allowedKinds := make(map[string]struct{})
 	for _, kind := range kindsRaw {
 		key := strings.ToLower(strings.TrimSpace(kind))

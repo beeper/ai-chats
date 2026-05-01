@@ -18,6 +18,7 @@ import (
 	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/pkg/agents/agentconfig"
 	"github.com/beeper/agentremote/pkg/agents/tools"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -163,12 +164,12 @@ func (s *AgentStoreAdapter) ListModels(ctx context.Context) ([]agents.ModelInfo,
 }
 
 // ListAvailableTools implements agents.AgentStore.
-func (s *AgentStoreAdapter) ListAvailableTools(_ context.Context) ([]tools.ToolInfo, error) {
+func (s *AgentStoreAdapter) ListAvailableTools(_ context.Context) ([]toolspec.ToolInfo, error) {
 	registry := tools.DefaultRegistry()
 
-	var result []tools.ToolInfo
+	var result []toolspec.ToolInfo
 	for _, tool := range registry.All() {
-		result = append(result, tools.ToolInfo{
+		result = append(result, toolspec.ToolInfo{
 			Name:        tool.Name,
 			Description: tool.Description,
 			Type:        tool.Type,

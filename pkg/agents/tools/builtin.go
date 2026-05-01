@@ -7,6 +7,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
+	"github.com/beeper/agentremote/pkg/shared/toolspec"
 )
 
 var toolLookup = sync.OnceValue(func() map[string]*Tool {
@@ -102,7 +103,7 @@ func newBuiltinTool(name, description, title string, schema map[string]any, grou
 			Annotations: &mcp.ToolAnnotations{Title: title},
 			InputSchema: schema,
 		},
-		Type:    ToolTypeBuiltin,
+		Type:    toolspec.ToolTypeBuiltin,
 		Group:   group,
 		Execute: execute,
 	}

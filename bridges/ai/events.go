@@ -32,15 +32,6 @@ const (
 	ResultStatusDenied  = matrixevents.ResultStatusDenied
 )
 
-type ToolType = matrixevents.ToolType
-
-const (
-	ToolTypeBuiltin  = matrixevents.ToolTypeBuiltin
-	ToolTypeProvider = matrixevents.ToolTypeProvider
-	ToolTypeFunction = matrixevents.ToolTypeFunction
-	ToolTypeMCP      = matrixevents.ToolTypeMCP
-)
-
 // SettingSource indicates where a setting or availability decision came from.
 type SettingSource string
 

@@ -141,9 +141,6 @@ func (oc *AIClient) resolveUserStopPlan(req userStopRequest) userStopPlan {
 func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendingQueueItem) int {
 	for _, item := range items {
 		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-		if item.pending.Portal == nil || item.pending.Portal.Bridge == nil {
-			continue
-		}
 		message := "Stopped."
 		err := fmt.Errorf("%s", message)
 		msgStatus := bridgev2.WrapErrorInStatus(err).
@@ -153,11 +150,7 @@ func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendi
 			WithIsCertain(true).
 			WithSendNotice(false)
 		for _, statusEvt := range queueStatusEvents(item.pending.Event, item.pending.StatusEvents) {
-			if item.pending.Portal != nil && item.pending.Portal.Bridge != nil {
-				if info := sdk.StatusEventInfoFromPortalEvent(item.pending.Portal, statusEvt); info != nil {
-					item.pending.Portal.Bridge.Matrix.SendMessageStatus(ctx, &msgStatus, info)
-				}
-			}
+			sdk.SendMessageStatus(ctx, item.pending.Portal, statusEvt, msgStatus)
 		}
 	}
 	return len(items)
