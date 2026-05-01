@@ -2,7 +2,7 @@
 
 AgentRemote securely brings agents to Beeper. You can connect bridges like AI Chats and Codex to Beeper with streaming, native interfaces for tool calls and approvals. You can run coding agents on your laptop and use your iPhone to manage them.
 
-AgentRemote can run on the same device as your agent and can work behind a firewall. It connects to Beeper directly and creates an E2EE tunnel. 
+AgentRemote can run on the same device as your agent and can work behind a firewall. It connects to Beeper directly and creates an E2EE tunnel.
 
 **This repository is still experimental. Expect everything to be broken for now.
 **

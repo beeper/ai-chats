@@ -453,7 +453,7 @@ func (cc *CodexClient) ResolveIdentifier(ctx context.Context, identifier string,
 
 	var chat *bridgev2.CreateChatResponse
 	if createChat {
-		portal, err := cc.createWelcomeCodexChat(ctx)
+		portal, err := cc.createWelcomeCodexChat(ctx, false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to ensure Codex chat: %w", err)
 		}

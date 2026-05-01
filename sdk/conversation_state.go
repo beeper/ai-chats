@@ -119,24 +119,6 @@ func conversationStateDB(portal *bridgev2.Portal) (*dbutil.Database, string, str
 	return portal.Bridge.DB.Database, string(portal.Bridge.DB.BridgeID), string(portal.PortalKey.Receiver), string(portal.PortalKey.ID)
 }
 
-func ensureConversationStateTable(ctx context.Context, portal *bridgev2.Portal) error {
-	db, _, _, _ := conversationStateDB(portal)
-	if db == nil {
-		return nil
-	}
-	_, err := db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS `+sdkConversationStateTable+` (
-			bridge_id TEXT NOT NULL,
-			login_id TEXT NOT NULL,
-			portal_id TEXT NOT NULL,
-			state_json TEXT NOT NULL DEFAULT '',
-			updated_at_ms INTEGER NOT NULL DEFAULT 0,
-			PRIMARY KEY (bridge_id, login_id, portal_id)
-		)
-	`)
-	return err
-}
-
 func loadConversationState(portal *bridgev2.Portal, store *conversationStateStore) *sdkConversationState {
 	if portal == nil {
 		return &sdkConversationState{}
@@ -146,11 +128,6 @@ func loadConversationState(portal *bridgev2.Portal, store *conversationStateStor
 		loaded, err := loadConversationStateFromDB(context.Background(), portal)
 		if err == nil && loaded != nil {
 			state = loaded
-		}
-	}
-	if conversationStateIsEmpty(state) {
-		if legacy := loadConversationStateFromMetadata(portal); legacy != nil {
-			state = legacy
 		}
 	}
 	state.ensureDefaults()
@@ -171,37 +148,10 @@ func conversationStateIsEmpty(state *sdkConversationState) bool {
 			!state.ArchiveOnCompletion)
 }
 
-func loadConversationStateFromMetadata(portal *bridgev2.Portal) *sdkConversationState {
-	if portal == nil || portal.Metadata == nil {
-		return nil
-	}
-	if typed, ok := portal.Metadata.(*sdkConversationState); ok && typed != nil {
-		clone := typed.clone()
-		if !conversationStateIsEmpty(clone) {
-			return clone
-		}
-	}
-	data, err := json.Marshal(portal.Metadata)
-	if err != nil {
-		return nil
-	}
-	var state sdkConversationState
-	if err = json.Unmarshal(data, &state); err != nil {
-		return nil
-	}
-	if conversationStateIsEmpty(&state) {
-		return nil
-	}
-	return &state
-}
-
 func loadConversationStateFromDB(ctx context.Context, portal *bridgev2.Portal) (*sdkConversationState, error) {
 	db, bridgeID, loginID, portalID := conversationStateDB(portal)
 	if db == nil {
 		return nil, nil
-	}
-	if err := ensureConversationStateTable(ctx, portal); err != nil {
-		return nil, err
 	}
 	var raw string
 	err := db.QueryRow(ctx, `
@@ -236,9 +186,6 @@ func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *
 	db, bridgeID, loginID, portalID := conversationStateDB(portal)
 	if db == nil {
 		return nil
-	}
-	if err := ensureConversationStateTable(ctx, portal); err != nil {
-		return err
 	}
 	payload, err := json.Marshal(state.clone())
 	if err != nil {

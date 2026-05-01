@@ -158,7 +158,7 @@ func (cc *CodexClient) bootstrapCodexPortal(
 	return portal, created, nil
 }
 
-func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Portal, error) {
+func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context, createRoom bool) (*bridgev2.Portal, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return nil, fmt.Errorf("login unavailable")
 	}
@@ -172,7 +172,7 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		AwaitingCwdSetup: true,
 	}
 	info := cc.composeCodexChatInfo(nil, state, false)
-	portal, created, err := cc.bootstrapCodexPortal(ctx, nil, portalKey, state.Title, state, info, true)
+	portal, created, err := cc.bootstrapCodexPortal(ctx, nil, portalKey, state.Title, state, info, createRoom)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +205,7 @@ func (cc *CodexClient) ensureWelcomeCodexChat(ctx context.Context) error {
 	if len(portals) > 0 {
 		return nil
 	}
-	_, err = cc.createWelcomeCodexChat(ctx)
+	_, err = cc.createWelcomeCodexChat(ctx, true)
 	return err
 }
 
@@ -298,7 +298,7 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 	case "help":
 		cc.sendSystemNotice(ctx, portal, codexCommandHelpText())
 	case "new":
-		if _, err := cc.createWelcomeCodexChat(ctx); err != nil {
+		if _, err := cc.createWelcomeCodexChat(ctx, true); err != nil {
 			return nil, true, sdk.MessageSendStatusError(err, "Failed to create a new welcome room.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		cc.sendSystemNotice(ctx, portal, "Created a new welcome room.")
@@ -390,7 +390,7 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 	*state = nextState
 	cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Started a new Codex session in %s", path))
 	go func() {
-		if _, err := cc.createWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
+		if _, err := cc.createWelcomeCodexChat(cc.backgroundContext(ctx), true); err != nil {
 			cc.log.Warn().Err(err).Msg("Failed to create follow-up welcome Codex chat")
 		}
 	}()

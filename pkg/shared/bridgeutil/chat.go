@@ -59,6 +59,14 @@ func BuildDMChatInfo(p DMChatInfoParams) *bridgev2.ChatInfo {
 		Members: &bridgev2.ChatMemberList{
 			IsFull:      true,
 			OtherUserID: p.BotUserID,
+			PowerLevels: &bridgev2.PowerLevelOverrides{
+				Events: map[event.Type]int{
+					event.StateRoomName:                0,
+					event.StateTopic:                   0,
+					event.StateRoomAvatar:              0,
+					event.StateBeeperDisappearingTimer: 0,
+				},
+			},
 			MemberMap: bridgev2.ChatMemberMap{
 				p.HumanUserID: {
 					EventSender: humanSender,

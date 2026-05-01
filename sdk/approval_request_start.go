@@ -76,7 +76,7 @@ func (f *ApprovalFlow[D]) StartApprovalRequest(ctx context.Context, params Start
 	if !params.SendPrompt || params.Portal == nil || params.Portal.MXID == "" || params.OwnerMXID == "" {
 		return started
 	}
-	f.SendPrompt(ctx, params.Portal, SendPromptParams{
+	if err := f.SendPrompt(ctx, params.Portal, SendPromptParams{
 		ApprovalPromptMessageParams: ApprovalPromptMessageParams{
 			ApprovalID:        approvalID,
 			ToolCallID:        params.Request.ToolCallID,
@@ -89,7 +89,9 @@ func (f *ApprovalFlow[D]) StartApprovalRequest(ctx context.Context, params Start
 		},
 		RoomID:    params.Portal.MXID,
 		OwnerMXID: params.OwnerMXID,
-	})
+	}); err != nil {
+		return started
+	}
 	started.PromptSent = true
 	return started
 }

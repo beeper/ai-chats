@@ -374,10 +374,14 @@ func (t *Turn) ensureStarted() {
 		} else if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
 			identity := t.providerIdentity()
 			timing := ResolveEventTiming(time.UnixMilli(t.startedAtMs), 0)
+			sender := t.resolveSender(t.turnCtx)
+			if err := t.ensureSenderJoined(t.turnCtx, sender, bridgev2.RemoteEventMessage); err != nil && t.startErr == nil {
+				t.startErr = err
+			}
 			evtID, msgID, err := SendViaPortal(SendViaPortalParams{
 				Login:       t.conv.login,
 				Portal:      t.conv.portal,
-				Sender:      t.resolveSender(t.turnCtx),
+				Sender:      sender,
 				IDPrefix:    identity.IDPrefix,
 				LogKey:      identity.LogKey,
 				Timestamp:   timing.Timestamp,
@@ -401,6 +405,17 @@ func (t *Turn) ensureStarted() {
 		}
 	}
 	t.Writer().Start(t.turnCtx, baseMeta)
+}
+
+func (t *Turn) ensureSenderJoined(ctx context.Context, sender bridgev2.EventSender, eventType bridgev2.RemoteEventType) error {
+	if t == nil || t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.portal == nil || t.conv.portal.Bridge == nil || t.conv.portal.MXID == "" || sender.Sender == "" {
+		return nil
+	}
+	intent, ok := t.conv.portal.GetIntentFor(ctx, sender, t.conv.login, eventType)
+	if !ok || intent == nil {
+		return nil
+	}
+	return intent.EnsureJoined(ctx, t.conv.portal.MXID)
 }
 
 func (t *Turn) applyPlaceholderSendResult(evtID id.EventID, msgID networkid.MessageID) {
@@ -694,6 +709,9 @@ func (t *Turn) sendFinalEdit(ctx context.Context, finishReason string) {
 		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
 			metadata = custom
 		}
+	}
+	if err := t.ensureSenderJoined(ctx, sender, bridgev2.RemoteEventMessage); err != nil && t.conv.login != nil {
+		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to join sender before final turn edit")
 	}
 	if err := SendEditViaPortal(
 		t.conv.login,

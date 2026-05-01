@@ -143,17 +143,20 @@ func ensureAIPortalRecordByScope(ctx context.Context, scope *portalScope) (*aiPe
 }
 
 func allocateAITurnSequence(ctx context.Context, scope *portalScope) (contextEpoch, sequence int64, err error) {
-	record, err := ensureAIPortalRecordByScope(ctx, scope)
-	if err != nil || record == nil {
-		return 0, 0, err
+	if scope == nil {
+		return 0, 0, nil
 	}
-	contextEpoch = record.ContextEpoch
-	sequence = record.NextTurnSequence + 1
-	_, err = scope.db.Exec(ctx, `
-		UPDATE `+aiPortalStateTable+`
-		SET next_turn_sequence=$4
-		WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3
-	`, scope.bridgeID, scope.portalID, scope.portalReceiver, sequence)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err = scope.db.QueryRow(ctx, `
+		INSERT INTO `+aiPortalStateTable+` (
+			bridge_id, portal_id, portal_receiver, context_epoch, next_turn_sequence
+		) VALUES ($1, $2, $3, 0, 1)
+		ON CONFLICT (bridge_id, portal_id, portal_receiver) DO UPDATE SET
+			next_turn_sequence=`+aiPortalStateTable+`.next_turn_sequence + 1
+		RETURNING context_epoch, next_turn_sequence
+	`, scope.bridgeID, scope.portalID, scope.portalReceiver).Scan(&contextEpoch, &sequence)
 	return contextEpoch, sequence, err
 }
 

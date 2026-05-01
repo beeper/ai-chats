@@ -29,21 +29,21 @@ type SendPromptParams struct {
 // SendPrompt builds an approval prompt message, registers it in the prompt
 // store, sends it via the configured sender, binds the prompt identifiers, and
 // queues prefill reactions.
-func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Portal, params SendPromptParams) {
+func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Portal, params SendPromptParams) error {
 	if f == nil || portal == nil || portal.MXID == "" {
-		return
+		return nil
 	}
 	f.ensureReaperRunning()
 	if f.login == nil {
-		return
+		return nil
 	}
 	login := f.login()
 	if login == nil {
-		return
+		return nil
 	}
 	approvalID := strings.TrimSpace(params.ApprovalID)
 	if approvalID == "" {
-		return
+		return nil
 	}
 
 	prompt := BuildApprovalPromptMessage(params.ApprovalPromptMessageParams)
@@ -110,7 +110,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 			f.registerPromptLocked(prevPromptCopy)
 		}
 		f.mu.Unlock()
-		return
+		return err
 	}
 
 	f.mu.Lock()
@@ -127,7 +127,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 			Str("approval_msg_id", string(msgID)).
 			Str("approval_id", approvalID).
 			Msg("Failed to bind approval prompt message ID")
-		return
+		return nil
 	}
 
 	f.sendPrefillReactions(ctx, portal, login, approvalReactionTargetMessageID(ApprovalPromptRegistration{
@@ -135,6 +135,7 @@ func (f *ApprovalFlow[D]) SendPrompt(ctx context.Context, portal *bridgev2.Porta
 		PromptMessageID:         msgID,
 	}), prompt.Options)
 	f.schedulePromptTimeout(approvalID, params.ExpiresAt)
+	return nil
 }
 
 // ---------------------------------------------------------------------------

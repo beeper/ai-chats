@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS aichats_memory_session_files (
   hash TEXT NOT NULL,
   size INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  PRIMARY KEY (bridge_id, login_id, agent_id, session_key, path)
+  PRIMARY KEY (bridge_id, login_id, agent_id, session_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_aichats_memory_session_files_path ON aichats_memory_session_files(path);
@@ -212,6 +212,15 @@ CREATE TABLE IF NOT EXISTS aichats_portal_state (
   context_epoch INTEGER NOT NULL DEFAULT 0,
   next_turn_sequence INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bridge_id, portal_id, portal_receiver)
+);
+
+CREATE TABLE IF NOT EXISTS sdk_conversation_state (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
+  state_json TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, portal_id)
 );
 
 CREATE TABLE IF NOT EXISTS aichats_tool_approval_rules (

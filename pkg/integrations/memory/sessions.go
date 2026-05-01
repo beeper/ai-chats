@@ -117,7 +117,7 @@ func (m *MemorySearchManager) saveSessionState(ctx context.Context, sessionKey s
 		`INSERT INTO aichats_memory_session_state
            (bridge_id, login_id, agent_id, session_key, content_hash, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (bridge_id, login_id, agent_id, session_key)
+	         ON CONFLICT (bridge_id, login_id, agent_id, session_key)
          DO UPDATE SET content_hash=excluded.content_hash, updated_at=excluded.updated_at`,
 		m.baseArgs(sessionKey, state.contentHash, time.Now().UnixMilli())...,
 	)

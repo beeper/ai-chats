@@ -12,6 +12,19 @@ import (
 
 func setupConversationStateTestPortal(t *testing.T, receiver networkid.UserLoginID, portalID networkid.PortalID) *bridgev2.Portal {
 	t.Helper()
+	bridgeDB := newTestBridgeDB(t)
+	if _, err := bridgeDB.Database.Exec(context.Background(), `
+		CREATE TABLE sdk_conversation_state (
+			bridge_id TEXT NOT NULL,
+			login_id TEXT NOT NULL,
+			portal_id TEXT NOT NULL,
+			state_json TEXT NOT NULL DEFAULT '',
+			updated_at_ms INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (bridge_id, login_id, portal_id)
+		)
+	`); err != nil {
+		t.Fatalf("create sdk conversation state table: %v", err)
+	}
 	return &bridgev2.Portal{
 		Portal: &database.Portal{
 			PortalKey: networkid.PortalKey{
@@ -20,7 +33,7 @@ func setupConversationStateTestPortal(t *testing.T, receiver networkid.UserLogin
 			},
 			MXID: id.RoomID("!room:test"),
 		},
-		Bridge: &bridgev2.Bridge{DB: newTestBridgeDB(t)},
+		Bridge: &bridgev2.Bridge{DB: bridgeDB},
 	}
 }
 

@@ -525,8 +525,9 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 		if createChat {
 			oc.loggerForContext(ctx).Info().Str("agent", agent.ID).Msg("Creating new chat")
 			chatResp, err = oc.createChat(ctx, chatCreateParams{
-				ModelID: modelID,
-				Agent:   agent,
+				ModelID:          modelID,
+				Agent:            agent,
+				SkipRoomCreation: true,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
@@ -561,7 +562,7 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 		var chatResp *bridgev2.CreateChatResponse
 		if createChat {
 			oc.loggerForContext(ctx).Info().Str("model", modelID).Msg("Creating new chat")
-			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID})
+			chatResp, err = oc.createChat(ctx, chatCreateParams{ModelID: modelID, SkipRoomCreation: true})
 			if err != nil {
 				return nil, fmt.Errorf("failed to create chat: %w", err)
 			}
@@ -651,6 +652,7 @@ type chatCreateParams struct {
 	RoomName           string
 	ParentRoomID       id.RoomID
 	RuntimeReasoning   string
+	SkipRoomCreation   bool
 }
 
 func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*bridgev2.CreateChatResponse, error) {
@@ -700,15 +702,17 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 			return nil, fmt.Errorf("failed to save chat setup: %w", err)
 		}
 	}
-	portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
-		Portal:   portal,
-		ChatInfo: chatInfo,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to materialize chat room: %w", err)
-	}
-	if err := oc.sendDisclaimerNotice(ctx, portal); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("portal", portal.PortalKey).Msg("Failed to send initial disclaimer after chat creation")
+	if !params.SkipRoomCreation {
+		portal, err = oc.ensurePortalRoom(ctx, ensurePortalRoomParams{
+			Portal:   portal,
+			ChatInfo: chatInfo,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to materialize chat room: %w", err)
+		}
+		if err := oc.sendDisclaimerNotice(ctx, portal); err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Stringer("portal", portal.PortalKey).Msg("Failed to send initial disclaimer after chat creation")
+		}
 	}
 
 	return &bridgev2.CreateChatResponse{

@@ -285,6 +285,21 @@ func (oc *AIClient) initIntegrations() {
 	registerModuleCommands(oc.commandRegistry.definitions())
 }
 
+func (oc *OpenAIConnector) registerStaticIntegrationCommands() {
+	host := &runtimeIntegrationHost{}
+	modules := []integrationruntime.ModuleHooks{
+		integrationcron.NewWithScheduler(host, nil),
+		integrationmemory.NewWithDeps(host, integrationmemory.IntegrationDeps{}),
+	}
+	for _, module := range modules {
+		commandIntegration, ok := module.(integrationruntime.CommandIntegration)
+		if !ok {
+			continue
+		}
+		registerModuleCommands(commandIntegration.CommandDefinitions(context.Background(), integrationruntime.CommandScope{}))
+	}
+}
+
 func (oc *AIClient) integrationModuleEnabled(name string) bool {
 	raw, ok := oc.integrationModuleValue(name)
 	if !ok {

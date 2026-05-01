@@ -17,6 +17,8 @@ var moduleCommandRegisterMu sync.Mutex
 var moduleCommandsRegistered = map[string]struct{}{}
 var allowedUserCommandNames = map[string]struct{}{
 	"agents": {},
+	"cron":   {},
+	"memory": {},
 	"new":    {},
 	"reset":  {},
 	"status": {},
@@ -121,8 +123,9 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 			if !isUserFacingCommand(handler.Name) {
 				continue
 			}
-			original := handler.Func
-			handler.Func = func(ce *commands.Event) {
+			handlerCopy := *handler
+			original := handlerCopy.Func
+			handlerCopy.Func = func(ce *commands.Event) {
 				senderID := ""
 				if ce != nil && ce.User != nil {
 					senderID = ce.User.MXID.String()
@@ -136,7 +139,7 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 				}
 				original(ce)
 			}
-			commandHandlers = append(commandHandlers, handler)
+			commandHandlers = append(commandHandlers, &handlerCopy)
 		}
 		proc.AddHandlers(commandHandlers...)
 	}

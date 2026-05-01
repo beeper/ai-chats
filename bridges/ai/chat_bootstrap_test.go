@@ -113,7 +113,7 @@ func TestSendDisclaimerNoticeIsIdempotentAfterCreateChat(t *testing.T) {
 	}
 }
 
-func TestCreateChatWithGhostSendsDisclaimerOnMaterialization(t *testing.T) {
+func TestCreateChatWithGhostReturnsUnmaterializedPortal(t *testing.T) {
 	ctx := context.Background()
 	client := newDBBackedTestAIClient(t, ProviderMagicProxy)
 
@@ -138,16 +138,12 @@ func TestCreateChatWithGhostSendsDisclaimerOnMaterialization(t *testing.T) {
 	if resp == nil || resp.Portal == nil {
 		t.Fatalf("expected chat response with portal, got %#v", resp)
 	}
-	if resp.Portal.MXID == "" {
-		t.Fatal("expected CreateChatWithGhost to materialize a Matrix room")
+	if resp.Portal.MXID != "" {
+		t.Fatalf("expected CreateChatWithGhost to leave room creation to bridgev2, got %q", resp.Portal.MXID)
 	}
-
-	msg := waitForNoticeSend(t, ghostAPI)
-	if msg.MsgType != event.MsgNotice {
-		t.Fatalf("expected notice message, got %q", msg.MsgType)
-	}
-	if !strings.Contains(msg.Body, "AI can make mistakes.") {
-		t.Fatalf("expected AI disclaimer, got %q", msg.Body)
+	time.Sleep(50 * time.Millisecond)
+	if ghostAPI.sendCount != 0 {
+		t.Fatalf("expected no disclaimer before materialization, got %d", ghostAPI.sendCount)
 	}
 	if botAPI.sendCount != 0 {
 		t.Fatalf("expected no bot sends, got %d", botAPI.sendCount)
