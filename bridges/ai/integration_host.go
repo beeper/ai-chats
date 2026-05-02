@@ -21,15 +21,6 @@ type runtimeIntegrationHost struct {
 	client *AIClient
 }
 
-// ---- Core Host interface ----
-
-func (h *runtimeIntegrationHost) Logger() integrationruntime.Logger {
-	if h == nil || h.client == nil {
-		return nil
-	}
-	return h
-}
-
 func (h *runtimeIntegrationHost) ModuleConfig(name string) map[string]any {
 	if h == nil || h.client == nil || h.client.connector == nil {
 		return nil
@@ -408,34 +399,6 @@ func (h *runtimeIntegrationHost) SessionPortals(ctx context.Context, agentID str
 		out = append(out, integrationruntime.SessionPortalInfo{Key: key, PortalKey: portal.PortalKey})
 	}
 	return out, nil
-}
-
-// ---- Logger ----
-
-func (h *runtimeIntegrationHost) emit(level string, msg string, fields map[string]any) {
-	if h == nil || h.client == nil {
-		return
-	}
-	logger := h.client.log.With().Fields(fields).Logger()
-	switch level {
-	case "debug":
-		logger.Debug().Msg(msg)
-	case "info":
-		logger.Info().Msg(msg)
-	case "warn":
-		logger.Warn().Msg(msg)
-	case "error":
-		logger.Error().Msg(msg)
-	}
-}
-
-func (h *runtimeIntegrationHost) Debug(msg string, fields map[string]any) {
-	h.emit("debug", msg, fields)
-}
-func (h *runtimeIntegrationHost) Info(msg string, fields map[string]any) { h.emit("info", msg, fields) }
-func (h *runtimeIntegrationHost) Warn(msg string, fields map[string]any) { h.emit("warn", msg, fields) }
-func (h *runtimeIntegrationHost) Error(msg string, fields map[string]any) {
-	h.emit("error", msg, fields)
 }
 
 // ---- AIClient message helpers (called from sessions_tools.go) ----

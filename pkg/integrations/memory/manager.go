@@ -141,6 +141,10 @@ func GetMemorySearchManager(host iruntime.Host, deps IntegrationDeps, agentID st
 	if existing := memoryManagerCache.managers[cacheKey]; existing != nil {
 		return existing, ""
 	}
+	log := zerolog.Nop()
+	if host != nil {
+		log = host.RawLogger()
+	}
 
 	manager := &MemorySearchManager{
 		host:         host,
@@ -154,7 +158,7 @@ func GetMemorySearchManager(host iruntime.Host, deps IntegrationDeps, agentID st
 			Provider: "builtin",
 			Model:    "lexical",
 		},
-		log: iruntime.ZerologFromHost(host).With().Str("component", "memory").Logger(),
+		log: log.With().Str("component", "memory").Logger(),
 	}
 	manager.startIntervalSync = sync.OnceFunc(func() {
 		interval := time.Duration(manager.cfg.Sync.IntervalMinutes) * time.Minute

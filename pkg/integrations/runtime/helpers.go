@@ -2,18 +2,7 @@ package runtime
 
 import (
 	"strings"
-
-	"github.com/rs/zerolog"
 )
-
-// ZerologFromHost extracts a zerolog.Logger from a Host.
-// Returns zerolog.Nop() if the host is nil.
-func ZerologFromHost(host Host) zerolog.Logger {
-	if host == nil {
-		return zerolog.Nop()
-	}
-	return host.RawLogger()
-}
 
 // ModuleOrNil returns nil when the host is absent, otherwise it constructs the module.
 func ModuleOrNil[T ModuleHooks](host Host, newFn func(Host) T) T {

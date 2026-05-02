@@ -146,7 +146,6 @@ type LoginPurgeIntegration interface {
 // It is intentionally direct: modules call host methods rather than retrieving
 // nested capability objects or type-asserting optional host adapters.
 type Host interface {
-	Logger() Logger
 	RawLogger() zerolog.Logger
 	ModuleConfig(name string) map[string]any
 	AgentModuleConfig(agentID string, module string) map[string]any
@@ -181,12 +180,4 @@ type Host interface {
 
 	SessionPortals(ctx context.Context, agentID string) ([]SessionPortalInfo, error)
 	SessionTranscript(ctx context.Context, portalKey networkid.PortalKey) ([]MessageSummary, error)
-}
-
-// Logger is a minimal structured logger abstraction.
-type Logger interface {
-	Debug(msg string, fields map[string]any)
-	Info(msg string, fields map[string]any)
-	Warn(msg string, fields map[string]any)
-	Error(msg string, fields map[string]any)
 }

@@ -156,10 +156,8 @@ func (i *Integration) OnCompactionLifecycle(ctx context.Context, evt iruntime.Co
 		return
 	}
 	if err := i.host.SavePortal(ctx, evt.Portal, "compaction lifecycle"); err != nil {
-		i.host.Logger().Warn("failed to persist compaction lifecycle metadata", map[string]any{
-			"error": err.Error(),
-			"phase": string(evt.Phase),
-		})
+		log := i.host.RawLogger()
+		log.Warn().Err(err).Str("phase", string(evt.Phase)).Msg("failed to persist compaction lifecycle metadata")
 	}
 }
 
@@ -252,7 +250,8 @@ func (i *Integration) buildOverflowDeps() OverflowDeps {
 			return i.runFlushToolLoop(ctx, call.Portal, call.Meta, model, prompt)
 		},
 		OnError: func(_ context.Context, err error) {
-			i.host.Logger().Warn("overflow flush failed", map[string]any{"error": err.Error()})
+			log := i.host.RawLogger()
+			log.Warn().Err(err).Msg("overflow flush failed")
 		},
 	}
 }
@@ -383,7 +382,8 @@ func (i *Integration) runFlushToolLoop(
 			return i.host.ExecuteToolInContext(ctx, portal, meta, name, argsJSON)
 		},
 		OnToolError: func(name string, err error) {
-			i.host.Logger().Warn("overflow flush tool failed", map[string]any{"tool": name, "error": err.Error()})
+			log := i.host.RawLogger()
+			log.Warn().Str("tool", name).Err(err).Msg("overflow flush tool failed")
 		},
 	}); err != nil {
 		return false, err
