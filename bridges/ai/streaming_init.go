@@ -38,7 +38,7 @@ func (oc *AIClient) createStreamingTurn(
 	turn := conv.StartTurn(ctx, nil, &sdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
 	turn.SetSender(sender)
 	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, _ string) any {
-		return oc.buildStreamingMessageMetadata(state, meta, nil)
+		return oc.buildStreamingMessageMetadata(state, meta, buildCanonicalTurnData(state, nil))
 	}))
 	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
 		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)

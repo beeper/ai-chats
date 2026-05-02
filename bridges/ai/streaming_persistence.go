@@ -14,7 +14,7 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *PortalMetadata, uiMessage map[string]any) *MessageMetadata {
+func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *PortalMetadata, turnData sdk.TurnData) *MessageMetadata {
 	if state == nil {
 		return nil
 	}
@@ -22,22 +22,6 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 	turnID := ""
 	if turn != nil {
 		turnID = turn.ID()
-	}
-	if len(uiMessage) == 0 && turn != nil {
-		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
-	}
-	var turnData sdk.TurnData
-	if turn != nil {
-		turnData = buildCanonicalTurnData(state, nil)
-	} else if len(uiMessage) != 0 {
-		turnData = sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-			ID:             turnID,
-			Role:           "assistant",
-			Text:           displayStreamingText(state),
-			Reasoning:      state.reasoning.String(),
-			ToolCalls:      state.toolCalls,
-			GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
-		})
 	}
 	modelID := state.respondingModelID
 	if modelID == "" {
@@ -90,11 +74,11 @@ func (oc *AIClient) saveAssistantMessage(
 	if state == nil {
 		return
 	}
-	uiMessage := map[string]any(nil)
+	var turnData sdk.TurnData
 	if state.turn != nil {
-		uiMessage = oc.buildStreamUIMessage(state, meta, nil)
+		turnData = buildCanonicalTurnData(state, nil)
 	}
-	fullMeta := oc.buildStreamingMessageMetadata(state, meta, uiMessage)
+	fullMeta := oc.buildStreamingMessageMetadata(state, meta, turnData)
 	turn := state.turn
 	networkMessageID := networkid.MessageID("")
 	initialEventID := id.EventID("")

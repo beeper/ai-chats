@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {
@@ -36,7 +37,7 @@ func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {
 func TestBuildStreamingMessageMetadataHandlesNilTurn(t *testing.T) {
 	state := newStreamingState(context.Background(), nil, "")
 
-	meta := (&AIClient{}).buildStreamingMessageMetadata(state, nil, nil)
+	meta := (&AIClient{}).buildStreamingMessageMetadata(state, nil, sdk.TurnData{})
 	if meta == nil {
 		t.Fatal("expected metadata")
 	}
