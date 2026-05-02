@@ -243,6 +243,15 @@ CREATE INDEX IF NOT EXISTS idx_aichats_sessions_lookup
 CREATE INDEX IF NOT EXISTS idx_aichats_sessions_updated
   ON aichats_sessions(bridge_id, login_id, store_agent_id, updated_at_ms);
 
+CREATE TABLE IF NOT EXISTS sdk_conversation_state (
+  bridge_id TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  portal_id TEXT NOT NULL,
+  state_json TEXT NOT NULL DEFAULT '',
+  updated_at_ms INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (bridge_id, login_id, portal_id)
+);
+
 CREATE TABLE IF NOT EXISTS aichats_turns (
   bridge_id TEXT NOT NULL,
   portal_id TEXT NOT NULL,
@@ -254,7 +263,7 @@ CREATE TABLE IF NOT EXISTS aichats_turns (
   source TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT '',
   sender_id TEXT NOT NULL DEFAULT '',
-  include_in_history INTEGER NOT NULL DEFAULT 1,
+  include_in_history BOOLEAN NOT NULL DEFAULT true,
   turn_data_json TEXT NOT NULL DEFAULT '{}',
   meta_json TEXT NOT NULL DEFAULT '{}',
   created_at_ms INTEGER NOT NULL DEFAULT 0,

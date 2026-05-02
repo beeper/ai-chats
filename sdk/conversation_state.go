@@ -63,16 +63,6 @@ func (s *sdkConversationState) ensureDefaults() {
 
 const sdkConversationStateTable = "sdk_conversation_state"
 
-const sdkConversationStateSchema = `
-CREATE TABLE IF NOT EXISTS sdk_conversation_state (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  portal_id TEXT NOT NULL,
-  state_json TEXT NOT NULL DEFAULT '',
-  updated_at_ms INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (bridge_id, login_id, portal_id)
-)`
-
 type conversationStateStore struct {
 	mu    sync.RWMutex
 	rooms map[string]*sdkConversationState
@@ -163,9 +153,6 @@ func loadConversationStateFromDB(ctx context.Context, portal *bridgev2.Portal) (
 	if db == nil {
 		return nil, nil
 	}
-	if err := ensureConversationStateTable(ctx, db); err != nil {
-		return nil, err
-	}
 	var raw string
 	err := db.QueryRow(ctx, `
 		SELECT state_json
@@ -200,9 +187,6 @@ func saveConversationState(ctx context.Context, portal *bridgev2.Portal, store *
 	if db == nil {
 		return nil
 	}
-	if err := ensureConversationStateTable(ctx, db); err != nil {
-		return err
-	}
 	payload, err := json.Marshal(state.clone())
 	if err != nil {
 		return err
@@ -222,9 +206,6 @@ func DeleteConversationState(ctx context.Context, portal *bridgev2.Portal) error
 	if db == nil {
 		return nil
 	}
-	if err := ensureConversationStateTable(ctx, db); err != nil {
-		return err
-	}
 	_, err := db.Exec(ctx, `
 		DELETE FROM `+sdkConversationStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2 AND portal_id=$3
@@ -236,20 +217,9 @@ func DeleteLoginConversationState(ctx context.Context, db *dbutil.Database, brid
 	if db == nil || bridgeID == "" || loginID == "" {
 		return nil
 	}
-	if err := ensureConversationStateTable(ctx, db); err != nil {
-		return err
-	}
 	_, err := db.Exec(ctx, `
 		DELETE FROM `+sdkConversationStateTable+`
 		WHERE bridge_id=$1 AND login_id=$2
 	`, bridgeID, loginID)
-	return err
-}
-
-func ensureConversationStateTable(ctx context.Context, db *dbutil.Database) error {
-	if db == nil {
-		return nil
-	}
-	_, err := db.Exec(ctx, sdkConversationStateSchema)
 	return err
 }

@@ -64,7 +64,10 @@ func (oc *AIClient) finalizeStreamingStepError(
 			err:    finalErr,
 		})
 		if cle != nil {
-			return cle, err
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to finalize context-length streaming turn")
+			}
+			return cle, nil
 		}
 		return nil, err
 	}

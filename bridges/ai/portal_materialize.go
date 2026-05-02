@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 )
 
 type ensurePortalRoomParams struct {
@@ -37,5 +39,30 @@ func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoo
 	}
 	params.Portal.UpdateBridgeInfo(ctx)
 	params.Portal.UpdateCapabilities(ctx, oc.UserLogin, true)
+	oc.sendAIChatsRoomInfo(ctx, params.Portal)
+	oc.BroadcastCommandDescriptions(ctx, params.Portal)
 	return params.Portal, nil
+}
+
+func (oc *AIClient) sendAIChatsRoomInfo(ctx context.Context, portal *bridgev2.Portal) bool {
+	if portal == nil || portal.MXID == "" || portal.Bridge == nil || portal.Bridge.Bot == nil {
+		return false
+	}
+	aiKind := integrationPortalAIKind(portalMeta(portal))
+	if aiKind == "" {
+		aiKind = "agent"
+	}
+	_, err := portal.Bridge.Bot.SendState(ctx, portal.MXID, AIRoomInfoEventType, "", &event.Content{
+		Parsed: &AIRoomInfoContent{Type: aiKind},
+		Raw:    map[string]any{"com.beeper.exclude_from_timeline": true},
+	}, time.Now())
+	if err != nil {
+		logger := zerolog.Ctx(ctx)
+		if logger == nil || logger.GetLevel() == zerolog.Disabled {
+			logger = oc.loggerForContext(ctx)
+		}
+		logger.Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send AI room info state event")
+		return false
+	}
+	return true
 }

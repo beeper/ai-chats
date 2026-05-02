@@ -1,12 +1,16 @@
 package ai
 
 import (
+	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
+	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/event/cmdschema"
 
 	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
@@ -150,4 +154,38 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 		Int("section_order", section.Order).
 		Strs("commands", names).
 		Msg("Registered AI commands: " + strings.Join(names, ", "))
+}
+
+func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || portal == nil || portal.MXID == "" {
+		return
+	}
+	bot := oc.UserLogin.Bridge.Bot
+	if bot == nil {
+		return
+	}
+	for _, handler := range aiCommandRegistry.All() {
+		if handler == nil || handler.Name == "" || !isUserFacingCommand(handler.Name) {
+			continue
+		}
+		content := &cmdschema.EventContent{
+			Command:     handler.Name,
+			Description: event.MakeExtensibleText(commandDescription(handler)),
+		}
+		_, err := bot.SendState(ctx, portal.MXID, event.StateMSC4391BotCommand, handler.Name, &event.Content{
+			Parsed: content,
+		}, time.Time{})
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Str("command", handler.Name).Stringer("room_id", portal.MXID).Msg("Failed to send command description state")
+		}
+	}
+}
+
+func commandDescription(handler *commands.FullHandler) string {
+	if handler != nil {
+		if description := strings.TrimSpace(handler.Help.Description); description != "" {
+			return description
+		}
+	}
+	return "AI command"
 }

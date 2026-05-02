@@ -321,7 +321,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if err = oc.dispatchOrQueueCore(runCtx, pendingEvent, portal, runMeta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 // HandleMatrixTyping currently ignores local typing updates.
@@ -694,7 +694,7 @@ func (oc *AIClient) handleMediaMessage(
 		if err = oc.dispatchOrQueueCore(promptCtx, pendingEvent, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 			return nil, err
 		}
-		return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
+		return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 	}
 
 	var understanding *mediaUnderstandingResult
@@ -820,7 +820,7 @@ func (oc *AIClient) handleMediaMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 func (oc *AIClient) dispatchMediaUnderstandingFallback(
@@ -965,7 +965,7 @@ func (oc *AIClient) handleTextFileMessage(
 	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
 		return nil, err
 	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage}, nil
+	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

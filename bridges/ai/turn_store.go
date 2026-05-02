@@ -654,7 +654,7 @@ func queryAITurnRows(ctx context.Context, scope *portalScope, query aiTurnQuery)
 		sqlQuery += ` AND t.kind=$` + strconv.Itoa(len(args))
 	}
 	if query.includeInHistory {
-		sqlQuery += ` AND t.include_in_history=1`
+		sqlQuery += ` AND t.include_in_history=true`
 	}
 	if query.maxSequenceExclusive > 0 {
 		args = append(args, query.maxSequenceExclusive)

@@ -53,7 +53,7 @@ func TestApplyAIChatsBridgeInfo(t *testing.T) {
 		}
 	})
 
-	t.Run("beeper rooms keep ai protocol id", func(t *testing.T) {
+	t.Run("beeper rooms use beeper protocol id", func(t *testing.T) {
 		portal := &bridgev2.Portal{Portal: &database.Portal{
 			RoomType: database.RoomTypeDM,
 			PortalKey: networkid.PortalKey{
@@ -64,8 +64,8 @@ func TestApplyAIChatsBridgeInfo(t *testing.T) {
 
 		applyAIChatsBridgeInfo(portal, nil, content)
 
-		if content.Protocol.ID != aiBridgeProtocolID {
-			t.Fatalf("expected protocol id %q, got %q", aiBridgeProtocolID, content.Protocol.ID)
+		if content.Protocol.ID != "beeper" {
+			t.Fatalf("expected protocol id %q, got %q", "beeper", content.Protocol.ID)
 		}
 	})
 

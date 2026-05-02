@@ -22,12 +22,8 @@ func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {
 	if cle == nil {
 		t.Fatal("expected context-length error")
 	}
-	if err == nil {
-		t.Fatal("expected stream finalization error")
-	}
-	var preDelta *PreDeltaError
-	if !errors.As(err, &preDelta) {
-		t.Fatalf("expected PreDeltaError wrapper, got %T", err)
+	if err != nil {
+		t.Fatalf("expected context-length finalization to preserve retry path, got %v", err)
 	}
 	if state.finishReason != "context-length" {
 		t.Fatalf("expected finish reason to be context-length, got %q", state.finishReason)

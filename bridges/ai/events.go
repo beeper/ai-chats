@@ -1,15 +1,26 @@
 package ai
 
 import (
+	"reflect"
+
+	"maunium.net/go/mautrix/event"
+
 	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 )
+
+func init() {
+	event.TypeMap[AIRoomInfoEventType] = reflect.TypeOf(AIRoomInfoContent{})
+}
 
 // StreamEventMessageType is the unified event type for AI streaming updates (ephemeral).
 var StreamEventMessageType = matrixevents.StreamEventMessageType
 
 // CompactionStatusEventType notifies clients about context compaction
 var CompactionStatusEventType = matrixevents.CompactionStatusEventType
+
+// AIRoomInfoEventType stores lightweight room metadata for AI rooms.
+var AIRoomInfoEventType = matrixevents.AIRoomInfoEventType
 
 type ToolStatus = matrixevents.ToolStatus
 
@@ -90,6 +101,11 @@ type ModelInfo struct {
 	ContextWindow       int      `json:"context_window,omitempty"`
 	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
 	AvailableTools      []string `json:"available_tools,omitempty"`
+}
+
+// AIRoomInfoContent identifies the AI room surface for clients and sync state stores.
+type AIRoomInfoContent struct {
+	Type string `json:"type"`
 }
 
 // AgentDefinitionContent stores agent configuration in Matrix state events.

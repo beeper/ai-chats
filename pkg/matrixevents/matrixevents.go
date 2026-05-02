@@ -15,6 +15,8 @@ var (
 	StreamEventMessageType = event.Type{Type: "com.beeper.llm", Class: event.EphemeralEventType}
 
 	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
+
+	AIRoomInfoEventType = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
 )
 
 // Relation types.
