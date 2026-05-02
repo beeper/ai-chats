@@ -30,7 +30,6 @@ func cacheHeartbeatTestPortals(t *testing.T, client *AIClient, portals ...*bridg
 			if err = persisted.Save(context.Background()); err != nil {
 				t.Fatalf("Save(%v) returned error: %v", portal.PortalKey, err)
 			}
-			portal = persisted
 		}
 	}
 }
