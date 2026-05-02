@@ -301,13 +301,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: &MessageMetadata{
+		Metadata: attachPromptTurnData(&MessageMetadata{
 			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: body},
-		},
+		}, promptContext),
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
-	}
-	if promptContext.CurrentTurnData.Role != "" {
-		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
 	queueItem := pendingQueueItem{
 		pending: pending,
@@ -674,13 +671,10 @@ func (oc *AIClient) handleMediaMessage(
 			MXID:     eventID,
 			Room:     portal.PortalKey,
 			SenderID: humanUserID(oc.UserLogin.ID),
-			Metadata: &MessageMetadata{
+			Metadata: attachPromptTurnData(&MessageMetadata{
 				BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: body},
-			},
+			}, promptContext),
 			Timestamp: sdk.MatrixEventTimestamp(msg.Event),
-		}
-		if promptContext.CurrentTurnData.Role != "" {
-			userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 		}
 		queueItem := pendingQueueItem{
 			pending: pending,
@@ -796,9 +790,7 @@ func (oc *AIClient) handleMediaMessage(
 		userMeta.MediaUnderstandingDecisions = understanding.Decisions
 		userMeta.Transcript = understanding.Transcript
 	}
-	if promptContext.CurrentTurnData.Role != "" {
-		userMeta.CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
-	}
+	attachPromptTurnData(userMeta, promptContext)
 
 	userMessage := &database.Message{
 		ID:        sdk.MatrixMessageID(eventID),
@@ -945,13 +937,10 @@ func (oc *AIClient) handleTextFileMessage(
 		MXID:     eventID,
 		Room:     portal.PortalKey,
 		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: &MessageMetadata{
+		Metadata: attachPromptTurnData(&MessageMetadata{
 			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: combined},
-		},
+		}, promptContext),
 		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
-	}
-	if promptContext.CurrentTurnData.Role != "" {
-		userMessage.Metadata.(*MessageMetadata).CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
 	}
 	queueItem := pendingQueueItem{
 		pending: pending,

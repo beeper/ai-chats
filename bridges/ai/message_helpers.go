@@ -51,6 +51,18 @@ func cloneMessageMetadata(src *MessageMetadata) *MessageMetadata {
 	return &clone
 }
 
+func attachPromptTurnData(meta *MessageMetadata, promptContext PromptContext) *MessageMetadata {
+	if meta == nil {
+		return nil
+	}
+	if promptContext.CurrentTurnData.Role == "" {
+		meta.CanonicalTurnData = nil
+		return meta
+	}
+	meta.CanonicalTurnData = promptContext.CurrentTurnData.ToMap()
+	return meta
+}
+
 func cloneMessageForAIHistory(msg *database.Message) *database.Message {
 	if msg == nil {
 		return nil
