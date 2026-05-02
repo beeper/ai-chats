@@ -356,7 +356,7 @@ func (b *BossStoreAdapter) RunInternalCommand(ctx context.Context, roomID string
 	cmdName := strings.ToLower(args[0])
 	rawArgs := strings.TrimLeft(strings.TrimPrefix(command, args[0]), " ")
 
-	handler := aiCommandRegistry.Get(cmdName)
+	handler := aiCommand(cmdName)
 	if handler == nil {
 		return "", fmt.Errorf("unknown AI command: %s", cmdName)
 	}

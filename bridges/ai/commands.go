@@ -9,7 +9,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -85,7 +84,7 @@ func isValidAgentID(agentID string) bool {
 	return true
 }
 
-var _ = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(aiCommandDefinition{
 	Name:           "new",
 	Description:    "Create a new chat of the same type (agent or model)",
 	Args:           "[agent <agent_id>]",
@@ -108,7 +107,7 @@ func fnNew(ce *commands.Event) {
 	go client.handleNewChat(ce.Ctx, nil, ce.Portal, meta, ce.Args)
 }
 
-var _ = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(aiCommandDefinition{
 	Name:          "agents",
 	Description:   "Set whether this login exposes agent chats or model rooms only",
 	Args:          "[on|off|status]",

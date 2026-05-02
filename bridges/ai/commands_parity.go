@@ -5,11 +5,10 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2/commands"
 
-	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
-var _ = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(aiCommandDefinition{
 	Name:           "status",
 	Description:    "Show current session status",
 	Section:        HelpSectionAI,
@@ -32,7 +31,7 @@ func fnStatus(ce *commands.Event) {
 	ce.Reply("%s", client.buildStatusText(ce.Ctx, ce.Portal, meta, isGroup, queueSettings))
 }
 
-var _ = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(aiCommandDefinition{
 	Name:           "reset",
 	Description:    "Start a new session/thread in this room",
 	Section:        HelpSectionAI,
@@ -59,7 +58,7 @@ func fnReset(ce *commands.Event) {
 	ce.Reply("%s", strings.TrimSpace("Session reset."))
 }
 
-var _ = registerAICommand(commandregistry.Definition{
+var _ = registerAICommand(aiCommandDefinition{
 	Name:           "stop",
 	Description:    "Abort the current run and clear the pending queue",
 	Section:        HelpSectionAI,

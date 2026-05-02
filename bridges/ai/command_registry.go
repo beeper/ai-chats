@@ -1,7 +1,9 @@
 package ai
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -12,11 +14,20 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/event/cmdschema"
 
-	"github.com/beeper/agentremote/bridges/ai/commandregistry"
 	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 )
 
-var aiCommandRegistry = commandregistry.NewRegistry()
+type aiCommandDefinition struct {
+	Name           string
+	Description    string
+	Args           string
+	Section        commands.HelpSection
+	RequiresPortal bool
+	RequiresLogin  bool
+	Handler        func(*commands.Event)
+}
+
+var aiCommandRegistry = map[string]*commands.FullHandler{}
 var moduleCommandRegisterMu sync.Mutex
 var moduleCommandsRegistered = map[string]struct{}{}
 var allowedUserCommandNames = map[string]struct{}{
@@ -44,11 +55,58 @@ func markCommandFailure(ce *commands.Event, message string, reason event.Message
 	ce.MessageStatus.IsCertain = true
 }
 
-func registerAICommand(def commandregistry.Definition) *commands.FullHandler {
-	if def.RequiresLogin && def.HasLogin == nil {
-		def.HasLogin = hasLoginForCommand
+func registerAICommand(def aiCommandDefinition) *commands.FullHandler {
+	if def.Name == "" || def.Handler == nil {
+		return nil
 	}
-	return aiCommandRegistry.Register(def)
+	handler := &commands.FullHandler{
+		Name: def.Name,
+		Help: commands.HelpMeta{
+			Section:     def.Section,
+			Description: def.Description,
+			Args:        def.Args,
+		},
+		RequiresPortal: false,
+		RequiresLogin:  false,
+		Func: func(ce *commands.Event) {
+			switch {
+			case def.RequiresPortal && ce.Portal == nil:
+				markCommandFailure(ce, "That command can only be run in portal rooms.", event.MessageStatusUnsupported)
+				ce.Reply("That command can only be run in portal rooms.")
+			case def.RequiresLogin && !hasLoginForCommand(ce):
+				markCommandFailure(ce, "That command requires you to be logged in.", event.MessageStatusNoPermission)
+				ce.Reply("That command requires you to be logged in.")
+			default:
+				def.Handler(ce)
+			}
+		},
+	}
+	aiCommandRegistry[handler.Name] = handler
+	return handler
+}
+
+func aiCommand(name string) *commands.FullHandler {
+	return aiCommandRegistry[name]
+}
+
+func aiCommands() []*commands.FullHandler {
+	handlers := make([]*commands.FullHandler, 0, len(aiCommandRegistry))
+	for _, handler := range aiCommandRegistry {
+		handlers = append(handlers, handler)
+	}
+	slices.SortFunc(handlers, func(a, b *commands.FullHandler) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
+	return handlers
+}
+
+func aiCommandNames() []string {
+	names := make([]string, 0, len(aiCommandRegistry))
+	for name := range aiCommandRegistry {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
 }
 
 func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
@@ -74,7 +132,7 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 		if strings.TrimSpace(description) == "" {
 			description = "Integration command"
 		}
-		registerAICommand(commandregistry.Definition{
+		registerAICommand(aiCommandDefinition{
 			Name:           commandName,
 			Description:    description,
 			Args:           def.Args,
@@ -117,7 +175,7 @@ func registerModuleCommands(defs []integrationruntime.CommandDefinition) {
 }
 
 func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *zerolog.Logger, section commands.HelpSection) {
-	handlers := aiCommandRegistry.All()
+	handlers := aiCommands()
 	if len(handlers) > 0 {
 		commandHandlers := make([]commands.CommandHandler, 0, len(handlers))
 		for _, handler := range handlers {
@@ -148,7 +206,7 @@ func registerCommandsWithOwnerGuard(proc *commands.Processor, cfg *Config, log *
 		proc.AddHandlers(commandHandlers...)
 	}
 
-	names := aiCommandRegistry.Names()
+	names := aiCommandNames()
 	log.Info().
 		Str("section", section.Name).
 		Int("section_order", section.Order).
@@ -164,7 +222,7 @@ func (oc *AIClient) BroadcastCommandDescriptions(ctx context.Context, portal *br
 	if bot == nil {
 		return
 	}
-	for _, handler := range aiCommandRegistry.All() {
+	for _, handler := range aiCommands() {
 		if handler == nil || handler.Name == "" || !isUserFacingCommand(handler.Name) {
 			continue
 		}
