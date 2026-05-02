@@ -22,9 +22,13 @@ func (oc *AIClient) createStreamingTurn(
 	sourceEventID id.EventID,
 	senderID string,
 ) *sdk.Turn {
-	var sdkConfig *sdk.Config[*AIClient, *Config]
-	if oc.connector != nil {
-		sdkConfig = oc.connector.sdkConfig
+	sdkConfig := &sdk.Config[*AIClient, *Config]{
+		AgentCatalog: aiAgentCatalog{connector: oc.connector},
+		ProviderIdentity: sdk.ProviderIdentity{
+			IDPrefix:      oc.ClientBase.MessageIDPrefix,
+			LogKey:        oc.ClientBase.MessageLogKey,
+			StatusNetwork: oc.ClientBase.MessageIDPrefix,
+		},
 	}
 	var sender bridgev2.EventSender
 	if oc.UserLogin != nil {

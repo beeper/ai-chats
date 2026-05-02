@@ -11,16 +11,10 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
+func TestNewAIConnectorUsesDirectBridgev2Methods(t *testing.T) {
 	conn := NewAIConnector()
-	if conn.sdkConfig == nil {
-		t.Fatal("expected sdkConfig to be initialized")
-	}
 	if conn.clients == nil {
 		t.Fatal("expected client cache map to be initialized")
-	}
-	if conn.ConnectorBase == nil {
-		t.Fatal("expected ConnectorBase to be initialized")
 	}
 
 	name := conn.GetName()
