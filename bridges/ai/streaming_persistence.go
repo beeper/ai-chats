@@ -114,9 +114,5 @@ func thinkingTokenCount(model string, content string) int {
 	if content == "" {
 		return 0
 	}
-	tkm, err := getTokenizer(model)
-	if err != nil {
-		return len(strings.Fields(content))
-	}
-	return len(tkm.Encode(content, nil, nil))
+	return len(strings.Fields(content))
 }

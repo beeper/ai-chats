@@ -82,7 +82,6 @@ type ModelInfo struct {
 	ID                  string   `json:"id"`
 	Name                string   `json:"name"`
 	Provider            string   `json:"provider"`
-	API                 string   `json:"api,omitempty"`
 	Description         string   `json:"description,omitempty"`
 	SupportsVision      bool     `json:"supports_vision"`
 	SupportsToolCalling bool     `json:"supports_tool_calling"`

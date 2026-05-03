@@ -2,14 +2,15 @@ package ai
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"time"
 
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
@@ -61,65 +62,6 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 		lifecycle.ensureInputStart(ctx, tool, desc.providerExecuted, nil)
 	}
 	return tool, created
-}
-
-func (oc *AIClient) ensureActiveToolForStreamItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools *streamToolRegistry,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-) *activeToolCall {
-	if activeTools == nil || state == nil {
-		return nil
-	}
-	if tool := activeTools.Lookup(streamToolItemKey(itemID)); tool != nil {
-		return tool
-	}
-	itemDesc := deriveToolDescriptorForOutputItem(item, state)
-	if !itemDesc.ok {
-		return nil
-	}
-	tool, _ := oc.upsertActiveToolFromDescriptor(ctx, portal, state, activeTools, itemDesc)
-	return tool
-}
-
-func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools *streamToolRegistry,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-	delta string,
-) {
-	lifecycle := newToolLifecycle(state)
-	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
-	if tool == nil {
-		return
-	}
-	lifecycle.appendInputDelta(ctx, tool, tool.toolName, delta, tool.toolType == matrixevents.ToolTypeProvider)
-}
-
-func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools *streamToolRegistry,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-	inputText string,
-) {
-	lifecycle := newToolLifecycle(state)
-	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
-	if tool == nil {
-		return
-	}
-	if tool.input.Len() == 0 && strings.TrimSpace(inputText) != "" {
-		tool.input.WriteString(inputText)
-	}
-	lifecycle.emitInput(ctx, tool, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == matrixevents.ToolTypeProvider)
 }
 
 // resolveOutputItemTool performs the common setup shared by handleResponseOutputItemAdded
@@ -192,8 +134,38 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
 	}
 
+	if item.Type == "image_generation_call" {
+		oc.completeImageGenerationTool(ctx, portal, state, tool, item)
+		return
+	}
+
 	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
 	actions.toolResultCompleted(tool, item)
+}
+
+func (oc *AIClient) completeImageGenerationTool(ctx context.Context, portal *bridgev2.Portal, state *streamingState, tool *activeToolCall, item responses.ResponseOutputItemUnion) {
+	lifecycle := newToolLifecycle(state)
+	if strings.TrimSpace(item.Result) == "" {
+		lifecycle.fail(ctx, tool, true, ResultStatusError, "image generation returned no image", nil)
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(item.Result)
+	if err != nil {
+		lifecycle.fail(ctx, tool, true, ResultStatusError, "image generation returned invalid image data", nil)
+		return
+	}
+	eventID, uri, err := oc.sendGeneratedMedia(ctx, portal, data, "image/png", currentStreamingTurnID(state), event.MsgImage, "generated.png", BeeperAIKey, false, "")
+	if err != nil {
+		lifecycle.fail(ctx, tool, true, ResultStatusError, err.Error(), nil)
+		return
+	}
+	recordGeneratedFile(state, uri, "image/png")
+	output := map[string]any{
+		"status":   item.Status,
+		"event_id": eventID.String(),
+		"url":      uri,
+	}
+	lifecycle.succeed(ctx, tool, true, output, output, nil)
 }
 
 // Response stream output helpers.

@@ -121,13 +121,6 @@ func (oc *AIClient) sendGeneratedMedia(
 	return eventID, string(uri), nil
 }
 
-func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) string {
-	if ext, ok := overrides[mimeType]; ok {
-		return ext
-	}
-	return defaultExt
-}
-
 func populateAudioMessageContent(content *event.MessageEventContent, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
 	if msgType != event.MsgAudio {
 		return

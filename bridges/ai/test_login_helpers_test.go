@@ -3,9 +3,7 @@ package ai
 import (
 	"context"
 	"database/sql"
-	"reflect"
 	"testing"
-	"unsafe"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
@@ -85,11 +83,6 @@ func (tmc *testMatrixConnector) GenerateReactionEventID(id.RoomID, *database.Mes
 	return ""
 }
 func (tmc *testMatrixConnector) ServerName() string { return "example.com" }
-
-func setUnexportedField(target any, field string, value any) {
-	rv := reflect.ValueOf(target).Elem().FieldByName(field)
-	reflect.NewAt(rv.Type(), unsafe.Pointer(rv.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
-}
 
 func newTestAIClientWithProvider(provider string) *AIClient {
 	login := &database.UserLogin{
@@ -201,13 +194,6 @@ func newDBBackedLoginHarness(t *testing.T) (*OpenAIConnector, *bridgev2.Bridge, 
 		t.Fatalf("get user by mxid: %v", err)
 	}
 	return connector, bridge, user
-}
-
-func setTestLoginConfig(client *AIClient, cfg *aiLoginConfig) {
-	if client == nil {
-		return
-	}
-	client.loginConfig = cloneAILoginConfig(cfg)
 }
 
 func setTestLoginState(client *AIClient, state *loginRuntimeState) {

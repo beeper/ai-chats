@@ -16,20 +16,6 @@ func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
 type modelCapsFilter func(ModelCapabilities) bool
 type modelInfoFilter func(ModelInfo) bool
 
-func collectModelCandidates(primary string, fallbacks []string) []string {
-	var candidates []string
-	if strings.TrimSpace(primary) != "" {
-		candidates = append(candidates, primary)
-	}
-	for _, fb := range fallbacks {
-		if strings.TrimSpace(fb) == "" {
-			continue
-		}
-		candidates = append(candidates, fb)
-	}
-	return candidates
-}
-
 func (oc *AIClient) resolveUnderstandingModel(
 	ctx context.Context,
 	meta *PortalMetadata,

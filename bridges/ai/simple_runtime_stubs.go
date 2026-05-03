@@ -7,8 +7,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared/constant"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 )
@@ -35,7 +37,32 @@ func stripMentionPatterns(body string, patterns []*regexp.Regexp) string {
 }
 
 func (oc *AIClient) buildResponsesStreamingParams(ctx context.Context, meta *PortalMetadata, systemPrompt string, input responses.ResponseInputParam, store bool) responses.ResponseNewParams {
-	return responses.ResponseNewParams{Model: oc.modelIDForAPI(oc.effectiveModel(meta)), Input: responses.ResponseNewParamsInputUnion{OfInputItemList: input}}
+	params := responses.ResponseNewParams{
+		Model: oc.modelIDForAPI(oc.effectiveModel(meta)),
+		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: input},
+	}
+	if strings.TrimSpace(systemPrompt) != "" {
+		params.Instructions = openai.String(systemPrompt)
+	}
+	if tools := oc.selectedBuiltinToolsForTurn(ctx, meta); len(tools) > 0 {
+		params.Tools = append(params.Tools, ToOpenAITools(tools, resolveToolStrictMode(oc.isOpenRouterProvider()), &oc.log)...)
+	}
+	if oc.modelCanUseNativeImageTool(ctx, meta) {
+		params.Tools = append(params.Tools, responses.ToolUnionParam{
+			OfImageGeneration: &responses.ToolImageGenerationParam{
+				Type:         constant.ValueOf[constant.ImageGeneration](),
+				Model:        "gpt-image-1",
+				OutputFormat: "png",
+				Quality:      "auto",
+				Size:         "auto",
+			},
+		})
+	}
+	params.Tools = dedupeToolParams(params.Tools)
+	if store {
+		params.Store = openai.Bool(true)
+	}
+	return params
 }
 
 func runStreamingStep[T any](
@@ -96,4 +123,27 @@ func toolDisplayTitle(toolName string) string {
 
 func (oc *AIClient) modelSupportsToolCalling(ctx context.Context, meta *PortalMetadata) bool {
 	return oc.getModelCapabilitiesForMeta(ctx, meta).SupportsToolCalling
+}
+
+func (oc *AIClient) modelSupportsImageGeneration(ctx context.Context, meta *PortalMetadata) bool {
+	return oc.getModelCapabilitiesForMeta(ctx, meta).SupportsImageGen
+}
+
+func (oc *AIClient) modelCanUseNativeImageTool(ctx context.Context, meta *PortalMetadata) bool {
+	if !oc.canUseImageGeneration() {
+		return false
+	}
+	if oc.modelSupportsImageGeneration(ctx, meta) {
+		return true
+	}
+	modelID := strings.ToLower(strings.TrimSpace(oc.effectiveModel(meta)))
+	if modelID == "" {
+		return false
+	}
+	switch modelID {
+	case "openai/gpt-5.4", "openai/gpt-5.2":
+		return true
+	default:
+		return false
+	}
 }

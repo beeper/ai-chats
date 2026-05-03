@@ -1,8 +1,6 @@
 package ai
 
 import (
-	"encoding/json"
-
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
@@ -53,30 +51,6 @@ func descriptorsToResponsesTools(descriptors []openAIToolDescriptor, strictMode 
 	return result
 }
 
-func descriptorsToChatTools(descriptors []openAIToolDescriptor, strictMode ToolStrictMode) []openai.ChatCompletionToolUnionParam {
-	if len(descriptors) == 0 {
-		return nil
-	}
-	result := make([]openai.ChatCompletionToolUnionParam, 0, len(descriptors))
-	for _, tool := range descriptors {
-		function := openai.FunctionDefinitionParam{
-			Name:       tool.Name,
-			Parameters: tool.Parameters,
-			Strict:     param.NewOpt(shouldUseStrictMode(strictMode, tool.Parameters)),
-		}
-		if tool.Description != "" {
-			function.Description = openai.String(tool.Description)
-		}
-		result = append(result, openai.ChatCompletionToolUnionParam{
-			OfFunction: &openai.ChatCompletionFunctionToolParam{
-				Function: function,
-				Type:     constant.ValueOf[constant.Function](),
-			},
-		})
-	}
-	return result
-}
-
 func sanitizeToolSchema(schema map[string]any, toolName string, log *zerolog.Logger) map[string]any {
 	if schema == nil {
 		return nil
@@ -84,29 +58,4 @@ func sanitizeToolSchema(schema map[string]any, toolName string, log *zerolog.Log
 	sanitized, stripped := sanitizeToolSchemaWithReport(schema)
 	logSchemaSanitization(log, toolName, stripped)
 	return sanitized
-}
-
-func resolveToolSchema(inputSchema any, toolName string, log *zerolog.Logger) map[string]any {
-	var schema map[string]any
-	switch v := inputSchema.(type) {
-	case nil:
-		return nil
-	case map[string]any:
-		schema = v
-	default:
-		encoded, err := json.Marshal(v)
-		if err != nil {
-			if log != nil {
-				log.Error().Err(err).Str("tool_name", toolName).Interface("input_schema", v).Msg("Failed to marshal tool input schema")
-			}
-			return sanitizeToolSchema(nil, toolName, log)
-		}
-		if err := json.Unmarshal(encoded, &schema); err != nil {
-			if log != nil {
-				log.Error().Err(err).Str("tool_name", toolName).Interface("input_schema", v).Msg("Failed to decode tool input schema")
-			}
-			return sanitizeToolSchema(nil, toolName, log)
-		}
-	}
-	return sanitizeToolSchema(schema, toolName, log)
 }

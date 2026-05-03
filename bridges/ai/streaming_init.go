@@ -126,7 +126,7 @@ func (oc *AIClient) prepareStreamingRun(
 		log.Warn().Err(err).Msg("Failed to resolve responder for streaming turn")
 	}
 
-	// Create SDK Turn for writer/emitter/session management.
+	// Create SDK Turn for writer/emitter state.
 	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID, senderID)
 	state.turn = turn
 	oc.bindRoomRunState(roomID, state)

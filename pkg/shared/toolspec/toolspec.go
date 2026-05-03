@@ -6,6 +6,9 @@ const (
 
 	WebFetchName        = "web_fetch"
 	WebFetchDescription = "Fetch readable content from a URL using the configured direct or Exa fetch provider."
+
+	SessionInfoName        = "session_info"
+	SessionInfoDescription = "Return current room/session context such as time, timezone, room ID, and sender ID."
 )
 
 func WebSearchSchema() map[string]any {
@@ -35,6 +38,10 @@ func WebFetchSchema() map[string]any {
 			"minimum":     1,
 		},
 	}, "url")
+}
+
+func SessionInfoSchema() map[string]any {
+	return ObjectSchema(map[string]any{})
 }
 
 func ObjectSchema(properties map[string]any, required ...string) map[string]any {

@@ -101,25 +101,6 @@ type WebToolsConfig struct {
 	Fetch  *FetchConfig  `yaml:"fetch"`
 }
 
-// MediaUnderstandingScopeMatch defines match criteria for media understanding scope rules.
-type MediaUnderstandingScopeMatch struct {
-	Channel   string `yaml:"channel"`
-	ChatType  string `yaml:"chat_type"`
-	KeyPrefix string `yaml:"key_prefix"`
-}
-
-// MediaUnderstandingScopeRule defines a single allow/deny rule.
-type MediaUnderstandingScopeRule struct {
-	Action string                        `yaml:"action"`
-	Match  *MediaUnderstandingScopeMatch `yaml:"match"`
-}
-
-// MediaUnderstandingScopeConfig controls allow/deny gating for media understanding.
-type MediaUnderstandingScopeConfig struct {
-	Default string                        `yaml:"default"`
-	Rules   []MediaUnderstandingScopeRule `yaml:"rules"`
-}
-
 // MediaUnderstandingAttachmentsConfig controls how media attachments are selected.
 type MediaUnderstandingAttachmentsConfig struct {
 	Mode           string `yaml:"mode"`
@@ -161,7 +142,6 @@ func (c MediaUnderstandingModelConfig) ResolvedType() MediaUnderstandingEntryTyp
 // MediaUnderstandingConfig defines defaults for media understanding of a capability.
 type MediaUnderstandingConfig struct {
 	Enabled         *bool                                `yaml:"enabled"`
-	Scope           *MediaUnderstandingScopeConfig       `yaml:"scope"`
 	MaxBytes        int                                  `yaml:"max_bytes"`
 	MaxChars        int                                  `yaml:"max_chars"`
 	Prompt          string                               `yaml:"prompt"`

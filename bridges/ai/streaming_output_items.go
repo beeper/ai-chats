@@ -67,6 +67,8 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 	switch item.Type {
 	case "function_call":
 		desc = responseFunctionToolDescriptor(item, false, parseJSONOrRaw(item.Arguments))
+	case "image_generation_call":
+		desc = responseProviderToolDescriptor(item, "image_generation", nil)
 	default:
 		desc.ok = false
 	}
@@ -83,6 +85,23 @@ func deriveToolDescriptorForOutputItem(item responses.ResponseOutputItemUnion, s
 		desc.registryKey = streamToolCallKey(desc.callID)
 	}
 	return desc
+}
+
+func responseProviderToolDescriptor(item responses.ResponseOutputItemUnion, toolName string, input any) responseToolDescriptor {
+	callID := strings.TrimSpace(item.CallID)
+	if callID == "" {
+		callID = item.ID
+	}
+	return responseToolDescriptor{
+		registryKey:      streamToolItemKey(item.ID),
+		itemID:           item.ID,
+		callID:           callID,
+		toolName:         toolName,
+		toolType:         matrixevents.ToolTypeProvider,
+		input:            input,
+		providerExecuted: true,
+		ok:               toolName != "",
+	}
 }
 
 func responseFunctionToolDescriptor(item responses.ResponseOutputItemUnion, dynamic bool, input any) responseToolDescriptor {

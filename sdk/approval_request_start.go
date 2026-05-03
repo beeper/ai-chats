@@ -15,6 +15,12 @@ type ApprovalPromptContext struct {
 	ThreadRootEventID id.EventID
 }
 
+// ApprovalRequestEmitter is the minimal stream UI surface needed when an
+// approval request becomes pending.
+type ApprovalRequestEmitter interface {
+	EmitRequest(ctx context.Context, approvalID, toolCallID string)
+}
+
 type StartApprovalRequestParams[D any] struct {
 	Portal             *bridgev2.Portal
 	OwnerMXID          id.UserID
@@ -24,6 +30,7 @@ type StartApprovalRequestParams[D any] struct {
 	DefaultTTL         time.Duration
 	DefaultAllowAlways bool
 	PromptContext      ApprovalPromptContext
+	Emitter            ApprovalRequestEmitter
 	EmitRequest        func(context.Context, string, string)
 	Data               D
 }
@@ -70,7 +77,9 @@ func (f *ApprovalFlow[D]) StartApprovalRequest(ctx context.Context, params Start
 	if !created {
 		return started
 	}
-	if params.EmitRequest != nil {
+	if params.Emitter != nil {
+		params.Emitter.EmitRequest(ctx, approvalID, params.Request.ToolCallID)
+	} else if params.EmitRequest != nil {
 		params.EmitRequest(ctx, approvalID, params.Request.ToolCallID)
 	}
 	if !params.SendPrompt || params.Portal == nil || params.Portal.MXID == "" || params.OwnerMXID == "" {

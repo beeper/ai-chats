@@ -26,7 +26,6 @@ const (
 	MediaOutcomeSkipped      MediaUnderstandingOutcome = "skipped"
 	MediaOutcomeFailed       MediaUnderstandingOutcome = "failed"
 	MediaOutcomeDisabled     MediaUnderstandingOutcome = "disabled"
-	MediaOutcomeScopeDeny    MediaUnderstandingOutcome = "scope-deny"
 	MediaOutcomeNoAttachment MediaUnderstandingOutcome = "no-attachment"
 )
 

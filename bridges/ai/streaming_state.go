@@ -38,7 +38,6 @@ type streamingState struct {
 	accumulated            strings.Builder
 	reasoning              strings.Builder
 	toolCalls              []ToolCallMetadata
-	pendingImages          []generatedImage
 	pendingFunctionOutputs []functionCallOutput // Function outputs to send back to API for continuation
 	pendingSteeringPrompts []string
 	sourceCitations        []citations.SourceCitation
@@ -137,13 +136,6 @@ func (s *streamingState) nextMessageTiming() sdk.EventTiming {
 	timing := sdk.NextEventTiming(s.lastStreamOrder, ts)
 	s.lastStreamOrder = timing.StreamOrder
 	return timing
-}
-
-func (s *streamingState) resetFinishReason() {
-	if s == nil {
-		return
-	}
-	s.finishReason = ""
 }
 
 func (s *streamingState) setTerminalFailure(reason string) {
@@ -284,13 +276,6 @@ func (oc *AIClient) markTurnAccepted(ctx context.Context, portal *bridgev2.Porta
 	if writer := state.writer(); writer != nil {
 		writer.Start(ctx, oc.buildUIMessageMetadata(state, meta, false))
 	}
-}
-
-// generatedImage tracks a pending image from image generation
-type generatedImage struct {
-	itemID   string
-	imageB64 string
-	turnID   string
 }
 
 // functionCallOutput tracks a completed function call output for API continuation

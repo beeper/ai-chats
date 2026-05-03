@@ -122,9 +122,11 @@ func ApplyChunk(state *UIState, chunk map[string]any) {
 		if toolCallID == "" {
 			return
 		}
+		approvalID := stringutil.TrimString(chunk["approvalId"])
+		RecordApprovalRequest(state, approvalID, toolCallID, "", "")
 		part := ensureToolPart(state, toolCallID, stringutil.TrimString(state.UIToolNameByToolCallID[toolCallID]))
 		part["state"] = "approval-requested"
-		part["approval"] = map[string]any{"id": stringutil.TrimString(chunk["approvalId"])}
+		part["approval"] = map[string]any{"id": approvalID}
 	case "tool-approval-response":
 		RecordApprovalResponse(
 			state,

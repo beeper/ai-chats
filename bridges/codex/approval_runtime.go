@@ -120,6 +120,10 @@ func (cc *CodexClient) requestSDKApproval(
 			ThreadRootEventID: approvalCtx.threadRootEventID,
 		}
 	}
+	var emitter sdk.ApprovalRequestEmitter
+	if approvalCtx != nil && approvalCtx.emitVia != nil {
+		emitter = approvalCtx.emitVia.Approvals()
+	}
 	started := cc.approvalFlow.StartApprovalRequest(ctx, sdk.StartApprovalRequestParams[*pendingToolApprovalDataCodex]{
 		Portal:             portal,
 		OwnerMXID:          cc.UserLogin.UserMXID,
@@ -129,11 +133,7 @@ func (cc *CodexClient) requestSDKApproval(
 		DefaultTTL:         sdk.DefaultApprovalExpiry,
 		DefaultAllowAlways: false,
 		PromptContext:      promptCtx,
-		EmitRequest: func(ctx context.Context, approvalID, toolCallID string) {
-			if approvalCtx != nil && approvalCtx.emitVia != nil {
-				approvalCtx.emitVia.Approvals().EmitRequest(ctx, approvalID, toolCallID)
-			}
-		},
+		Emitter:            emitter,
 		Data: &pendingToolApprovalDataCodex{
 			ApprovalID:   strings.TrimSpace(req.ApprovalID),
 			RoomID:       portal.MXID,
@@ -145,7 +145,7 @@ func (cc *CodexClient) requestSDKApproval(
 	approvalID := started.ApprovalID
 	presentation := started.Presentation
 	if state != nil && state.turn != nil {
-		streamui.TrackApproval(state.turn.UIState(), approvalID, req.ToolCallID, req.ToolName, matrixevents.ToolTypeProvider)
+		streamui.RecordApprovalRequest(state.turn.UIState(), approvalID, req.ToolCallID, req.ToolName, matrixevents.ToolTypeProvider)
 	}
 	if started.Pending != nil && started.Pending.Data != nil {
 		started.Pending.Data.ApprovalID = approvalID

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/pkg/retrieval"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
@@ -115,48 +114,6 @@ func gravatarProfileURLFromInput(input string) (string, bool) {
 		return "", false
 	}
 	return fmt.Sprintf("%s/profiles/%s", gravatarAPIBaseURL, gravatarHash(email)), true
-}
-
-func applyLoginTokensToRetrievalConfig(providerField *string, exaBaseURL *string, exaAPIKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
-	if connector == nil {
-		return
-	}
-	services := connector.resolveServiceConfig(provider, loginCfg)
-	if exaAPIKey != nil && *exaAPIKey == "" {
-		*exaAPIKey = services[serviceExa].APIKey
-	}
-	if exaBaseURL != nil && *exaBaseURL == "" {
-		*exaBaseURL = services[serviceExa].BaseURL
-	}
-	if provider == ProviderMagicProxy {
-		proxyRoot := connector.resolveProxyRoot(loginCfg)
-		if proxyRoot != "" {
-			switch trimmed := strings.TrimSpace(*exaBaseURL); {
-			case strings.HasPrefix(trimmed, "/"):
-				*exaBaseURL = joinProxyPath(proxyRoot, trimmed)
-			default:
-				normalized := stringutil.NormalizeBaseURL(*exaBaseURL)
-				if normalized == "" || strings.EqualFold(normalized, "https://api.exa.ai") {
-					if proxyBase := connector.resolveExaProxyBaseURL(loginCfg); proxyBase != "" {
-						*exaBaseURL = proxyBase
-					}
-				}
-			}
-		}
-		if exaAPIKey != nil && *exaAPIKey == "" {
-			if token := loginCredentialAPIKey(loginCfg); token != "" {
-				*exaAPIKey = token
-			}
-		}
-	}
-	normalizedExaBase := stringutil.NormalizeBaseURL(*exaBaseURL)
-	if provider == ProviderMagicProxy || (strings.TrimSpace(*exaAPIKey) != "" &&
-		normalizedExaBase != "" &&
-		!strings.EqualFold(normalizedExaBase, "https://api.exa.ai")) {
-		if providerField != nil {
-			*providerField = retrieval.ProviderExa
-		}
-	}
 }
 
 func mapSearchConfig(src *SearchConfig) *retrieval.SearchConfig {

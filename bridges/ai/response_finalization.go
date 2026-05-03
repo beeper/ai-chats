@@ -108,43 +108,6 @@ func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *b
 	}
 }
 
-func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) error {
-	if portal == nil || portal.MXID == "" {
-		return nil
-	}
-
-	rendered := format.RenderMarkdown(text, true, true)
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:       event.MsgText,
-				Body:          rendered.Body,
-				Format:        rendered.Format,
-				FormattedBody: rendered.FormattedBody,
-				Mentions:      &event.Mentions{},
-			},
-		}},
-	}
-
-	sender := oc.senderForPortal(ctx, portal)
-	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
-		Login:       oc.UserLogin,
-		Portal:      portal,
-		Sender:      sender,
-		IDPrefix:    oc.ClientBase.MessageIDPrefix,
-		LogKey:      oc.ClientBase.MessageLogKey,
-		Timestamp:   time.Now(),
-		StreamOrder: 0,
-		Converted:   converted,
-	}); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
-		return err
-	}
-	return nil
-}
-
 func buildSourceParts(cits []citations.SourceCitation, documents []citations.SourceDocument, previews []*event.BeeperLinkPreview) []map[string]any {
 	if len(cits) == 0 && len(documents) == 0 && len(previews) == 0 {
 		return nil

@@ -3,18 +3,16 @@ package ai
 import (
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared/constant"
 )
 
 func TestConvertToResponsesInput_RolesAndToolOutput(t *testing.T) {
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.UserMessage("hello"),
-		openai.ToolMessage("tool output", "call_123"),
-	}
+	ctx := PromptContext{Messages: []PromptMessage{
+		{Role: PromptRoleUser, Blocks: []PromptBlock{{Type: PromptBlockText, Text: "hello"}}},
+		{Role: PromptRoleToolResult, ToolCallID: "call_123", Blocks: []PromptBlock{{Type: PromptBlockText, Text: "tool output"}}},
+	}}
 
-	input := promptContextToResponsesInput(chatMessagesToPromptContext(messages))
+	input := promptContextToResponsesInput(ctx)
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}
@@ -35,25 +33,20 @@ func TestConvertToResponsesInput_RolesAndToolOutput(t *testing.T) {
 }
 
 func TestConvertToResponsesInput_AssistantToolCalls(t *testing.T) {
-	messages := []openai.ChatCompletionMessageParamUnion{{
-		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-				OfString: openai.String("thinking"),
+	ctx := PromptContext{Messages: []PromptMessage{{
+		Role: PromptRoleAssistant,
+		Blocks: []PromptBlock{
+			{Type: PromptBlockText, Text: "thinking"},
+			{
+				Type:              PromptBlockToolCall,
+				ToolCallID:        "call_123",
+				ToolName:          "search",
+				ToolCallArguments: "{\"query\":\"matrix\"}",
 			},
-			ToolCalls: []openai.ChatCompletionMessageToolCallUnionParam{{
-				OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-					ID: "call_123",
-					Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-						Name:      "search",
-						Arguments: "{\"query\":\"matrix\"}",
-					},
-					Type: constant.ValueOf[constant.Function](),
-				},
-			}},
 		},
-	}}
+	}}}
 
-	input := promptContextToResponsesInput(chatMessagesToPromptContext(messages))
+	input := promptContextToResponsesInput(ctx)
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}

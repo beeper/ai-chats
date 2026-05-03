@@ -11,12 +11,6 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 )
 
-const (
-	transcriptDefaultHistoryLimit = 200
-	transcriptHardHistoryLimit    = 1000
-	transcriptMaxHistoryBytes     = 6 * 1024 * 1024
-)
-
 type transcriptToolCall struct {
 	ID            string
 	Name          string
@@ -28,20 +22,6 @@ type transcriptToolCall struct {
 	ResultEventID string
 }
 
-func normalizeTranscriptHistoryLimit(raw int) int {
-	limit := transcriptDefaultHistoryLimit
-	if raw > 0 {
-		limit = raw
-	}
-	if limit > transcriptHardHistoryLimit {
-		limit = transcriptHardHistoryLimit
-	}
-	if limit < 1 {
-		limit = 1
-	}
-	return limit
-}
-
 func stripTranscriptToolResults(messages []map[string]any) []map[string]any {
 	filtered := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
@@ -51,38 +31,6 @@ func stripTranscriptToolResults(messages []map[string]any) []map[string]any {
 		filtered = append(filtered, msg)
 	}
 	return filtered
-}
-
-func capTranscriptHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[string]any {
-	if len(items) == 0 || maxBytes <= 0 {
-		return items
-	}
-	parts := make([]int, len(items))
-	total := 2 // []
-	for i, item := range items {
-		b, err := json.Marshal(item)
-		if err != nil {
-			parts[i] = len(fmt.Sprint(item))
-		} else {
-			parts[i] = len(b)
-		}
-		total += parts[i]
-		if i > 0 {
-			total += 1 // comma
-		}
-	}
-	start := 0
-	for total > maxBytes && start < len(items)-1 {
-		total -= parts[start]
-		if start < len(items)-1 {
-			total -= 1
-		}
-		start++
-	}
-	if start > 0 {
-		return items[start:]
-	}
-	return items
 }
 
 func buildTranscriptMessages(messages []*database.Message, includeTools bool) []map[string]any {

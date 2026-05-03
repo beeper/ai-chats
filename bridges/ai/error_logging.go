@@ -15,12 +15,6 @@ func logResponsesFailure(log zerolog.Logger, err error, params responses.Respons
 	})
 }
 
-func logChatCompletionsFailure(log zerolog.Logger, err error, params openai.ChatCompletionNewParams, meta *PortalMetadata, prompt PromptContext, stage string) {
-	logProviderFailure(log, err, meta, prompt, stage, "Chat Completions failure", func(event *zerolog.Event) {
-		addChatParamsSummary(event, params)
-	})
-}
-
 func logProviderFailure(
 	log zerolog.Logger,
 	err error,
@@ -79,25 +73,6 @@ func addResponsesParamsSummary(event *zerolog.Event, params responses.ResponseNe
 	event.Str("input_kind", inputKind).Int("input_items", inputCount)
 
 	toolNames := responsesToolNames(params.Tools)
-	if len(toolNames) > 0 {
-		event.Int("tool_count", len(toolNames)).Strs("tools", toolNames)
-	}
-}
-
-func addChatParamsSummary(event *zerolog.Event, params openai.ChatCompletionNewParams) {
-	if event == nil {
-		return
-	}
-	if params.Model != "" {
-		event.Str("model", params.Model)
-	}
-	if params.MaxCompletionTokens.Valid() {
-		event.Int64("max_completion_tokens", params.MaxCompletionTokens.Value)
-	}
-	if params.Temperature.Valid() {
-		event.Float64("temperature", params.Temperature.Value)
-	}
-	toolNames := chatToolNames(params.Tools)
 	if len(toolNames) > 0 {
 		event.Int("tool_count", len(toolNames)).Strs("tools", toolNames)
 	}
@@ -172,20 +147,6 @@ func responsesToolNames(tools []responses.ToolUnionParam) []string {
 			names = append(names, tool.OfFunction.Name)
 		} else if tool.OfWebSearch != nil {
 			names = append(names, ToolNameWebSearch)
-		}
-	}
-	slices.Sort(names)
-	return names
-}
-
-func chatToolNames(tools []openai.ChatCompletionToolUnionParam) []string {
-	if len(tools) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		if tool.OfFunction != nil && tool.OfFunction.Function.Name != "" {
-			names = append(names, tool.OfFunction.Function.Name)
 		}
 	}
 	slices.Sort(names)

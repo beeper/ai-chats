@@ -8,7 +8,7 @@ import (
 )
 
 func canonicalModelIdentifier(modelID string) string {
-	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return ""
 	}
@@ -17,7 +17,7 @@ func canonicalModelIdentifier(modelID string) string {
 
 func parseCanonicalModelIdentifier(identifier string) string {
 	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "model:"); ok {
-		return strings.TrimSpace(ResolveAlias(suffix))
+		return strings.TrimSpace(suffix)
 	}
 	return ""
 }
@@ -26,7 +26,7 @@ func modelContactName(modelID string, info *ModelInfo) string {
 	if info != nil && info.Name != "" {
 		return info.Name
 	}
-	return ResolveAlias(modelID)
+	return strings.TrimSpace(modelID)
 }
 
 func modelContactProvider(modelID string, info *ModelInfo) string {

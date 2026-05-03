@@ -48,7 +48,7 @@ func (oc *AIClient) responderForMeta(ctx context.Context, meta *PortalMetadata) 
 	}
 	modelID := oc.defaultModelForProvider()
 	if meta != nil {
-		if override := strings.TrimSpace(ResolveAlias(meta.RuntimeModelOverride)); override != "" {
+		if override := strings.TrimSpace(meta.RuntimeModelOverride); override != "" {
 			modelID = override
 		}
 	}
@@ -84,11 +84,7 @@ func (oc *AIClient) responderProvider(responder *ResponderInfo) string {
 }
 
 func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, opts ResponderResolveOptions) (*ResponderInfo, error) {
-	override := strings.TrimSpace(ResolveAlias(opts.RuntimeModelOverride))
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+	override := strings.TrimSpace(opts.RuntimeModelOverride)
 	var target *ResolvedTarget
 	if meta != nil {
 		target = meta.ResolvedTarget
@@ -106,7 +102,7 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 		if override != "" {
 			modelID = override
 		}
-		modelID = strings.TrimSpace(ResolveAlias(modelID))
+		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
 			modelID = oc.defaultModelForProvider()
 		}
@@ -144,7 +140,7 @@ func responderFromModelInfo(info *ModelInfo) ResponderInfo {
 }
 
 func (oc *AIClient) responderModelInfo(modelID string) *ModelInfo {
-	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return nil
 	}

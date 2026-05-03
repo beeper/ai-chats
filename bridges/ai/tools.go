@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
@@ -35,14 +36,16 @@ func GetBridgeToolContext(ctx context.Context) *BridgeToolContext {
 }
 
 const (
-	ToolNameWebSearch = toolspec.WebSearchName
-	toolNameWebFetch  = toolspec.WebFetchName
+	ToolNameWebSearch   = toolspec.WebSearchName
+	toolNameWebFetch    = toolspec.WebFetchName
+	toolNameSessionInfo = toolspec.SessionInfoName
 )
 
 func BuiltinTools() []ToolDefinition {
 	return []ToolDefinition{
 		{Name: ToolNameWebSearch, Description: toolspec.WebSearchDescription, Parameters: toolspec.WebSearchSchema()},
 		{Name: toolNameWebFetch, Description: toolspec.WebFetchDescription, Parameters: toolspec.WebFetchSchema()},
+		{Name: toolNameSessionInfo, Description: toolspec.SessionInfoDescription, Parameters: toolspec.SessionInfoSchema()},
 	}
 }
 
@@ -68,25 +71,15 @@ func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Por
 		return executeWebSearchWithProviders(ctx, args)
 	case toolNameWebFetch:
 		return executeWebFetchWithProviders(ctx, args)
+	case toolNameSessionInfo:
+		return oc.executeSessionInfoTool(ctx)
 	default:
 		return "Error: tool " + name + " is not available", nil
 	}
 }
 
 func (oc *AIClient) isToolEnabled(meta *PortalMetadata, name string) bool {
-	return name == ToolNameWebSearch || name == toolNameWebFetch
-}
-
-func (oc *AIClient) toolNamesForPortal(meta *PortalMetadata) []string {
-	return []string{ToolNameWebSearch, toolNameWebFetch}
-}
-
-func (oc *AIClient) toolDescriptionForPortal(_ *PortalMetadata, _ string, fallback string) string {
-	return fallback
-}
-
-func (oc *AIClient) isToolAvailable(_ *PortalMetadata, name string) (bool, SettingSource, string) {
-	return oc.isToolEnabled(nil, name), SourceGlobalDefault, ""
+	return name == ToolNameWebSearch || name == toolNameWebFetch || name == toolNameSessionInfo
 }
 
 func (oc *AIClient) enabledBuiltinToolsForModel(ctx context.Context, meta *PortalMetadata) []ToolDefinition {
@@ -98,4 +91,34 @@ func (oc *AIClient) selectedBuiltinToolsForTurn(ctx context.Context, meta *Porta
 		return nil
 	}
 	return oc.enabledBuiltinToolsForModel(ctx, meta)
+}
+
+func (oc *AIClient) executeSessionInfoTool(ctx context.Context) (string, error) {
+	tz, loc := oc.resolveUserTimezone()
+	now := time.Now().In(loc)
+	payload := map[string]any{
+		"timezone":    tz,
+		"now":         now.Format(time.RFC3339),
+		"date":        now.Format("2006-01-02"),
+		"time":        now.Format("15:04:05"),
+		"utc_offset":  now.Format("-07:00"),
+		"unix_millis": now.UnixMilli(),
+	}
+	if btc := GetBridgeToolContext(ctx); btc != nil {
+		if btc.Portal != nil {
+			payload["room_id"] = btc.Portal.MXID.String()
+			payload["portal_id"] = string(btc.Portal.ID)
+		}
+		if btc.SourceEventID != "" {
+			payload["source_event_id"] = btc.SourceEventID.String()
+		}
+		if btc.SenderID != "" {
+			payload["sender_id"] = btc.SenderID
+		}
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }

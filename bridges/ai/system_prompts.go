@@ -32,22 +32,21 @@ func buildGroupIntro(roomName string, activation string) string {
 	return strings.Join(lines, " ") + " Address the specific sender noted in the message context."
 }
 
-func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
+func buildRoomIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
 	if portal == nil {
 		return ""
 	}
 
 	// Use a single identifier to avoid confusing the model.
-	// This should match what tools call "sessionKey".
-	session := ""
+	room := ""
 	if portal.MXID != "" {
-		session = strings.TrimSpace(portal.MXID.String())
+		room = strings.TrimSpace(portal.MXID.String())
 	}
-	if session == "" {
+	if room == "" {
 		return ""
 	}
 
-	return "sessionKey: " + session
+	return "room_id: " + room
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptText(
@@ -94,7 +93,7 @@ func (oc *AIClient) buildAdditionalSystemPromptCoreText(
 		}
 	}
 
-	if ident := buildSessionIdentityHint(portal, meta); ident != "" {
+	if ident := buildRoomIdentityHint(portal, meta); ident != "" {
 		out = append(out, ident)
 	}
 

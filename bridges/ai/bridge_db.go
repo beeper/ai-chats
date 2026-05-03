@@ -230,13 +230,6 @@ type loginScope struct {
 	loginID  string
 }
 
-func (scope *loginScope) ownerKey() string {
-	if scope == nil {
-		return ""
-	}
-	return scope.bridgeID + "|" + scope.loginID
-}
-
 // loginScopeForClient builds a loginScope from an AIClient, returning nil if the
 // client is not fully initialised.
 func loginScopeForClient(client *AIClient) *loginScope {
@@ -247,21 +240,6 @@ func loginScopeForClient(client *AIClient) *loginScope {
 	bridgeID := strings.TrimSpace(canonicalLoginBridgeID(client.UserLogin))
 	loginID := strings.TrimSpace(canonicalLoginID(client.UserLogin))
 	if db == nil || bridgeID == "" || loginID == "" {
-		return nil
-	}
-	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}
-}
-
-// loginScopeForLogin builds a loginScope from a UserLogin, returning nil if the
-// login or its database is not available.
-func loginScopeForLogin(login *bridgev2.UserLogin) *loginScope {
-	db := bridgeDBFromLogin(login)
-	if db == nil {
-		return nil
-	}
-	bridgeID := canonicalLoginBridgeID(login)
-	loginID := canonicalLoginID(login)
-	if strings.TrimSpace(bridgeID) == "" || loginID == "" {
 		return nil
 	}
 	return &loginScope{db: db, bridgeID: bridgeID, loginID: loginID}

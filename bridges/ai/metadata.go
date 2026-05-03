@@ -83,16 +83,6 @@ func loginCredentials(cfg *aiLoginConfig) *LoginCredentials {
 	return cfg.Credentials
 }
 
-func ensureLoginCredentials(cfg *aiLoginConfig) *LoginCredentials {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.Credentials == nil {
-		cfg.Credentials = &LoginCredentials{}
-	}
-	return cfg.Credentials
-}
-
 func loginCredentialAPIKey(cfg *aiLoginConfig) string {
 	if creds := loginCredentials(cfg); creds != nil {
 		return strings.TrimSpace(creds.APIKey)

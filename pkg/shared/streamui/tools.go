@@ -27,8 +27,9 @@ func TrackTool(state *UIState, toolCallID, toolName string, toolType matrixevent
 	}
 }
 
-// TrackApproval records approval-to-tool correlation for UI replay and response chunks.
-func TrackApproval(state *UIState, approvalID, toolCallID, toolName string, toolType matrixevents.ToolType) {
+// RecordApprovalRequest records approval-to-tool correlation and marks the
+// approval request as visible in UI state.
+func RecordApprovalRequest(state *UIState, approvalID, toolCallID, toolName string, toolType matrixevents.ToolType) {
 	if state == nil {
 		return
 	}
@@ -40,6 +41,13 @@ func TrackApproval(state *UIState, approvalID, toolCallID, toolName string, tool
 	TrackTool(state, toolCallID, toolName, toolType)
 	state.UIToolCallIDByApproval[approvalID] = toolCallID
 	state.UIToolApprovalRequested[approvalID] = true
+}
+
+// TrackApproval records approval-to-tool correlation for UI replay and response chunks.
+//
+// Deprecated: use RecordApprovalRequest.
+func TrackApproval(state *UIState, approvalID, toolCallID, toolName string, toolType matrixevents.ToolType) {
+	RecordApprovalRequest(state, approvalID, toolCallID, toolName, toolType)
 }
 
 // EnsureUIToolInputStart sends "tool-input-start" once per toolCallID.
@@ -150,7 +158,7 @@ func (e *Emitter) EmitUIToolApprovalRequest(
 	if e.State == nil {
 		return
 	}
-	TrackApproval(e.State, approvalID, toolCallID, "", "")
+	RecordApprovalRequest(e.State, approvalID, toolCallID, "", "")
 	e.Emit(ctx, portal, map[string]any{
 		"type":       "tool-approval-request",
 		"approvalId": approvalID,

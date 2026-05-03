@@ -411,11 +411,3 @@ func extractTitleFromResponse(resp *responses.Response) string {
 	}
 	return ""
 }
-
-func (oc *AIClient) getModelContextWindow(meta *PortalMetadata) int {
-	responder := oc.responderForMeta(context.Background(), meta)
-	if responder != nil && responder.ContextLimit > 0 {
-		return responder.ContextLimit
-	}
-	return 128000
-}

@@ -29,24 +29,6 @@ func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.
 	return portal.MXID.String()
 }
 
-func (oc *AIClient) resolveBotMXID(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) id.UserID {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return ""
-	}
-	if portal != nil && portal.OtherUserID != "" {
-		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, portal.OtherUserID); err == nil && ghost != nil {
-			return ghost.Intent.GetMXID()
-		}
-	}
-	responder := oc.responderForMeta(ctx, meta)
-	if responder != nil && responder.GhostID != "" {
-		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, responder.GhostID); err == nil && ghost != nil {
-			return ghost.Intent.GetMXID()
-		}
-	}
-	return ""
-}
-
 func (oc *AIClient) isCommandAuthorizedSender(sender id.UserID) bool {
 	if oc == nil || oc.UserLogin == nil {
 		return false
