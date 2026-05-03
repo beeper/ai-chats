@@ -119,8 +119,8 @@ func main() {
 
 func run() error {
 	token := flag.String("openrouter-token", "", "Optional OpenRouter API token")
-	outputFile := flag.String("output", "bridges/ai/beeper_models_generated.go", "Output Go file")
-	jsonFile := flag.String("json", "pkg/ai/beeper_models.json", "Output JSON file for clients")
+	outputFile := flag.String("output", "pkg/connector/beeper_models_generated.go", "Output Go file")
+	jsonFile := flag.String("json", "pkg/connector/beeper_models.json", "Output JSON file for clients")
 	flag.Parse()
 
 	models, err := fetchOpenRouterModels(*token)

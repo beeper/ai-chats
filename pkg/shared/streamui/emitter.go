@@ -10,7 +10,7 @@ import (
 	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
-// UIState tracks AI SDK UIMessage stream state shared across bridges.
+// UIState tracks AI AI helper UIMessage stream state shared across bridges.
 type UIState struct {
 	TurnID                   string
 	UIStarted                bool

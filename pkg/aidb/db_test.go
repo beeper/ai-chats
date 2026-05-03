@@ -45,7 +45,7 @@ func TestUpgradeFresh(t *testing.T) {
 	for _, table := range []string{
 		"aichats_login_state",
 		"aichats_portal_state",
-		"sdk_conversation_state",
+		"ai_conversation_state",
 		"aichats_turns",
 		"aichats_turn_refs",
 	} {

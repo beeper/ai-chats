@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS aichats_portal_state (
   PRIMARY KEY (bridge_id, portal_id, portal_receiver)
 );
 
-CREATE TABLE IF NOT EXISTS sdk_conversation_state (
+CREATE TABLE IF NOT EXISTS ai_conversation_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,
   portal_id TEXT NOT NULL,

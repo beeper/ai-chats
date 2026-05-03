@@ -11,27 +11,24 @@ AI Chats can run on the same device as the bridge runtime and can work behind a 
 
 | Bridge | What it connects |
 | --- | --- |
-| [`AI Chats`](./bridges/ai/README.md) | Talk to any model on Beeper AI |
+| [`AI Chats`](./pkg/connector/README.md) | Talk to any model on Beeper AI |
 
 ## Running
 
 ```bash
 ./build.sh
-./run.sh
+./ai -c config.yaml
 ```
 
-Bridge lifecycle, local registration, and profile state are managed by
-[`beeper/bridge-manager`](https://github.com/beeper/bridge-manager), the same
-manager used by other standalone Beeper bridges.
+Bridge lifecycle, local registration, and profile state live outside this repo.
 
 ## Shared Primitives
 
 Standalone bridges can import shared AI chat primitives from this module:
 
 - `pkg/shared/streamui` for streaming UI chunks and snapshots
-- `sdk` for approvals, turns, and bridge helper primitives
-- `sdk.NewConnectorBase(...)`
-- `pkg/runtime`, `pkg/shared/*`, and `turns` for reusable model-chat behavior
+- `pkg/shared/aihelpers` for approvals, turns, Matrix message helpers, and AI bridge UI glue
+- `pkg/runtime`, `pkg/shared/*`, and `pkg/shared/turns` for reusable model-chat behavior
 
 ## Docs
 

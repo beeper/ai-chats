@@ -1,7 +1,7 @@
 package main
 
 import (
-	aibridge "github.com/beeper/ai-chats/bridges/ai"
+	aibridge "github.com/beeper/ai-chats/pkg/connector"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 )
 

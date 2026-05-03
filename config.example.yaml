@@ -45,7 +45,7 @@ encryption:
   delete_keys:
     ratchet_on_decrypt: false
 
-# AI Chats-specific options (shared with the embedded example in bridges/ai/example-config.yaml)
+# AI Chats-specific options (shared with the embedded example in pkg/connector/example-config.yaml)
 network:
   # Connector-specific configuration lives under the `network:` section of the
   # main config file.

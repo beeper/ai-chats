@@ -1,0 +1,124 @@
+package connector
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/ai-chats/pkg/shared/aihelpers"
+)
+
+func TestOpenAILoginStartRejectsInvalidFlow(t *testing.T) {
+	login := &OpenAILogin{FlowID: "invalid"}
+	_, err := login.Start(context.Background())
+	if !errors.Is(err, bridgev2.ErrInvalidLoginFlowID) {
+		t.Fatalf("expected invalid login flow error, got %v", err)
+	}
+}
+
+func TestOpenAILoginStartReturnsManualCredentialsStep(t *testing.T) {
+	login := &OpenAILogin{
+		FlowID:    FlowCustom,
+		Connector: &OpenAIConnector{},
+	}
+	step, err := login.Start(context.Background())
+	if err != nil {
+		t.Fatalf("expected manual flow to return credentials step, got error %v", err)
+	}
+	if step == nil || step.Type != bridgev2.LoginStepTypeUserInput {
+		t.Fatalf("expected manual flow user-input step, got %#v", step)
+	}
+	if step.UserInputParams == nil || len(step.UserInputParams.Fields) == 0 {
+		t.Fatalf("expected manual flow to expose credential fields, got %#v", step)
+	}
+}
+
+func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
+	login := &OpenAILogin{User: &bridgev2.User{User: &database.User{MXID: id.UserID("@alice:example.com")}}}
+	old := &bridgev2.UserLogin{UserLogin: &database.UserLogin{UserMXID: id.UserID("@bob:example.com")}}
+	_, err := login.StartWithOverride(context.Background(), old)
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.AI.INVALID_RELOGIN_TARGET" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenAILoginCompleteLoginRejectsProviderMismatch(t *testing.T) {
+	mxid := id.UserID("@alice:example.com")
+	login := &OpenAILogin{
+		User: &bridgev2.User{User: &database.User{MXID: mxid}},
+		Override: &bridgev2.UserLogin{
+			UserLogin: &database.UserLogin{
+				ID:       "login",
+				UserMXID: mxid,
+				Metadata: &UserLoginMetadata{Provider: ProviderOpenRouter},
+			},
+		},
+	}
+	_, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderOpenAI,
+		APIKey:   "key",
+	})
+	var respErr bridgev2.RespError
+	if !errors.As(err, &respErr) {
+		t.Fatalf("expected RespError, got %T", err)
+	}
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.AI.PROVIDER_MISMATCH" {
+		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenAILoginCompleteLoginBuildsClientBeforePersistedConfigExists(t *testing.T) {
+	connector, _, user := newDBBackedLoginHarness(t)
+	login := &OpenAILogin{
+		User:      user,
+		Connector: connector,
+		FlowID:    ProviderMagicProxy,
+	}
+
+	step, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderMagicProxy,
+		APIKey:   "proxy-token",
+		BaseURL:  "https://temporary-ai-proxy.beeper-tools.com",
+	})
+	if err != nil {
+		t.Fatalf("completeLogin returned error: %v", err)
+	}
+	if step == nil || step.CompleteParams == nil || step.CompleteParams.UserLogin == nil {
+		t.Fatalf("expected completed login step with user login, got %#v", step)
+	}
+
+	created := step.CompleteParams.UserLogin
+	if _, ok := created.Client.(*aihelpers.BrokenLoginClient); ok {
+		t.Fatalf("expected freshly created login to have a real AI client, got broken client")
+	}
+	typed, ok := created.Client.(*AIClient)
+	if !ok {
+		t.Fatalf("expected AIClient after completeLogin, got %T", created.Client)
+	}
+	if typed.apiKey != "proxy-token" {
+		t.Fatalf("unexpected api key on created client: %q", typed.apiKey)
+	}
+
+	cfg, err := loadAILoginConfig(context.Background(), created)
+	if err != nil {
+		t.Fatalf("loadAILoginConfig returned error: %v", err)
+	}
+	if cfg.Credentials == nil || cfg.Credentials.APIKey != "proxy-token" {
+		t.Fatalf("expected persisted login config credentials, got %#v", cfg.Credentials)
+	}
+	cached, ok := connector.clients[created.ID].(*AIClient)
+	if !ok {
+		t.Fatalf("expected cached AIClient for created login, got %T", connector.clients[created.ID])
+	}
+	if cached != typed {
+		t.Fatal("expected completeLogin to keep the initially constructed client cached without rebuilding it")
+	}
+}
