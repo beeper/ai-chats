@@ -81,6 +81,7 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 		return err
 	}
 	oc.applyRuntimeDefaults()
+	oc.registerCommands(oc.br)
 	return nil
 }
 

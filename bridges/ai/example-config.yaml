@@ -38,9 +38,6 @@ messages:
     cap: 20
     drop: "summarize"
 
-commands:
-  owner_allow_from: []
-
 channels:
   matrix:
     reply_to_mode: "first"

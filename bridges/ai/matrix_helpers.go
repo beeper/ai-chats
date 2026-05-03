@@ -4,11 +4,9 @@ import (
 	"context"
 	"strings"
 
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
-
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.Portal) string {
@@ -27,13 +25,6 @@ func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.
 		return name
 	}
 	return portal.MXID.String()
-}
-
-func (oc *AIClient) isCommandAuthorizedSender(sender id.UserID) bool {
-	if oc == nil || oc.UserLogin == nil {
-		return false
-	}
-	return oc.UserLogin.UserMXID != "" && sender == oc.UserLogin.UserMXID
 }
 
 func (oc *AIClient) buildMatrixInboundBody(

@@ -45,7 +45,7 @@ encryption:
   delete_keys:
     ratchet_on_decrypt: false
 
-# AI Chats-specific options (shared with the embedded example in bridges/ai/integrations_config.go)
+# AI Chats-specific options (shared with the embedded example in bridges/ai/example-config.yaml)
 network:
   # Connector-specific configuration lives under the `network:` section of the
   # main config file.
@@ -86,9 +86,6 @@ network:
       debounce_ms: 1000
       cap: 20
       drop: "summarize"
-
-  commands:
-    owner_allow_from: []
 
   channels:
     matrix:

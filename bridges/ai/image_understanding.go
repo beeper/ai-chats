@@ -10,7 +10,15 @@ import (
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
-	return true
+	if oc == nil {
+		return false
+	}
+	modelID := oc.effectiveModel(meta)
+	if modelID == "" {
+		return false
+	}
+	info := oc.findModelInfo(modelID)
+	return info != nil && info.SupportsToolCalling
 }
 
 type modelCapsFilter func(ModelCapabilities) bool

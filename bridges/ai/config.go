@@ -9,7 +9,7 @@ import (
 	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
 )
 
-//go:embed integrations_example-config.yaml
+//go:embed example-config.yaml
 var exampleNetworkConfig string
 
 // Config represents the connector-specific configuration that is nested under
@@ -21,7 +21,6 @@ type Config struct {
 	Tools    ToolProvidersConfig `yaml:"tools"`
 	Channels *ChannelsConfig     `yaml:"channels"`
 	Messages *MessagesConfig     `yaml:"messages"`
-	Commands *CommandsConfig     `yaml:"commands"`
 
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
@@ -54,11 +53,6 @@ type MessagesConfig struct {
 	DirectChat       *DirectChatConfig      `yaml:"direct_chat"`
 	Queue            *QueueConfig           `yaml:"queue"`
 	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
-}
-
-// CommandsConfig defines command authorization settings.
-type CommandsConfig struct {
-	OwnerAllowFrom []string `yaml:"owner_allow_from"`
 }
 
 // GroupChatConfig defines group chat settings.

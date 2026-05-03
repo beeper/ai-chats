@@ -212,7 +212,7 @@ func TestResponsesTurnAdapterFinalizeStreamingTurnDoesNotSkipTerminalLifecycle(t
 	adapter.FinalizeStreamingTurn(context.Background())
 
 	if !state.isFinalized() {
-		t.Fatal("expected finalize agent loop to finalize terminal response state")
+		t.Fatal("expected finalization to mark terminal response state")
 	}
 
 	message := streamui.SnapshotUIMessage(state.turn.UIState())

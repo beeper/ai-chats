@@ -47,6 +47,11 @@ func (oc *AIClient) buildResponsesStreamingParams(ctx context.Context, meta *Por
 	if tools := oc.selectedBuiltinToolsForTurn(ctx, meta); len(tools) > 0 {
 		params.Tools = append(params.Tools, ToOpenAITools(tools, resolveToolStrictMode(oc.isOpenRouterProvider()), &oc.log)...)
 	}
+	if effort := effectiveThinking(meta); effort != "none" {
+		if mapped, ok := reasoningEffortMap[effort]; ok {
+			params.Reasoning = responses.ReasoningParam{Effort: mapped}
+		}
+	}
 	if oc.modelCanUseNativeImageTool(ctx, meta) {
 		params.Tools = append(params.Tools, responses.ToolUnionParam{
 			OfImageGeneration: &responses.ToolImageGenerationParam{

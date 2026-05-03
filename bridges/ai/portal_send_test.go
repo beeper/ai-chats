@@ -21,6 +21,9 @@ type testMatrixAPI struct {
 	sentContent  *event.Content
 	createRoomID id.RoomID
 	sendCount    int
+	uploadName   string
+	uploadMime   string
+	uploadData   []byte
 }
 
 func (tma *testMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
@@ -48,8 +51,11 @@ func (tma *testMatrixAPI) DownloadMedia(context.Context, id.ContentURIString, *e
 func (tma *testMatrixAPI) DownloadMediaToFile(context.Context, id.ContentURIString, *event.EncryptedFileInfo, bool, func(*os.File) error) error {
 	return nil
 }
-func (tma *testMatrixAPI) UploadMedia(context.Context, id.RoomID, []byte, string, string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
-	return "", nil, nil
+func (tma *testMatrixAPI) UploadMedia(_ context.Context, _ id.RoomID, data []byte, fileName string, mimeType string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	tma.uploadName = fileName
+	tma.uploadMime = mimeType
+	tma.uploadData = append([]byte(nil), data...)
+	return id.ContentURIString("mxc://example.com/upload"), nil, nil
 }
 func (tma *testMatrixAPI) UploadMediaStream(context.Context, id.RoomID, int64, bool, bridgev2.FileStreamCallback) (id.ContentURIString, *event.EncryptedFileInfo, error) {
 	return "", nil, nil
@@ -92,5 +98,35 @@ func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	}
 	if sender.SenderLogin != login.ID {
 		t.Fatalf("expected sender login %q, got %q", login.ID, sender.SenderLogin)
+	}
+}
+
+func TestSendGeneratedMediaCanSendVoiceMessage(t *testing.T) {
+	ctx := context.Background()
+	oc := newDBBackedTestAIClient(t, ProviderOpenAI)
+	portal := testAIModelPortal(t, oc, "openai/gpt-5.4")
+	portal.MXID = id.RoomID("!voice:example.com")
+
+	eventID, uri, err := oc.sendGeneratedMedia(ctx, portal, []byte("audio"), "audio/mpeg", "turn-1", event.MsgAudio, "reply.mp3", BeeperAIKey, true, "")
+	if err != nil {
+		t.Fatalf("send generated voice: %v", err)
+	}
+	if uri != "mxc://example.com/upload" {
+		t.Fatalf("unexpected send result event=%q uri=%q", eventID, uri)
+	}
+	api := oc.UserLogin.Bridge.Matrix.(*testMatrixConnector).api
+	if api.uploadName != "reply.mp3" || api.uploadMime != "audio/mpeg" || string(api.uploadData) != "audio" {
+		t.Fatalf("unexpected uploaded voice: name=%q mime=%q data=%q", api.uploadName, api.uploadMime, string(api.uploadData))
+	}
+}
+
+func TestPopulateAudioMessageContentMarksVoice(t *testing.T) {
+	content := &event.MessageEventContent{MsgType: event.MsgAudio}
+	populateAudioMessageContent(content, []byte("audio"), "audio/mpeg", true, event.MsgAudio)
+	if content.MsgType != event.MsgAudio {
+		t.Fatalf("expected audio message, got %q", content.MsgType)
+	}
+	if content.MSC3245Voice == nil {
+		t.Fatalf("expected Matrix voice metadata")
 	}
 }

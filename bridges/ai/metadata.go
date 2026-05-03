@@ -148,6 +148,7 @@ type PortalMetadata struct {
 	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
 	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
 	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
+	EditMode               string     `json:"edit_mode,omitempty"`
 
 	Slug             string `json:"slug,omitempty"`
 	TitleGenerated   bool   `json:"title_generated,omitempty"`
@@ -161,7 +162,7 @@ type PortalMetadata struct {
 	DisabledTools        []string        `json:"-"`
 	ResolvedTarget       *ResolvedTarget `json:"-"`
 	RuntimeModelOverride string          `json:"-"`
-	RuntimeReasoning     string          `json:"-"`
+	Thinking             string          `json:"thinking,omitempty"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`

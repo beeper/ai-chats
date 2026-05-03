@@ -259,9 +259,6 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 		// Use explicit rejected levels so features remain visible in
 		// com.beeper.room_features instead of being omitted by omitempty.
 		caps.Reply = event.CapLevelRejected
-		caps.Edit = event.CapLevelRejected
-		caps.EditMaxCount = 0
-		caps.EditMaxAge = nil
 		caps.Reaction = event.CapLevelRejected
 		caps.ReactionCount = 0
 	}
@@ -270,6 +267,9 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 		caps.Reply = event.CapLevelRejected
 		caps.Thread = event.CapLevelRejected
 	}
+	caps.Edit = event.CapLevelFullySupported
+	caps.EditMaxCount = 10
+	caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
 
 	// Apply file capabilities based on modalities
 	if modelCaps.SupportsVision {

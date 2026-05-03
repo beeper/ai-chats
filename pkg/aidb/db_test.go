@@ -59,18 +59,8 @@ func TestUpgradeFresh(t *testing.T) {
 	}
 
 	for _, table := range []string{
-		"aichats_memory_files",
-		"aichats_memory_chunks",
-		"aichats_memory_meta",
-		"aichats_memory_embedding_cache",
-		"aichats_memory_session_state",
-		"aichats_memory_session_files",
 		"aichats_cron_jobs",
 		"aichats_cron_job_run_keys",
-		"aichats_managed_heartbeats",
-		"aichats_managed_heartbeat_run_keys",
-		"aichats_custom_agents",
-		"aichats_sessions",
 		"aichats_system_events",
 		"aichats_tool_approval_rules",
 	} {

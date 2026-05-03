@@ -22,7 +22,7 @@ func TestExampleConfigFilesExcludeLegacyConfigSections(t *testing.T) {
 	}
 
 	t.Run("bridge example", func(t *testing.T) {
-		rel := "integrations_example-config.yaml"
+		rel := "example-config.yaml"
 		data, err := os.ReadFile(rel)
 		if err != nil {
 			t.Fatalf("read %s: %v", rel, err)
@@ -39,7 +39,7 @@ func TestExampleConfigFilesExcludeLegacyConfigSections(t *testing.T) {
 	})
 
 	t.Run("legacy connector example removed", func(t *testing.T) {
-		rel := filepath.Join("..", "..", "pkg", "connector", "integrations_example-config.yaml")
+		rel := filepath.Join("..", "..", "pkg", "connector", "example-config.yaml")
 		if _, err := os.Stat(rel); !os.IsNotExist(err) {
 			t.Fatalf("expected stale generic example %s to be removed, got err=%v", rel, err)
 		}

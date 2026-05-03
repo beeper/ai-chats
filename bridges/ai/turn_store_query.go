@@ -83,6 +83,7 @@ type aiTurnQuery struct {
 	refKind              string
 	refValue             string
 	turnID               string
+	minSequenceExclusive int64
 	maxSequenceExclusive int64
 	limit                int
 }
@@ -134,6 +135,10 @@ func queryAITurnRows(ctx context.Context, scope *portalScope, query aiTurnQuery)
 	if query.maxSequenceExclusive > 0 {
 		args = append(args, query.maxSequenceExclusive)
 		sqlQuery += ` AND t.sequence < $` + strconv.Itoa(len(args))
+	}
+	if query.minSequenceExclusive > 0 {
+		args = append(args, query.minSequenceExclusive)
+		sqlQuery += ` AND t.sequence > $` + strconv.Itoa(len(args))
 	}
 	if query.refKind != "" && query.refValue != "" {
 		args = append(args, query.refKind, query.refValue)

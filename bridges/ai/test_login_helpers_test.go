@@ -70,8 +70,18 @@ func (tmc *testMatrixConnector) GetMembers(context.Context, id.RoomID) (map[id.U
 func (tmc *testMatrixConnector) GetMemberInfo(context.Context, id.RoomID, id.UserID) (*event.MemberEventContent, error) {
 	return nil, nil
 }
-func (tmc *testMatrixConnector) BatchSend(context.Context, id.RoomID, *mautrix.ReqBeeperBatchSend, []*bridgev2.MatrixSendExtra) (*mautrix.RespBeeperBatchSend, error) {
-	return nil, nil
+func (tmc *testMatrixConnector) BatchSend(_ context.Context, roomID id.RoomID, req *mautrix.ReqBeeperBatchSend, _ []*bridgev2.MatrixSendExtra) (*mautrix.RespBeeperBatchSend, error) {
+	if tmc.api == nil {
+		tmc.api = &testMatrixAPI{}
+	}
+	tmc.api.sentRoomID = roomID
+	if req != nil && len(req.Events) > 0 {
+		evt := req.Events[0]
+		tmc.api.sentType = evt.Type
+		tmc.api.sentContent = &evt.Content
+		tmc.api.sendCount += len(req.Events)
+	}
+	return &mautrix.RespBeeperBatchSend{EventIDs: []id.EventID{"$batch"}}, nil
 }
 func (tmc *testMatrixConnector) GenerateDeterministicRoomID(networkid.PortalKey) id.RoomID {
 	return ""

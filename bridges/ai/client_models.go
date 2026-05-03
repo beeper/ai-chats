@@ -312,6 +312,10 @@ func (oc *AIClient) listAvailableModels(ctx context.Context, forceRefresh bool) 
 
 // findModelInfo looks up ModelInfo from the user's model cache by ID
 func (oc *AIClient) findModelInfo(modelID string) *ModelInfo {
+	if info, ok := ModelManifest.Models[strings.TrimSpace(modelID)]; ok {
+		copy := info
+		return &copy
+	}
 	state := oc.loginStateSnapshot(context.Background())
 	if state != nil && state.ModelCache != nil {
 		for i := range state.ModelCache.Models {

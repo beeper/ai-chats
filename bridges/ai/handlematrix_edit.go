@@ -14,6 +14,32 @@ import (
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
+const (
+	editModeNextTurn = "next-turn"
+	editModeAllNexts = "all-nexts"
+)
+
+func normalizeEditMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", editModeNextTurn:
+		return editModeNextTurn
+	case editModeAllNexts:
+		return editModeAllNexts
+	default:
+		return ""
+	}
+}
+
+func resolveEditMode(meta *PortalMetadata) string {
+	if meta == nil {
+		return editModeNextTurn
+	}
+	if mode := normalizeEditMode(meta.EditMode); mode != "" {
+		return mode
+	}
+	return editModeNextTurn
+}
+
 // HandleMatrixEdit handles edits to previously sent messages
 func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixEdit) error {
 	portal := edit.Portal
@@ -27,9 +53,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	}
 	edit.Portal = portal
 	meta := portalMeta(portal)
-	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetModel {
-		return bridgev2.ErrEditsNotSupportedInPortal
-	}
 	if edit.Content == nil || edit.EditTarget == nil {
 		return errors.New("invalid edit: missing content or target")
 	}
@@ -96,8 +119,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 		Int("new_body_len", len(newBody)).
 		Msg("User edited message, regenerating response")
 
-	// Find the assistant response that came after this message
-	// We'll delete it and regenerate
 	err = oc.regenerateFromEdit(ctx, edit.Event, portal, meta, edit.EditTarget, newBody)
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to regenerate response after edit")
@@ -116,34 +137,22 @@ func (oc *AIClient) regenerateFromEdit(
 	editedMessage *database.Message,
 	newBody string,
 ) error {
-	// Get messages in the portal to find the assistant response after the edited message
-	messages, err := oc.getAIHistoryMessages(ctx, portal, 50)
+	var removedTurns []*aiTurnRecord
+	var err error
+	switch resolveEditMode(meta) {
+	case editModeAllNexts:
+		removedTurns, err = oc.deleteAITurnsAfterExternalRef(ctx, portal, editedMessage.ID, editedMessage.MXID)
+	default:
+		removedTurns, err = oc.deleteAINextAssistantTurnAfterExternalRef(ctx, portal, editedMessage.ID, editedMessage.MXID)
+	}
 	if err != nil {
-		return fmt.Errorf("failed to get messages: %w", err)
+		return fmt.Errorf("failed to truncate edited conversation: %w", err)
 	}
-
-	// Find the assistant response that came after the edited message
-	// Messages come newest-first from GetLastNInPortal, so lower indices are newer
-	var assistantResponse *database.Message
-
-	// First find the index of the edited message
-	editedIdx := -1
-	for i, msg := range messages {
-		if msg.ID == editedMessage.ID {
-			editedIdx = i
-			break
+	for _, removed := range removedTurns {
+		if removed == nil || removed.Role != string(PromptRoleAssistant) || removed.EventID == "" {
+			continue
 		}
-	}
-
-	if editedIdx > 0 {
-		// Search toward newer messages (lower indices) for assistant response
-		for i := editedIdx - 1; i >= 0; i-- {
-			msgMeta := messageMeta(messages[i])
-			if msgMeta != nil && msgMeta.Role == "assistant" {
-				assistantResponse = messages[i]
-				break
-			}
-		}
+		_ = oc.redactEventViaPortal(ctx, portal, removed.EventID)
 	}
 
 	pending := pendingMessage{
@@ -162,14 +171,6 @@ func (oc *AIClient) regenerateFromEdit(
 	promptContext, err := oc.buildPromptContextForPendingMessage(ctx, pending, "")
 	if err != nil {
 		return fmt.Errorf("failed to build prompt: %w", err)
-	}
-
-	// If we found an assistant response, we'll redact/edit it
-	if assistantResponse != nil {
-		// Try to redact the old response
-		if assistantResponse.MXID != "" {
-			_ = oc.redactEventViaPortal(ctx, portal, assistantResponse.MXID)
-		}
 	}
 
 	var cfg *Config

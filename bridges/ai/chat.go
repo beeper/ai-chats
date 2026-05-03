@@ -51,7 +51,6 @@ type chatCreateParams struct {
 	PortalKey          *networkid.PortalKey
 	RoomName           string
 	ParentRoomID       id.RoomID
-	RuntimeReasoning   string
 	SkipRoomCreation   bool
 }
 
@@ -74,11 +73,7 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 			chatInfo.Name = &roomName
 		}
 	}
-	meta := portalMeta(portal)
-	if reasoning := strings.TrimSpace(params.RuntimeReasoning); reasoning != "" {
-		meta.RuntimeReasoning = reasoning
-	}
-	if roomName != "" || strings.TrimSpace(params.RuntimeReasoning) != "" {
+	if roomName != "" {
 		if err := oc.savePortal(ctx, portal, "chat setup"); err != nil {
 			return nil, fmt.Errorf("failed to save chat setup: %w", err)
 		}

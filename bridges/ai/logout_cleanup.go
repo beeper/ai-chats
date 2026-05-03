@@ -16,7 +16,7 @@ import (
 // bridgev2 will delete the user_login row (including login metadata like API keys) and, depending on
 // cleanup_on_logout config, will also delete/unbridge portal rows and message history.
 //
-// However, this bridge stores extra per-login integration state that is not
+// However, this bridge stores extra per-login model chat state that is not
 // foreign-keyed to user_login and therefore will not be automatically removed.
 func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if login == nil || login.Bridge == nil || login.Bridge.DB == nil {

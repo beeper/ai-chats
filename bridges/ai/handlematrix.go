@@ -102,7 +102,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		}
 	}
 	rawBodyOriginal := rawBody
-	commandAuthorized := oc.isCommandAuthorizedSender(msg.Event.Sender)
 
 	isGroup := oc.isGroupChat(ctx, portal)
 	roomName := ""
@@ -112,7 +111,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
 	logCtx.Debug().
 		Bool("is_group", isGroup).
-		Bool("command_authorized", commandAuthorized).
 		Int("raw_len", len(rawBodyOriginal)).
 		Msg("Inbound message metadata resolved")
 
@@ -124,15 +122,10 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 
-	commandBody := rawBody
 	if isGroup {
-		commandBody = stripMentionPatterns(commandBody, mc.MentionRegexes)
+		rawBody = stripMentionPatterns(rawBody, mc.MentionRegexes)
 	}
-	if !commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
-		logCtx.Debug().Msg("Ignoring abort trigger from unauthorized sender")
-		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
-	}
-	if commandAuthorized && airuntime.IsAbortTriggerText(commandBody) {
+	if airuntime.IsAbortTriggerText(rawBody) {
 		replyCtx := extractInboundReplyContext(msg.Event)
 		result := oc.handleUserStop(ctx, userStopRequest{
 			Portal:             portal,
