@@ -87,21 +87,3 @@ func TestResolveServiceConfigMagicProxyNoDuplicateOpenRouterPath(t *testing.T) {
 		t.Fatalf("unexpected exa base URL: %q", got)
 	}
 }
-
-func TestResolveExaProxyBaseURLMagicProxyPrefersLoginBase(t *testing.T) {
-	oc := &OpenAIConnector{
-		Config: Config{
-			Beeper: BeeperConfig{
-				BaseURL: "https://matrix.example.com",
-			},
-		},
-	}
-	cfg := &aiLoginConfig{
-		Credentials: &LoginCredentials{
-			BaseURL: "https://ai.bt.hn/",
-		},
-	}
-	if got := oc.resolveExaProxyBaseURL(cfg); got != "https://ai.bt.hn/exa" {
-		t.Fatalf("unexpected exa proxy base: %q", got)
-	}
-}

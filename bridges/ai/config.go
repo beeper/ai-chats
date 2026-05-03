@@ -15,11 +15,11 @@ var exampleNetworkConfig string
 // Config represents the connector-specific configuration that is nested under
 // the `network:` block in the main bridge config.
 type Config struct {
-	Beeper   BeeperConfig        `yaml:"beeper"`
-	Models   *ModelsConfig       `yaml:"models"`
-	Bridge   BridgeConfig        `yaml:"bridge"`
-	Tools    ToolProvidersConfig `yaml:"tools"`
-	Messages *MessagesConfig     `yaml:"messages"`
+	Beeper   BeeperConfig              `yaml:"beeper"`
+	Models   *ModelsConfig             `yaml:"models"`
+	Bridge   bridgeconfig.BridgeConfig `yaml:"bridge"`
+	Tools    ToolProvidersConfig       `yaml:"tools"`
+	Messages *MessagesConfig           `yaml:"messages"`
 
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
@@ -280,6 +280,3 @@ type ModelDefinitionConfig struct {
 	ContextWindow int      `yaml:"context_window"`
 	MaxTokens     int      `yaml:"max_tokens"`
 }
-
-// BridgeConfig is an alias for the shared bridge config.
-type BridgeConfig = bridgeconfig.BridgeConfig

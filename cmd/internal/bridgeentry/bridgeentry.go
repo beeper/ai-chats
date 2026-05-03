@@ -47,11 +47,6 @@ var registry = map[string]Definition{
 	DummyBridge.Name: DummyBridge,
 }
 
-func Lookup(name string) (Definition, bool) {
-	def, ok := registry[name]
-	return def, ok
-}
-
 func Names() []string {
 	return slices.Sorted(maps.Keys(registry))
 }

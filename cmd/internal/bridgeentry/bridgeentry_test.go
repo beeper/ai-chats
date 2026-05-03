@@ -12,8 +12,5 @@ func TestRegistryKeepsSupportedBridges(t *testing.T) {
 		if gotNames[i] != want {
 			t.Fatalf("Names()[%d] = %q, want %q (all names: %v)", i, gotNames[i], want, gotNames)
 		}
-		if _, ok := Lookup(want); !ok {
-			t.Fatalf("Lookup(%q) failed", want)
-		}
 	}
 }

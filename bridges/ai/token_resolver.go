@@ -104,24 +104,6 @@ func joinProxyPath(base, suffix string) string {
 	return base + suffix
 }
 
-func (oc *OpenAIConnector) resolveProxyRoot(cfg *aiLoginConfig) string {
-	if oc == nil {
-		return ""
-	}
-	if raw := loginCredentialBaseURL(cfg); raw != "" {
-		return normalizeProxyBaseURL(raw)
-	}
-	return ""
-}
-
-func (oc *OpenAIConnector) resolveExaProxyBaseURL(cfg *aiLoginConfig) string {
-	root := oc.resolveProxyRoot(cfg)
-	if root == "" {
-		return ""
-	}
-	return joinProxyPath(root, "/exa")
-}
-
 func (oc *OpenAIConnector) resolveServiceConfig(provider string, cfg *aiLoginConfig) ServiceConfigMap {
 	services := ServiceConfigMap{}
 

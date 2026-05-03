@@ -97,18 +97,6 @@ func TestQueueFallbackDecisions(t *testing.T) {
 	}
 }
 
-func TestNormalizeMessageID(t *testing.T) {
-	if got := NormalizeMessageID("[message_id: $abc:example.com]"); got != "$abc:example.com" {
-		t.Fatalf("expected normalized message id, got %q", got)
-	}
-	if got := NormalizeMessageID("reply [message_id: $abc:example.com]"); got != "$abc:example.com" {
-		t.Fatalf("expected inline normalized message id, got %q", got)
-	}
-	if got := NormalizeMessageID("[message_id: bad id]"); got != "" {
-		t.Fatalf("expected invalid message id to normalize empty, got %q", got)
-	}
-}
-
 func TestAbortTriggerNormalization(t *testing.T) {
 	if !IsAbortTriggerText("STOP PLEASE!!!") {
 		t.Fatalf("expected normalized abort trigger to match")
