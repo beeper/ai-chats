@@ -308,15 +308,15 @@ func (oc *AIClient) Connect(ctx context.Context) {
 }
 
 func (oc *AIClient) Disconnect() {
-	// Cancel per-login context early so background goroutines stop promptly.
-	if oc.disconnectCancel != nil {
-		oc.disconnectCancel()
-	}
-
 	// Flush pending debounced messages before disconnect (bridgev2 pattern)
 	if oc.inboundDebouncer != nil {
 		oc.loggerForContext(context.Background()).Info().Msg("Flushing pending debounced messages on disconnect")
 		oc.inboundDebouncer.FlushAll()
+	}
+
+	// Cancel per-login context after flushing so debounced messages can drain.
+	if oc.disconnectCancel != nil {
+		oc.disconnectCancel()
 	}
 	oc.SetLoggedIn(false)
 

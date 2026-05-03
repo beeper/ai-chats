@@ -7,14 +7,15 @@ import (
 	"strings"
 	"time"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/sdk"
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // ensureGhostDisplayName ensures the ghost has its display name set before sending messages.
@@ -94,6 +95,10 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 
 	ctx := oc.backgroundContext(context.Background())
 	last := entries[len(entries)-1]
+	if last.Event == nil || last.Portal == nil {
+		oc.loggerForContext(ctx).Warn().Msg("Skipping debounced batch with missing tail event or portal")
+		return
+	}
 	if last.Meta != nil {
 		if override := oc.effectiveModel(last.Meta); strings.TrimSpace(override) != "" {
 			ctx = withModelOverride(ctx, override)

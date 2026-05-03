@@ -22,7 +22,8 @@ func openRouterHeaders() map[string]string {
 }
 
 func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfig, connector *OpenAIConnector, login *bridgev2.UserLogin, log zerolog.Logger) (*OpenAIProvider, error) {
-	if strings.TrimSpace(providerID) == "" {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
 		return nil, errors.New("login provider is required")
 	}
 	switch providerID {

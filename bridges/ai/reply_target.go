@@ -53,7 +53,7 @@ func (oc *AIClient) resolveInitialReplyTarget(evt *event.Event) ReplyTarget {
 		return ReplyTarget{}
 	}
 	ctx := extractInboundReplyContext(evt)
-	target := ReplyTarget{ReplyTo: ctx.ReplyTo, ThreadRoot: ctx.ThreadRoot}
+	target := ReplyTarget(ctx)
 	if target.ReplyTo == "" && target.ThreadRoot != "" {
 		target.ReplyTo = target.ThreadRoot
 	}

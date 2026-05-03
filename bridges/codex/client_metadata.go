@@ -4,9 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"maunium.net/go/mautrix/bridgev2"
+
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
-	"maunium.net/go/mautrix/bridgev2"
 )
 
 func (cc *CodexClient) buildUIMessageMetadata(state *streamingState, model string, includeUsage bool, finishReason string) map[string]any {

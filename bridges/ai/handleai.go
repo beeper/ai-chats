@@ -217,8 +217,10 @@ func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.P
 	if err := oc.sendSystemNoticeMessage(bgCtx, portal, disclaimer); err != nil {
 		return fmt.Errorf("send disclaimer: %w", err)
 	}
+	prevDisclaimerSent := meta.DisclaimerSent
 	meta.DisclaimerSent = true
 	if err := oc.savePortal(bgCtx, portal, "disclaimer state"); err != nil {
+		meta.DisclaimerSent = prevDisclaimerSent
 		return fmt.Errorf("persist disclaimer state: %w", err)
 	}
 
@@ -236,6 +238,9 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		return
 	}
 	meta := portalMeta(portal)
+	if meta == nil {
+		return
+	}
 
 	if !oc.isOpenRouterProvider() {
 		return
@@ -285,7 +290,9 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 		}
 
 		meta := portalMeta(portal)
+		prevTitleGenerated := false
 		if meta != nil {
+			prevTitleGenerated = meta.TitleGenerated
 			meta.TitleGenerated = true
 		}
 		if portal.MXID != "" {
@@ -298,6 +305,9 @@ func (oc *AIClient) maybeGenerateTitle(ctx context.Context, portal *bridgev2.Por
 			portal.NameSet = true
 		}
 		if err := oc.savePortal(bgCtx, portal, "room title"); err != nil {
+			if meta != nil {
+				meta.TitleGenerated = prevTitleGenerated
+			}
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist generated room title")
 			return
 		}

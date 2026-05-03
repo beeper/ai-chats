@@ -192,14 +192,14 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 
 // chatInfoFromPortal builds ChatInfo from an existing portal
 func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Portal) *bridgev2.ChatInfo {
+	if portal == nil {
+		return nil
+	}
 	meta := portalMeta(portal)
 	if meta != nil && meta.InternalRoom() {
 		fallbackName := strings.TrimSpace(meta.Slug)
 		if fallbackName == "" {
 			fallbackName = "AI Chat"
-		}
-		if portal == nil {
-			return nil
 		}
 		name := strings.TrimSpace(portal.Name)
 		if name == "" {
@@ -213,7 +213,8 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 	modelID := oc.effectiveModel(meta)
 	title := strings.TrimSpace(portal.Name)
 	if title == "" {
-		if slug := strings.TrimSpace(meta.Slug); slug != "" {
+		if meta != nil && strings.TrimSpace(meta.Slug) != "" {
+			slug := strings.TrimSpace(meta.Slug)
 			title = slug
 		} else {
 			title = modelContactName(modelID, oc.findModelInfo(modelID))

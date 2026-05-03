@@ -89,6 +89,7 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 			case "tool":
 				if strings.TrimSpace(part.ToolCallID) != "" && strings.TrimSpace(part.ToolName) != "" {
 					toolArguments := "{}"
+					hasToolArguments := false
 					switch typed := part.Input.(type) {
 					case nil:
 					case string:
@@ -98,17 +99,20 @@ func promptMessagesFromTurnData(td sdk.TurnData) []PromptMessage {
 							if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
 								if data, marshalErr := json.Marshal(decoded); marshalErr == nil && string(data) != "null" {
 									toolArguments = string(data)
+									hasToolArguments = true
 								}
 							} else if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
 								toolArguments = string(data)
+								hasToolArguments = true
 							}
 						}
 					default:
 						if data, err := json.Marshal(typed); err == nil && string(data) != "null" {
 							toolArguments = string(data)
+							hasToolArguments = true
 						}
 					}
-					if toolArguments == "{}" {
+					if !hasToolArguments {
 						if value := strings.TrimSpace(formatPromptCanonicalValue(part.Input)); value != "" {
 							if data, err := json.Marshal(value); err == nil && string(data) != "null" {
 								toolArguments = string(data)

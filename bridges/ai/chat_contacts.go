@@ -142,7 +142,7 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 	models, err := oc.listAvailableModels(ctx, false)
 	if err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to load model contacts")
-		return results, nil
+		return nil, err
 	}
 	for i := range models {
 		model := &models[i]

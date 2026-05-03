@@ -4,9 +4,10 @@ import (
 	"context"
 	"strings"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+
+	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.Portal) string {

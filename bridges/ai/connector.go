@@ -47,8 +47,10 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	if oc.Config.ModelCacheDuration == 0 {
 		oc.Config.ModelCacheDuration = 6 * time.Hour
 	}
-	if oc.Config.Bridge.CommandPrefix == "" {
+	if strings.TrimSpace(oc.Config.Bridge.CommandPrefix) == "" {
 		oc.Config.Bridge.CommandPrefix = "!ai"
+	} else {
+		oc.Config.Bridge.CommandPrefix = strings.TrimSpace(oc.Config.Bridge.CommandPrefix)
 	}
 }
 

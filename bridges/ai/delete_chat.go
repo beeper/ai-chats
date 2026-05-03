@@ -20,14 +20,11 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 
 	portal := msg.Portal
 	roomID := portal.MXID
-	roomKey := strings.TrimSpace(roomID.String())
 
 	if roomID != "" {
 		oc.cleanupDeletedRoomRuntime(ctx, roomID)
 	}
-	if roomKey != "" {
-		oc.deletePersistedRoomArtifacts(ctx, portal, roomKey)
-	}
+	oc.deletePersistedRoomArtifacts(ctx, portal)
 	if err := sdk.DeleteConversationState(ctx, portal); err != nil {
 		oc.log.Warn().Err(err).Str("portal_id", string(portal.PortalKey.ID)).Msg("failed to delete SDK conversation state")
 	}
@@ -51,12 +48,8 @@ func (oc *AIClient) cleanupDeletedRoomRuntime(ctx context.Context, roomID id.Roo
 	oc.groupHistoryMu.Unlock()
 }
 
-func (oc *AIClient) deletePersistedRoomArtifacts(ctx context.Context, portal *bridgev2.Portal, roomKey string) {
-	if oc == nil {
-		return
-	}
-	roomKey = strings.TrimSpace(roomKey)
-	if roomKey == "" {
+func (oc *AIClient) deletePersistedRoomArtifacts(ctx context.Context, portal *bridgev2.Portal) {
+	if oc == nil || portal == nil {
 		return
 	}
 

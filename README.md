@@ -1,6 +1,6 @@
 # AgentRemote
 
-AgentRemote securely brings AI bridges to Beeper. It currently ships AI Chats, Codex, and DummyBridge with streaming, native tool UI, and approvals where the bridge supports them. Codex can run on your laptop and be managed from Beeper.
+AgentRemote securely brings model chats to Beeper with streaming and native tool UI where the model supports it.
 
 AgentRemote can run on the same device as the bridge runtime and can work behind a firewall. It connects to Beeper directly and creates an E2EE tunnel.
 
@@ -27,14 +27,13 @@ The AgentRemote Manager stores profile state under `~/.config/agentremote/`.
 | Bridge | What it connects |
 | --- | --- |
 | [`AI Chats`](./bridges/ai/README.md) | Talk to any model on Beeper AI |
-| [`Codex`](./bridges/codex/README.md) | A local `codex app-server` runtime; requires Codex to be installed |
 
 ## Quick start
 
 ```bash
 agentremote login
 agentremote list
-agentremote run codex
+agentremote run ai
 ```
 
 Useful commands:
@@ -66,7 +65,7 @@ Custom bridges in this repo are built on [`sdk/`](./sdk), the AgentRemote SDK me
 - `sdk.NewConnectorBase(...)`
 - `sdk.Config`, `sdk.Agent`, `sdk.Conversation`, and `sdk.Turn`
 
-See [`bridges/dummybridge`](./bridges/dummybridge) for a minimal bridge example.
+See [`bridges/ai`](./bridges/ai) for the model chat bridge.
 
 ## Docs
 

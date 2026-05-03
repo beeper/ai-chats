@@ -90,11 +90,11 @@ func TestEditModeNormalization(t *testing.T) {
 	}
 }
 
-func TestModelRoomCapabilitiesAllowEdits(t *testing.T) {
+func TestModelRoomCapabilitiesRejectEdits(t *testing.T) {
 	oc := newTestAIClientWithProvider(ProviderOpenRouter)
 	caps := oc.GetCapabilities(context.Background(), capabilityTestPortal("openai/gpt-5.4"))
-	if caps.Edit != event.CapLevelFullySupported {
-		t.Fatalf("expected edits to be supported, got %v", caps.Edit)
+	if caps.Edit != event.CapLevelRejected {
+		t.Fatalf("expected edits to be rejected, got %v", caps.Edit)
 	}
 }
 

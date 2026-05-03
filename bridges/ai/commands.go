@@ -298,14 +298,18 @@ func (oc *AIClient) copyTranscriptToFork(ctx context.Context, source *bridgev2.P
 	if err != nil {
 		return err
 	}
+	messages := make([]*database.Message, 0, len(rows))
 	for _, row := range rows {
 		msg := aiHistoryMessageFromTurn(target.PortalKey, row)
 		if msg == nil {
 			continue
 		}
-		if err := oc.persistAIConversationMessage(ctx, target, msg); err != nil {
-			return err
-		}
+		messages = append(messages, msg)
+	}
+	if err := oc.persistAIConversationMessages(ctx, target, messages); err != nil {
+		return err
+	}
+	for _, msg := range messages {
 		if err := oc.replayTranscriptMessage(ctx, target, msg); err != nil {
 			return err
 		}
@@ -317,7 +321,6 @@ func (oc *AIClient) currentTranscriptTurns(ctx context.Context, portal *bridgev2
 	return withResolvedPortalScopeValue(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) ([]*aiTurnRecord, error) {
 		rows, err := loadAICurrentContextTurnsByScope(ctx, scope, aiTurnQuery{
 			includeInHistory: true,
-			roles:            []string{"user", "assistant"},
 			limit:            10000,
 		})
 		if err != nil {

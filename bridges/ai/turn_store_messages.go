@@ -12,25 +12,39 @@ import (
 )
 
 func (oc *AIClient) persistAIConversationMessage(ctx context.Context, portal *bridgev2.Portal, msg *database.Message) error {
+	return oc.persistAIConversationMessages(ctx, portal, []*database.Message{msg})
+}
+
+func (oc *AIClient) persistAIConversationMessages(ctx context.Context, portal *bridgev2.Portal, messages []*database.Message) error {
 	return withResolvedPortalScope(ctx, oc, portal, func(ctx context.Context, portal *bridgev2.Portal, scope *portalScope) error {
-		meta, ok := msg.Metadata.(*MessageMetadata)
-		if !ok || meta == nil {
+		return scope.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+			for _, msg := range messages {
+				if msg == nil {
+					continue
+				}
+				meta, ok := msg.Metadata.(*MessageMetadata)
+				if !ok || meta == nil {
+					continue
+				}
+				turnData, ok := canonicalTurnData(meta)
+				if !ok {
+					continue
+				}
+				if err := upsertAITurnByScope(ctx, scope, portal, aiTurnUpsert{
+					TurnID:           strings.TrimSpace(turnData.ID),
+					Kind:             aiTurnKindConversation,
+					MessageID:        msg.ID,
+					EventID:          msg.MXID,
+					SenderID:         msg.SenderID,
+					IncludeInHistory: !meta.ExcludeFromHistory,
+					Timestamp:        msg.Timestamp,
+					TurnData:         turnData,
+					Metadata:         meta,
+				}); err != nil {
+					return err
+				}
+			}
 			return nil
-		}
-		turnData, ok := canonicalTurnData(meta)
-		if !ok {
-			return nil
-		}
-		return upsertAITurnByScope(ctx, scope, portal, aiTurnUpsert{
-			TurnID:           strings.TrimSpace(turnData.ID),
-			Kind:             aiTurnKindConversation,
-			MessageID:        msg.ID,
-			EventID:          msg.MXID,
-			SenderID:         msg.SenderID,
-			IncludeInHistory: !meta.ExcludeFromHistory,
-			Timestamp:        msg.Timestamp,
-			TurnData:         turnData,
-			Metadata:         meta,
 		})
 	})
 }

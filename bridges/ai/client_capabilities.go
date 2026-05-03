@@ -176,7 +176,22 @@ func pdfFileFeatures() *event.FileFeatures {
 
 func textFileFeatures() *event.FileFeatures {
 	return &event.FileFeatures{
-		MimeTypes:        map[string]event.CapabilitySupportLevel{},
+		MimeTypes: map[string]event.CapabilitySupportLevel{
+			"text/plain":                event.CapLevelFullySupported,
+			"text/markdown":             event.CapLevelFullySupported,
+			"text/csv":                  event.CapLevelFullySupported,
+			"text/tab-separated-values": event.CapLevelFullySupported,
+			"application/json":          event.CapLevelFullySupported,
+			"application/x-ndjson":      event.CapLevelFullySupported,
+			"application/xml":           event.CapLevelFullySupported,
+			"application/yaml":          event.CapLevelFullySupported,
+			"application/x-yaml":        event.CapLevelFullySupported,
+			"application/toml":          event.CapLevelFullySupported,
+			"application/javascript":    event.CapLevelFullySupported,
+			"application/typescript":    event.CapLevelFullySupported,
+			"application/x-sh":          event.CapLevelFullySupported,
+			"application/octet-stream":  event.CapLevelRejected,
+		},
 		Caption:          event.CapLevelFullySupported,
 		MaxCaptionLength: AIMaxTextLength,
 		MaxSize:          50 * 1024 * 1024, // Shared cap with PDFs
@@ -266,10 +281,14 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 	if isModelRoom {
 		caps.Reply = event.CapLevelRejected
 		caps.Thread = event.CapLevelRejected
+		caps.Edit = event.CapLevelRejected
+		caps.EditMaxCount = 0
+		caps.EditMaxAge = nil
+	} else if !supportsMsgActions {
+		caps.Edit = event.CapLevelRejected
+		caps.EditMaxCount = 0
+		caps.EditMaxAge = nil
 	}
-	caps.Edit = event.CapLevelFullySupported
-	caps.EditMaxCount = 10
-	caps.EditMaxAge = ptr.Ptr(jsontime.S(AIEditMaxAge))
 
 	// Apply file capabilities based on modalities
 	if modelCaps.SupportsVision {
@@ -317,14 +336,8 @@ func (oc *AIClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal
 }
 
 func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
-	if meta == nil {
+	if meta == nil || oc == nil || oc.connector == nil {
 		return false
 	}
-	if oc == nil {
-		return true
-	}
-	if oc.connector == nil {
-		return true
-	}
-	return false
+	return true
 }

@@ -10,7 +10,7 @@ import (
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
-	if oc == nil {
+	if oc == nil || oc.connector == nil {
 		return false
 	}
 	modelID := oc.effectiveModel(meta)
@@ -26,10 +26,7 @@ type modelInfoFilter func(ModelInfo) bool
 
 func (oc *AIClient) resolveUnderstandingModel(
 	ctx context.Context,
-	meta *PortalMetadata,
-	supportsCaps modelCapsFilter,
 	supportsInfo modelInfoFilter,
-	logLabel string,
 ) string {
 	loginState := oc.loginStateSnapshot(ctx)
 	provider := loginMetadata(oc.UserLogin).Provider
@@ -80,10 +77,7 @@ func (oc *AIClient) resolveModelForCapability(
 func (oc *AIClient) resolveImageUnderstandingModel(ctx context.Context, meta *PortalMetadata) string {
 	return oc.resolveUnderstandingModel(
 		ctx,
-		meta,
-		func(caps ModelCapabilities) bool { return caps.SupportsVision },
 		func(info ModelInfo) bool { return info.SupportsVision },
-		"image",
 	)
 }
 
