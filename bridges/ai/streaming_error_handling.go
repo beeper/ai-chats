@@ -3,12 +3,8 @@ package ai
 import (
 	"context"
 	"errors"
-	"time"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 )
 
 // NonFallbackError marks an error as ineligible for fallback retries once output has been sent.
@@ -31,71 +27,52 @@ func streamFailureError(state *streamingState, err error) error {
 	return &PreDeltaError{Err: err}
 }
 
-func (oc *AIClient) finishStreamingWithFailure(
+func resolveStreamingTerminalError(
 	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	reason string,
+	includeContextLength bool,
+	cancelFinalizeCtx context.Context,
 	err error,
-) error {
-	if state == nil {
-		return err
+) (finalizeCtx context.Context, reason string, cle *ContextLengthError, finalErr error) {
+	if errors.Is(err, context.Canceled) {
+		return cancelFinalizeCtx, "cancelled", nil, err
 	}
-	if !state.markFinalized() {
-		return streamFailureError(state, err)
-	}
-	if state != nil && state.stop.Load() != nil && reason == "cancelled" {
-		reason = "stop"
-	}
-	state.finishReason = reason
-	state.completedAtMs = time.Now().UnixMilli()
-	_ = log
-	oc.persistTerminalAssistantTurn(ctx, portal, state, meta)
-	if writer := state.writer(); writer != nil {
-		writer.MessageMetadata(ctx, oc.buildUIMessageMetadata(state, meta, true))
-	}
-	switch reason {
-	case "cancelled":
-		state.writer().Abort(ctx, "cancelled")
-		if state.turn != nil {
-			state.turn.End("cancelled")
-		}
-	case "stop":
-		if state.turn != nil {
-			state.turn.End(msgconv.MapFinishReason(reason))
-		}
-	default:
-		if state.turn != nil {
-			state.turn.EndWithError(err.Error())
+	if includeContextLength {
+		if cle := ParseContextLengthError(err); cle != nil {
+			return ctx, "context-length", cle, err
 		}
 	}
-	oc.noteStreamingPersistenceSideEffects(ctx, portal, state, meta)
-	return streamFailureError(state, err)
+	return nil, "", nil, nil
 }
 
-func (oc *AIClient) handleResponsesStreamErr(
+func (oc *AIClient) finalizeStreamingStepError(
 	ctx context.Context,
 	portal *bridgev2.Portal,
 	state *streamingState,
 	meta *PortalMetadata,
-	err error,
 	includeContextLength bool,
+	cancelFinalizeCtx context.Context,
+	stepErr error,
+	logUnhandled func(error),
 ) (*ContextLengthError, error) {
-	if errors.Is(err, context.Canceled) {
-		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-			return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "timeout", timeoutErr)
-		}
-		return nil, oc.finishStreamingWithFailure(context.Background(), *oc.loggerForContext(ctx), portal, state, meta, "cancelled", err)
-	}
-
-	if includeContextLength {
-		cle := ParseContextLengthError(err)
+	finalizeCtx, reason, cle, finalErr := resolveStreamingTerminalError(ctx, includeContextLength, cancelFinalizeCtx, stepErr)
+	if reason != "" {
+		err := oc.finalizeStreamingTurn(finalizeCtx, portal, state, meta, streamingFinalizeParams{
+			reason: reason,
+			err:    finalErr,
+		})
 		if cle != nil {
+			if err != nil {
+				oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to finalize context-length streaming turn")
+			}
 			return cle, nil
 		}
+		return nil, err
 	}
-
-	return nil, oc.finishStreamingWithFailure(ctx, *oc.loggerForContext(ctx), portal, state, meta, "error", err)
+	if logUnhandled != nil {
+		logUnhandled(stepErr)
+	}
+	return nil, oc.finalizeStreamingTurn(ctx, portal, state, meta, streamingFinalizeParams{
+		reason: "error",
+		err:    stepErr,
+	})
 }

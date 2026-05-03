@@ -74,7 +74,7 @@ func TestCodexExtractThreadTurn_TopLevelTurnIDRequired(t *testing.T) {
 	}
 }
 
-func TestCodexExtractThreadTurn_FallsBackToNestedTurnID(t *testing.T) {
+func TestCodexExtractThreadTurn_RejectsMissingTopLevelTurnID(t *testing.T) {
 	params, _ := json.Marshal(map[string]any{
 		"threadId": "thr1",
 		"turn": map[string]any{
@@ -83,18 +83,12 @@ func TestCodexExtractThreadTurn_FallsBackToNestedTurnID(t *testing.T) {
 		},
 	})
 	threadID, turnID, ok := codexExtractThreadTurn(params)
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if threadID != "thr1" {
-		t.Fatalf("expected threadId thr1, got %s", threadID)
-	}
-	if turnID != "nestedTurn" {
-		t.Fatalf("expected nested turn id, got %s", turnID)
+	if ok {
+		t.Fatalf("expected strict extraction to fail, got thread=%q turn=%q", threadID, turnID)
 	}
 }
 
-func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
+func TestCodex_Dispatch_DropsTurnCompletedWithoutTopLevelTurnID(t *testing.T) {
 	cc := &CodexClient{
 		notifCh:       make(chan codexNotif, 16),
 		notifDone:     make(chan struct{}),
@@ -120,23 +114,20 @@ func TestCodex_Dispatch_RoutesTurnCompletedByNestedTurnID(t *testing.T) {
 
 	select {
 	case evt := <-ch:
-		if evt.Method != "turn/completed" {
-			t.Fatalf("unexpected evt on channel: %+v", evt)
-		}
-	case <-time.After(1 * time.Second):
-		t.Fatal("timeout waiting for turn/completed")
+		t.Fatalf("expected no routed event, got %+v", evt)
+	case <-time.After(100 * time.Millisecond):
 	}
 }
 
 func TestCodexRestoreRecoveredActiveTurns_RegistersInProgressTurns(t *testing.T) {
 	roomID := id.RoomID("!room:example.com")
 	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: roomID}}
-	meta := &PortalMetadata{CodexThreadID: "thr1"}
+	state := &codexPortalState{CodexThreadID: "thr1"}
 	cc := &CodexClient{
 		activeTurns: make(map[string]*codexActiveTurn),
 	}
 
-	cc.restoreRecoveredActiveTurns(portal, meta, codexThread{
+	cc.restoreRecoveredActiveTurns(portal, state, codexThread{
 		ID: "thr1",
 		Turns: []codexTurn{
 			{ID: "turn-active", Status: "inProgress"},
@@ -148,8 +139,8 @@ func TestCodexRestoreRecoveredActiveTurns_RegistersInProgressTurns(t *testing.T)
 	if active == nil {
 		t.Fatal("expected in-progress turn to be restored")
 	}
-	if active.state == nil || active.state.turnID != "turn-active" {
-		t.Fatalf("expected recovered streaming state for active turn, got %#v", active.state)
+	if active.streamState == nil || active.streamState.turnID != "turn-active" {
+		t.Fatalf("expected recovered streaming state for active turn, got %#v", active.streamState)
 	}
 	if _, ok := cc.activeTurns[codexTurnKey("thr1", "turn-done")]; ok {
 		t.Fatal("did not expect completed turn to be restored")

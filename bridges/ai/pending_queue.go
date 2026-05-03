@@ -2,26 +2,25 @@ package ai
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 type pendingQueueItem struct {
-	pending         pendingMessage
-	messageID       string
-	summaryLine     string
-	enqueuedAt      int64
-	rawEventContent map[string]any
-	prompt          string
-	backlogAfter    bool
-	allowDuplicate  bool
+	pending          pendingMessage
+	acceptedMessages []*database.Message
+	messageID        string
+	summaryLine      string
+	enqueuedAt       int64
+	prompt           string
+	backlogAfter     bool
+	allowDuplicate   bool
 }
 
 type pendingQueue struct {
@@ -36,6 +35,18 @@ type pendingQueue struct {
 	droppedCount   int
 	summaryLines   []string
 	lastItem       *pendingQueueItem
+}
+
+type queueSummaryState struct {
+	DropPolicy   airuntime.QueueDropPolicy
+	DroppedCount int
+	SummaryLines []string
+}
+
+type queueState[T any] struct {
+	queueSummaryState
+	Items []T
+	Cap   int
 }
 
 func (pm pendingMessage) sourceEventID() id.EventID {
@@ -176,19 +187,32 @@ func (oc *AIClient) enqueuePendingItem(roomID id.RoomID, item pendingQueueItem, 
 		Items: queue.items,
 		Cap:   queue.cap,
 	}
-	shouldEnqueue := applyQueueDropPolicy[pendingQueueItem](struct {
-		Queue        *queueState[pendingQueueItem]
-		Summarize    func(item pendingQueueItem) string
-		SummaryLimit int
-	}{
-		Queue: &state,
-		Summarize: func(entry pendingQueueItem) string {
-			if entry.summaryLine != "" {
-				return entry.summaryLine
+	shouldEnqueue := true
+	if state.Cap > 0 && len(state.Items) >= state.Cap {
+		overflow := airuntime.ResolveQueueOverflow(state.Cap, len(state.Items), state.DropPolicy)
+		if !overflow.KeepNew {
+			shouldEnqueue = false
+		} else if dropCount := overflow.ItemsToDrop; dropCount >= 1 {
+			dropped := state.Items[:dropCount]
+			state.Items = state.Items[dropCount:]
+			if overflow.ShouldSummarize {
+				for _, entry := range dropped {
+					state.DroppedCount++
+					summary := entry.summaryLine
+					if summary == "" {
+						summary = strings.TrimSpace(entry.pending.MessageBody)
+					}
+					summary = strings.TrimSpace(summary)
+					if summary != "" {
+						state.SummaryLines = append(state.SummaryLines, airuntime.BuildQueueSummaryLine(summary, 160))
+					}
+				}
+				if len(state.SummaryLines) > state.Cap {
+					state.SummaryLines = state.SummaryLines[len(state.SummaryLines)-state.Cap:]
+				}
 			}
-			return strings.TrimSpace(entry.pending.MessageBody)
-		},
-	})
+		}
+	}
 	queue.items = state.Items
 	queue.droppedCount = state.DroppedCount
 	queue.summaryLines = state.SummaryLines
@@ -213,313 +237,4 @@ func pendingQueueItemsConflict(item pendingQueueItem, existing pendingQueueItem)
 		existing.messageID == "" &&
 		item.pending.MessageBody != "" &&
 		existing.pending.MessageBody == item.pending.MessageBody
-}
-
-func (oc *AIClient) popQueueItems(roomID id.RoomID, count int) []pendingQueueItem {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil || len(queue.items) == 0 || count <= 0 {
-		return nil
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	if count > len(queue.items) {
-		count = len(queue.items)
-	}
-	out := make([]pendingQueueItem, count)
-	copy(out, queue.items[:count])
-	queue.items = queue.items[count:]
-	if len(queue.items) == 0 && queue.droppedCount == 0 {
-		delete(oc.pendingQueues, roomID)
-	}
-	return out
-}
-
-func (oc *AIClient) getQueueSnapshot(roomID id.RoomID) *pendingQueue {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil {
-		return nil
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	clone := &pendingQueue{
-		items:          slices.Clone(queue.items),
-		draining:       queue.draining,
-		lastEnqueuedAt: queue.lastEnqueuedAt,
-		mode:           queue.mode,
-		debounceMs:     queue.debounceMs,
-		cap:            queue.cap,
-		dropPolicy:     queue.dropPolicy,
-		droppedCount:   queue.droppedCount,
-		summaryLines:   slices.Clone(queue.summaryLines),
-	}
-	if queue.lastItem != nil {
-		lastItem := *queue.lastItem
-		clone.lastItem = &lastItem
-	}
-	return clone
-}
-
-func (oc *AIClient) roomHasPendingQueueWork(roomID id.RoomID) bool {
-	if oc == nil || roomID == "" {
-		return false
-	}
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil {
-		return false
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	return queue.draining || len(queue.items) > 0 || queue.droppedCount > 0
-}
-
-func (oc *AIClient) consumeQueueSummary(roomID id.RoomID, noun string) string {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil || queue.droppedCount == 0 {
-		return ""
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	summary := buildQueueSummaryPrompt(queue, noun)
-	queue.droppedCount = 0
-	queue.summaryLines = nil
-	if len(queue.items) == 0 {
-		delete(oc.pendingQueues, roomID)
-	}
-	return summary
-}
-
-func (oc *AIClient) takePendingQueueDispatchCandidate(roomID id.RoomID, textOnly bool) (*pendingQueueDispatchCandidate, *pendingQueue) {
-	snapshot := oc.getQueueSnapshot(roomID)
-	if snapshot == nil || (len(snapshot.items) == 0 && snapshot.droppedCount == 0) {
-		return nil, snapshot
-	}
-	behavior := airuntime.ResolveQueueBehavior(snapshot.mode)
-
-	if behavior.Collect && len(snapshot.items) > 0 {
-		count := len(snapshot.items)
-		if count > 1 {
-			firstKey := oc.queueThreadKey(snapshot.items[0].pending.Event)
-			for i := 1; i < count; i++ {
-				if oc.queueThreadKey(snapshot.items[i].pending.Event) != firstKey {
-					count = i
-					break
-				}
-			}
-		}
-		if textOnly {
-			for i := 0; i < count; i++ {
-				if snapshot.items[i].pending.Type != pendingTypeText {
-					return nil, snapshot
-				}
-			}
-		}
-		summary := ""
-		if snapshot.droppedCount > 0 {
-			summary = oc.consumeQueueSummary(roomID, "message")
-		}
-		items := oc.popQueueItems(roomID, count)
-		for idx := range items {
-			if items[idx].prompt == "" {
-				items[idx].prompt = items[idx].pending.MessageBody
-			}
-		}
-		return &pendingQueueDispatchCandidate{
-			items:         items,
-			summaryPrompt: summary,
-			collect:       true,
-		}, snapshot
-	}
-
-	if snapshot.dropPolicy == airuntime.QueueDropSummarize && snapshot.droppedCount > 0 {
-		item := snapshot.items[0]
-		if snapshot.lastItem != nil {
-			item = *snapshot.lastItem
-		}
-		if textOnly && item.pending.Type != pendingTypeText {
-			return nil, snapshot
-		}
-		return &pendingQueueDispatchCandidate{
-			items:         []pendingQueueItem{item},
-			summaryPrompt: oc.consumeQueueSummary(roomID, "message"),
-			synthetic:     true,
-		}, snapshot
-	}
-
-	if len(snapshot.items) == 0 {
-		return nil, snapshot
-	}
-	if textOnly && snapshot.items[0].pending.Type != pendingTypeText {
-		return nil, snapshot
-	}
-	items := oc.popQueueItems(roomID, 1)
-	return &pendingQueueDispatchCandidate{items: items}, snapshot
-}
-
-func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandidate) (pendingQueueItem, string, bool) {
-	if candidate == nil || len(candidate.items) == 0 {
-		return pendingQueueItem{}, "", false
-	}
-	if candidate.collect {
-		items := candidate.items
-		ackIDs := make([]id.EventID, 0, len(items))
-		for idx := range items {
-			if items[idx].pending.Event != nil {
-				if len(items[idx].pending.AckEventIDs) > 0 {
-					ackIDs = append(ackIDs, items[idx].pending.AckEventIDs...)
-				} else {
-					ackIDs = append(ackIDs, items[idx].pending.Event.ID)
-				}
-			}
-			if items[idx].prompt == "" {
-				items[idx].prompt = items[idx].pending.MessageBody
-			}
-		}
-		item := items[len(items)-1]
-		if len(ackIDs) > 0 {
-			item.pending.AckEventIDs = ackIDs
-		}
-		return item, buildCollectPrompt("[Queued messages while agent was busy]", items, candidate.summaryPrompt), true
-	}
-
-	item := candidate.items[0]
-	if candidate.summaryPrompt != "" && candidate.synthetic {
-		item.pending.Event = nil
-		item.pending.MessageBody = candidate.summaryPrompt
-		item.backlogAfter = false
-		item.allowDuplicate = false
-		return item, candidate.summaryPrompt, true
-	}
-	return item, strings.TrimSpace(item.pending.MessageBody), true
-}
-
-func (oc *AIClient) getSteeringMessages(roomID id.RoomID) []string {
-	if oc == nil || roomID == "" {
-		return nil
-	}
-	steerItems := oc.drainSteerQueue(roomID)
-	if len(steerItems) == 0 {
-		return nil
-	}
-
-	messages := make([]string, 0, len(steerItems))
-	for _, item := range steerItems {
-		if item.pending.Type != pendingTypeText {
-			continue
-		}
-		prompt := strings.TrimSpace(item.prompt)
-		if prompt == "" {
-			prompt = item.pending.MessageBody
-		}
-		prompt = strings.TrimSpace(prompt)
-		if prompt == "" {
-			continue
-		}
-		messages = append(messages, prompt)
-	}
-	return messages
-}
-
-func buildSteeringPromptMessages(prompts []string) []PromptMessage {
-	if len(prompts) == 0 {
-		return nil
-	}
-	messages := make([]PromptMessage, 0, len(prompts))
-	for _, prompt := range prompts {
-		prompt = strings.TrimSpace(prompt)
-		if prompt == "" {
-			continue
-		}
-		messages = append(messages, newUserTextPromptMessage(prompt))
-	}
-	return messages
-}
-
-func (oc *AIClient) markQueueDraining(roomID id.RoomID) bool {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil || queue.draining {
-		return false
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	if queue.draining {
-		return false
-	}
-	queue.draining = true
-	return true
-}
-
-func (oc *AIClient) clearQueueDraining(roomID id.RoomID) {
-	oc.pendingQueuesMu.Lock()
-	defer oc.pendingQueuesMu.Unlock()
-	queue := oc.pendingQueues[roomID]
-	if queue == nil {
-		return
-	}
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	queue.draining = false
-	if len(queue.items) == 0 && queue.droppedCount == 0 {
-		delete(oc.pendingQueues, roomID)
-	}
-}
-
-func (oc *AIClient) dispatchQueuedPrompt(
-	ctx context.Context,
-	item pendingQueueItem,
-	promptContext PromptContext,
-) {
-	var roomID id.RoomID
-	if item.pending.Portal != nil {
-		roomID = item.pending.Portal.MXID
-	}
-	oc.log.Debug().Stringer("room_id", roomID).Str("message_id", item.messageID).Int("prompt_len", len(promptContext.Messages)).Msg("Dispatching queued prompt")
-	runCtx := oc.attachRoomRun(ctx, roomID)
-	runCtx = context.WithValue(runCtx, queueAcceptedStatusKey{}, true)
-	if item.pending.InboundContext != nil {
-		runCtx = withInboundContext(runCtx, *item.pending.InboundContext)
-	}
-	if item.pending.Typing != nil {
-		runCtx = WithTypingContext(runCtx, item.pending.Typing)
-	}
-	metaSnapshot := clonePortalMetadata(item.pending.Meta)
-	go func() {
-		defer func() {
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-			if item.backlogAfter {
-				followup := item
-				followup.backlogAfter = false
-				followup.allowDuplicate = true
-				queueSettings, _, _, _ := oc.resolveQueueSettingsForPortal(oc.backgroundContext(ctx), item.pending.Portal, item.pending.Meta, "", airuntime.QueueInlineOptions{})
-				oc.queuePendingMessage(roomID, followup, queueSettings)
-			}
-			oc.releaseRoom(roomID)
-			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
-		}()
-		oc.dispatchCompletionInternal(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext)
-	}()
-}
-
-func (oc *AIClient) removePendingAckReactions(ctx context.Context, portal *bridgev2.Portal, pending pendingMessage) {
-	if portal == nil || pending.Meta == nil || !pending.Meta.AckReactionRemoveAfter {
-		return
-	}
-	ids := pending.AckEventIDs
-	if len(ids) == 0 && pending.Event != nil {
-		ids = []id.EventID{pending.Event.ID}
-	}
-	for _, sourceID := range ids {
-		if sourceID != "" {
-			oc.removeAckReaction(ctx, portal, sourceID)
-		}
-	}
 }

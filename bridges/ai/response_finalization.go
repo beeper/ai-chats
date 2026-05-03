@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"maps"
 	"strings"
 	"time"
 
@@ -11,39 +10,56 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/agents"
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
 	"github.com/beeper/agentremote/turns"
 )
 
-func buildReplyRelatesTo(replyTarget ReplyTarget) *event.RelatesTo {
-	if replyTarget.ThreadRoot != "" {
-		return (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())
-	}
-	if replyTarget.ReplyTo != "" {
-		return (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
-	}
-	return nil
-}
-
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.
-func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing agentremote.EventTiming) {
+func (oc *AIClient) sendContinuationMessage(ctx context.Context, portal *bridgev2.Portal, body string, replyTarget ReplyTarget, timing sdk.EventTiming) {
 	if portal == nil || portal.MXID == "" {
 		return
 	}
-	sender, _, err := oc.resolvePortalSenderAndIntent(ctx, portal, bridgev2.RemoteEventMessage, true)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to prepare continuation sender")
+	sender := oc.senderForPortal(ctx, portal)
+	rendered := format.RenderMarkdown(body, true, true)
+	msgID := sdk.NewMessageID("ai")
+	converted := &bridgev2.ConvertedMessage{
+		Parts: []*bridgev2.ConvertedMessagePart{{
+			ID:   networkid.PartID("0"),
+			Type: event.EventMessage,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          rendered.Body,
+				Format:        rendered.Format,
+				FormattedBody: rendered.FormattedBody,
+				Mentions:      &event.Mentions{},
+			},
+			Extra: map[string]any{"com.beeper.continuation": true},
+		}},
+	}
+	var relatesTo *event.RelatesTo
+	if replyTarget.ThreadRoot != "" {
+		relatesTo = (&event.RelatesTo{}).SetThread(replyTarget.ThreadRoot, replyTarget.EffectiveReplyTo())
+	} else if replyTarget.ReplyTo != "" {
+		relatesTo = (&event.RelatesTo{}).SetReplyTo(replyTarget.ReplyTo)
+	}
+	if relatesTo != nil && len(converted.Parts) > 0 && converted.Parts[0] != nil && converted.Parts[0].Content != nil {
+		converted.Parts[0].Content.RelatesTo = relatesTo
+	}
+	if _, _, err := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      "ai_msg_id",
+		MsgID:       msgID,
+		Timestamp:   timing.Timestamp,
+		StreamOrder: timing.StreamOrder,
+		Converted:   converted,
+	}); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Int("body_len", len(body)).Msg("Failed to queue continuation message")
 		return
 	}
-	msg := agentremote.BuildContinuationMessage(portal.PortalKey, body, sender, "ai", "ai_msg_id", timing.Timestamp, timing.StreamOrder)
-	if relatesTo := buildReplyRelatesTo(replyTarget); relatesTo != nil && msg != nil && msg.Data != nil && len(msg.Data.Parts) > 0 {
-		msg.Data.Parts[0].Content.RelatesTo = relatesTo
-	}
-	oc.UserLogin.QueueRemoteEvent(msg)
 	oc.loggerForContext(ctx).Debug().Int("body_len", len(body)).Msg("Queued continuation message for oversized response")
 }
 
@@ -64,336 +80,32 @@ func (oc *AIClient) flushPartialStreamingMessage(ctx context.Context, portal *br
 	}
 }
 
-// sendFinalAssistantTurn sends an edit event with the complete assistant turn data.
-// It processes response directives (reply tags, silent replies) before sending when in natural mode.
-// Matches OpenClaw's directive processing behavior.
-func (oc *AIClient) sendFinalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if portal == nil || portal.MXID == "" {
-		return
-	}
-	if state != nil && state.heartbeat != nil {
-		oc.sendFinalHeartbeatTurn(ctx, portal, state, meta)
-		return
-	}
-	if state != nil && state.suppressSend {
-		return
-	}
-
-	rawContent := state.accumulated.String()
-
-	// Natural mode: process directives (OpenClaw-style)
-	directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
-
-	// Handle silent replies - redact the streaming message
-	if directives.IsSilent {
-		oc.loggerForContext(ctx).Debug().
-			Str("turn_id", state.turn.ID()).
-			Str("initial_event_id", state.turn.InitialEventID().String()).
-			Msg("Silent reply detected, redacting streaming message")
-		oc.redactInitialStreamingMessage(ctx, portal, state)
-		return
-	}
-
-	// Use cleaned content (directives stripped)
-	cleanedContent := airuntime.SanitizeChatMessageForDisplay(directives.Text, false)
-	if strings.TrimSpace(cleanedContent) == "" {
-		cleanedContent = finalRenderedBodyFallback(state)
-	}
-
-	finalReplyTarget := oc.resolveFinalReplyTarget(meta, state, &directives)
-	rendered := format.RenderMarkdown(cleanedContent, true, true)
-	oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleanedContent, rendered, finalReplyTarget, "natural")
-}
-
-// heartbeatSkipParams captures the per-branch differences for the common
-// heartbeat-skip path (redact, emit event, send outcome, return).
-type heartbeatSkipParams struct {
-	status    string // event payload status ("ok-token", "ok-empty", "skipped")
-	reason    string // outcome & event reason
-	restore   bool   // whether to restore heartbeat updatedAt
-	indicator *HeartbeatIndicatorType
-	preview   string // truncated to 200 chars
-	to        string // target room string for the event
-	silent    bool   // for the event payload & outcome
-	sent      bool   // whether this branch emitted a visible message
-}
-
-// skipHeartbeatRun executes the common heartbeat-skip path shared by all early-
-// return branches: optionally restore the heartbeat timestamp, redact the
-// streaming message, clear pending images, emit the heartbeat event, send the
-// outcome, and return.
-func (oc *AIClient) skipHeartbeatRun(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	hb *HeartbeatRunConfig,
-	durationMs int64,
-	hasMedia bool,
-	sendOutcome func(HeartbeatRunOutcome),
-	p heartbeatSkipParams,
-) {
-	if p.restore {
-		storeRef := sessionStoreRef{AgentID: hb.StoreAgentID}
-		oc.restoreHeartbeatUpdatedAt(storeRef, hb.SessionKey, hb.PrevUpdatedAt)
-	}
-	oc.redactInitialStreamingMessage(ctx, portal, state)
-	state.pendingImages = nil
-
-	preview := p.preview
-	if len(preview) > 200 {
-		preview = preview[:200]
-	}
-
-	oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-		TS:            time.Now().UnixMilli(),
-		Status:        p.status,
-		To:            p.to,
-		Reason:        p.reason,
-		Preview:       preview,
-		Channel:       hb.Channel,
-		Silent:        p.silent,
-		HasMedia:      hasMedia,
-		DurationMs:    durationMs,
-		IndicatorType: p.indicator,
-	})
-	sendOutcome(HeartbeatRunOutcome{
-		Status:  "ran",
-		Reason:  p.reason,
-		Preview: preview,
-		Sent:    p.sent,
-		Silent:  p.silent,
-		Skipped: true,
-	})
-}
-
-// sendFinalHeartbeatTurn handles heartbeat-specific response delivery.
-func (oc *AIClient) sendFinalHeartbeatTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if portal == nil || portal.MXID == "" || state == nil || state.heartbeat == nil {
-		return
-	}
-
-	hb := state.heartbeat
-	durationMs := time.Now().UnixMilli() - state.startedAtMs
-	rawContent := state.accumulated.String()
-	ackMax := hb.AckMaxChars
-	if ackMax < 0 {
-		ackMax = agents.DefaultMaxAckChars
-	}
-
-	shouldSkip, strippedText, didStrip := agents.StripHeartbeatTokenWithMode(
-		rawContent,
-		agents.StripHeartbeatModeHeartbeat,
-		ackMax,
-	)
-	finalText := rawContent
-	if didStrip {
-		finalText = strippedText
-	}
-	if hb.ExecEvent && strings.TrimSpace(rawContent) != "" {
-		if strings.TrimSpace(finalText) == "" {
-			finalText = rawContent
-		}
-		shouldSkip = false
-	}
-	cleaned := strings.TrimSpace(finalText)
-	hasMedia := len(state.pendingImages) > 0
-	shouldSkipMain := shouldSkip && !hasMedia && !hb.ExecEvent
-	hasContent := cleaned != ""
-	includeReasoning := hb.IncludeReasoning && state.reasoning.Len() > 0
-	reasoningText := ""
-	if includeReasoning {
-		reasoningText = strings.TrimSpace(state.reasoning.String())
-		if reasoningText != "" {
-			reasoningText = "Reasoning: " + reasoningText
-		}
-	}
-	hasReasoning := reasoningText != ""
-	deliverable := hb.TargetRoom != "" && hb.TargetRoom == portal.MXID
-	targetReason := strings.TrimSpace(hb.TargetReason)
-	if targetReason == "" {
-		targetReason = "no-target"
-	}
-
-	sendOutcome := func(out HeartbeatRunOutcome) {
-		if state.heartbeatResultCh != nil {
-			select {
-			case state.heartbeatResultCh <- out:
-			default:
-			}
-		}
-	}
-
-	// Helper to pick preview text, preferring cleaned content then reasoning.
-	previewText := func() string {
-		if cleaned != "" {
-			return cleaned
-		}
-		if hasReasoning {
-			return reasoningText
-		}
-		return ""
-	}
-
-	if shouldSkipMain && !hasContent && !hasReasoning {
-		silent := true
-		if hb.ShowOk && deliverable {
-			_ = oc.sendPlainAssistantMessage(ctx, portal, agents.HeartbeatToken)
-			silent = false
-		}
-		status := "ok-token"
-		if strings.TrimSpace(rawContent) == "" {
-			status = "ok-empty"
-		}
-		var indicator *HeartbeatIndicatorType
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType(status)
-		}
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:    status,
-			reason:    hb.Reason,
-			restore:   true,
-			indicator: indicator,
-			to:        hb.TargetRoom.String(),
-			silent:    silent,
-			sent:      !silent,
-		})
-		return
-	}
-
-	// Deduplicate identical heartbeat content within 24h
-	if hasContent && !shouldSkipMain && !hasMedia {
-		storeRef := sessionStoreRef{AgentID: hb.StoreAgentID}
-		if oc.isDuplicateHeartbeat(storeRef, hb.SessionKey, cleaned, state.startedAtMs) {
-			var indicator *HeartbeatIndicatorType
-			if hb.UseIndicator {
-				indicator = resolveIndicatorType("skipped")
-			}
-			oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-				status:    "skipped",
-				reason:    "duplicate",
-				restore:   true,
-				indicator: indicator,
-				preview:   cleaned,
-				to:        "",
-				silent:    true,
-			})
-			return
-		}
-	}
-
-	if !deliverable {
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:  "skipped",
-			reason:  targetReason,
-			restore: false,
-			preview: previewText(),
-			to:      hb.TargetRoom.String(),
-			silent:  true,
-		})
-		return
-	}
-
-	if !hb.ShowAlerts {
-		var indicator *HeartbeatIndicatorType
-		if hb.UseIndicator {
-			indicator = resolveIndicatorType("sent")
-		}
-		oc.skipHeartbeatRun(ctx, portal, state, hb, durationMs, hasMedia, sendOutcome, heartbeatSkipParams{
-			status:    "skipped",
-			reason:    "alerts-disabled",
-			restore:   true,
-			indicator: indicator,
-			preview:   previewText(),
-			to:        hb.TargetRoom.String(),
-			silent:    true,
-		})
-		return
-	}
-
-	if hasReasoning {
-		_ = oc.sendPlainAssistantMessage(ctx, portal, reasoningText)
-	}
-
-	if cleaned != "" {
-		if !state.hasInitialMessageTarget() {
-			_ = oc.sendPlainAssistantMessage(ctx, portal, cleaned)
-		} else {
-			rendered := format.RenderMarkdown(cleaned, true, true)
-			oc.sendFinalAssistantTurnContent(ctx, portal, state, meta, cleaned, rendered, ReplyTarget{}, "heartbeat")
-		}
-	}
-
-	// Record heartbeat for dedupe
-	if hb.SessionKey != "" && cleaned != "" && !shouldSkipMain {
-		oc.recordHeartbeatText(sessionStoreRef{AgentID: hb.StoreAgentID}, hb.SessionKey, cleaned, state.startedAtMs)
-	}
-
-	indicator := (*HeartbeatIndicatorType)(nil)
-	if hb.UseIndicator {
-		indicator = resolveIndicatorType("sent")
-	}
-	preview := cleaned
-	if preview == "" && hasReasoning {
-		preview = reasoningText
-	}
-	oc.emitHeartbeatEvent(&HeartbeatEventPayload{
-		TS:            time.Now().UnixMilli(),
-		Status:        "sent",
-		To:            hb.TargetRoom.String(),
-		Reason:        hb.Reason,
-		Preview:       preview[:min(len(preview), 200)],
-		Channel:       hb.Channel,
-		HasMedia:      hasMedia,
-		DurationMs:    durationMs,
-		IndicatorType: indicator,
-	})
-	sendOutcome(HeartbeatRunOutcome{Status: "ran", Text: cleaned, Sent: true})
-}
-
 func (oc *AIClient) redactInitialStreamingMessage(ctx context.Context, portal *bridgev2.Portal, state *streamingState) {
 	if portal == nil || state == nil {
 		return
 	}
-	if state.turn.NetworkMessageID() != "" {
-		if err := oc.redactViaPortal(ctx, portal, state.turn.NetworkMessageID()); err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message via network ID")
+	if portal.MXID == "" || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
+		return
+	}
+	targetMessageID := state.turn.NetworkMessageID()
+	if targetMessageID == "" {
+		if state.turn.InitialEventID() == "" {
+			return
 		}
-		return
+		part, err := oc.loadPortalMessagePartByMXID(ctx, portal, state.turn.InitialEventID())
+		if err != nil {
+			oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to look up streaming message for redaction")
+			return
+		}
+		if part == nil {
+			oc.loggerForContext(ctx).Warn().Stringer("event_id", state.turn.InitialEventID()).Msg("Streaming message not found for redaction")
+			return
+		}
+		targetMessageID = part.ID
 	}
-	if state.turn.InitialEventID() == "" {
-		return
+	if err := oc.redactNetworkMessageViaPortal(ctx, portal, targetMessageID); err != nil {
+		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message")
 	}
-	if err := oc.redactEventViaPortal(ctx, portal, state.turn.InitialEventID()); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("event_id", state.turn.InitialEventID()).Msg("Failed to redact streaming message via event ID")
-	}
-}
-
-func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridgev2.Portal, text string) error {
-	if portal == nil || portal.MXID == "" {
-		return nil
-	}
-
-	rendered := format.RenderMarkdown(text, true, true)
-	converted := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:   networkid.PartID("0"),
-			Type: event.EventMessage,
-			Content: &event.MessageEventContent{
-				MsgType:       event.MsgText,
-				Body:          rendered.Body,
-				Format:        rendered.Format,
-				FormattedBody: rendered.FormattedBody,
-				Mentions:      &event.Mentions{},
-			},
-		}},
-	}
-
-	if _, _, err := oc.sendViaPortal(ctx, portal, converted, ""); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
-		return err
-	}
-	oc.recordAgentActivity(ctx, portal, portalMeta(portal))
-	return nil
 }
 
 func buildSourceParts(cits []citations.SourceCitation, documents []citations.SourceDocument, previews []*event.BeeperLinkPreview) []map[string]any {
@@ -493,38 +205,6 @@ func finalRenderedBodyFallback(state *streamingState) string {
 	return "..."
 }
 
-func (oc *AIClient) persistTerminalAssistantTurn(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if state == nil {
-		return
-	}
-	if state.hasInitialMessageTarget() || state.heartbeat != nil {
-		oc.sendFinalAssistantTurn(ctx, portal, state, meta)
-	}
-}
-
-func buildFinalEditPayload(rendered event.MessageEventContent, topLevelExtra map[string]any) *sdk.FinalEditPayload {
-	content := rendered
-	content.RelatesTo = nil
-	content.BeeperLinkPreviews = nil
-	extra := map[string]any{}
-	cleanTopLevelExtra := maps.Clone(topLevelExtra)
-	if len(cleanTopLevelExtra) > 0 {
-		if uiMessage, ok := cleanTopLevelExtra[BeeperAIKey]; ok {
-			extra[BeeperAIKey] = uiMessage
-			delete(cleanTopLevelExtra, BeeperAIKey)
-		}
-		if previews, ok := cleanTopLevelExtra["com.beeper.linkpreviews"]; ok {
-			extra["com.beeper.linkpreviews"] = previews
-			delete(cleanTopLevelExtra, "com.beeper.linkpreviews")
-		}
-	}
-	return &sdk.FinalEditPayload{
-		Content:       &content,
-		Extra:         extra,
-		TopLevelExtra: cleanTopLevelExtra,
-	}
-}
-
 // sendFinalAssistantTurnContent sends the final assistant content after directive processing.
 func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata, markdown string, rendered event.MessageEventContent, replyTarget ReplyTarget, mode string) {
 	// Safety-split oversized responses into multiple Matrix events
@@ -536,7 +216,8 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 	}
 
 	// Generate link previews for URLs in the response
-	intent, _ := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
+	sender := oc.senderForPortal(ctx, portal)
+	intent, _ := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
 	var sourceCitations []citations.SourceCitation
 	if state != nil {
 		sourceCitations = state.sourceCitations
@@ -545,23 +226,18 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 
 	uiMessage := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, meta, linkPreviews))
 
-	topLevelExtra := sdk.BuildDefaultFinalEditTopLevelExtra()
 	if state != nil && state.turn != nil {
-		finalTopLevelExtra := topLevelExtra
-		if len(uiMessage) > 0 || len(linkPreviews) > 0 {
-			finalTopLevelExtra = map[string]any{
-				"com.beeper.dont_render_edited": true,
-			}
-			if len(uiMessage) > 0 {
-				finalTopLevelExtra[BeeperAIKey] = uiMessage
-			}
-			if len(linkPreviews) > 0 {
-				finalTopLevelExtra["com.beeper.linkpreviews"] = PreviewsToMapSlice(linkPreviews)
-			}
+		var finishReason string
+		if state != nil {
+			finishReason = state.finishReason
 		}
-		state.turn.SetFinalEditPayload(buildFinalEditPayload(rendered, finalTopLevelExtra))
+		state.turn.SetFinalEditPayload(sdk.BuildFinalEditPayload(
+			rendered,
+			uiMessage,
+			PreviewsToMapSlice(linkPreviews),
+			finishReason,
+		))
 	}
-	oc.recordAgentActivity(ctx, portal, meta)
 	if state != nil && state.turn != nil {
 		oc.loggerForContext(ctx).Debug().
 			Str("initial_event_id", state.turn.InitialEventID().String()).

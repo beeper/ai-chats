@@ -6,53 +6,26 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) matrixRoomDisplayName(ctx context.Context, portal *bridgev2.Portal) string {
-	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil || oc.UserLogin.Bridge.Matrix == nil {
+	_ = ctx
+	if portal == nil || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		if portal != nil {
 			return portal.MXID.String()
 		}
 		return ""
 	}
-	if info, err := getMatrixRoomInfo(ctx, &BridgeToolContext{Client: oc, Portal: portal}); err == nil && info != nil {
-		if info.Name != "" {
-			return info.Name
-		}
+	if name := portalRoomName(portal); name != "" {
+		return name
 	}
-	name := portalRoomName(portal)
+	name := strings.TrimSpace(portal.Name)
 	if name != "" {
 		return name
 	}
 	return portal.MXID.String()
-}
-
-func (oc *AIClient) resolveBotMXID(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) id.UserID {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return ""
-	}
-	if portal != nil && portal.OtherUserID != "" {
-		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, portal.OtherUserID); err == nil && ghost != nil {
-			return ghost.Intent.GetMXID()
-		}
-	}
-	responder := oc.responderForMeta(ctx, meta)
-	if responder != nil && responder.GhostID != "" {
-		if ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, responder.GhostID); err == nil && ghost != nil {
-			return ghost.Intent.GetMXID()
-		}
-	}
-	return ""
-}
-
-func (oc *AIClient) isCommandAuthorizedSender(sender id.UserID) bool {
-	if oc == nil || oc.UserLogin == nil {
-		return false
-	}
-	return oc.UserLogin.UserMXID != "" && sender == oc.UserLogin.UserMXID
 }
 
 func (oc *AIClient) buildMatrixInboundBody(

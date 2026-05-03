@@ -15,13 +15,11 @@ type ResponderKind string
 
 const (
 	ResponderKindModel ResponderKind = "model"
-	ResponderKindAgent ResponderKind = "agent"
 )
 
 type ResponderInfo struct {
 	Kind                ResponderKind
 	GhostID             networkid.UserID
-	AgentID             string
 	ModelID             string
 	DisplayName         string
 	ContextLimit        int
@@ -40,13 +38,17 @@ type ResponderResolveOptions struct {
 }
 
 func (oc *AIClient) responderForMeta(ctx context.Context, meta *PortalMetadata) *ResponderInfo {
-	responder, err := oc.ResolveResponderForMeta(ctx, meta)
+	opts := ResponderResolveOptions{}
+	if meta != nil {
+		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
+	}
+	responder, err := oc.resolveResponder(ctx, meta, opts)
 	if err == nil && responder != nil {
 		return responder
 	}
 	modelID := oc.defaultModelForProvider()
 	if meta != nil {
-		if override := strings.TrimSpace(ResolveAlias(meta.RuntimeModelOverride)); override != "" {
+		if override := strings.TrimSpace(meta.RuntimeModelOverride); override != "" {
 			modelID = override
 		}
 	}
@@ -81,56 +83,8 @@ func (oc *AIClient) responderProvider(responder *ResponderInfo) string {
 	return ""
 }
 
-func (oc *AIClient) ResolveResponderForMeta(ctx context.Context, meta *PortalMetadata) (*ResponderInfo, error) {
-	opts := ResponderResolveOptions{}
-	if meta != nil {
-		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
-	}
-	return oc.resolveResponder(ctx, meta, opts)
-}
-
-func (oc *AIClient) ResolveResponderForGhost(ctx context.Context, ghostID networkid.UserID) (*ResponderInfo, error) {
-	target := resolveTargetFromGhostID(ghostID)
-	if target == nil {
-		return nil, fmt.Errorf("unsupported ghost target: %s", ghostID)
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{})
-}
-
-func (oc *AIClient) ResolveResponderForAgent(ctx context.Context, agentID string, opts ResponderResolveOptions) (*ResponderInfo, error) {
-	agentID = normalizeAgentID(agentID)
-	if agentID == "" {
-		return nil, fmt.Errorf("agent id is required")
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			GhostID: agentUserID(agentID),
-			AgentID: agentID,
-		},
-	}, opts)
-}
-
-func (oc *AIClient) ResolveResponderForModel(ctx context.Context, modelID string) (*ResponderInfo, error) {
-	modelID = strings.TrimSpace(ResolveAlias(modelID))
-	if modelID == "" {
-		return nil, fmt.Errorf("model id is required")
-	}
-	return oc.resolveResponder(ctx, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetModel,
-			GhostID: modelUserID(modelID),
-			ModelID: modelID,
-		},
-	}, ResponderResolveOptions{})
-}
-
 func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, opts ResponderResolveOptions) (*ResponderInfo, error) {
-	override := strings.TrimSpace(ResolveAlias(opts.RuntimeModelOverride))
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
+	override := strings.TrimSpace(opts.RuntimeModelOverride)
 	var target *ResolvedTarget
 	if meta != nil {
 		target = meta.ResolvedTarget
@@ -143,51 +97,12 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 	}
 
 	switch target.Kind {
-	case ResolvedTargetAgent:
-		agentID := normalizeAgentID(target.AgentID)
-		if agentID == "" {
-			return nil, fmt.Errorf("agent target missing agent id")
-		}
-		agent, err := NewAgentStoreAdapter(oc).GetAgentByID(ctx, agentID)
-		if err != nil {
-			return nil, fmt.Errorf("resolve agent %s: %w", agentID, err)
-		}
-		if agent == nil {
-			return nil, fmt.Errorf("agent not found: %s", agentID)
-		}
-		modelID := strings.TrimSpace(agent.Model.Primary)
-		if override != "" {
-			modelID = override
-		}
-		modelID = strings.TrimSpace(ResolveAlias(modelID))
-		if modelID == "" {
-			return nil, fmt.Errorf("agent %s has no model", agentID)
-		}
-		info := oc.responderModelInfo(modelID)
-		ghostID := target.GhostID
-		if ghostID == "" {
-			ghostID = agentUserID(agentID)
-		}
-		displayName := oc.resolveAgentDisplayName(ctx, agent)
-		if displayName == "" {
-			displayName = agent.EffectiveName()
-		}
-		if displayName == "" {
-			displayName = agentID
-		}
-		ri := responderFromModelInfo(info)
-		ri.Kind = ResponderKindAgent
-		ri.GhostID = ghostID
-		ri.AgentID = agentID
-		ri.ModelID = modelID
-		ri.DisplayName = strings.TrimSpace(displayName)
-		return &ri, nil
 	case ResolvedTargetModel, ResolvedTargetUnknown:
 		modelID := strings.TrimSpace(target.ModelID)
 		if override != "" {
 			modelID = override
 		}
-		modelID = strings.TrimSpace(ResolveAlias(modelID))
+		modelID = strings.TrimSpace(modelID)
 		if modelID == "" {
 			modelID = oc.defaultModelForProvider()
 		}
@@ -225,7 +140,7 @@ func responderFromModelInfo(info *ModelInfo) ResponderInfo {
 }
 
 func (oc *AIClient) responderModelInfo(modelID string) *ModelInfo {
-	modelID = strings.TrimSpace(ResolveAlias(modelID))
+	modelID = strings.TrimSpace(modelID)
 	if modelID == "" {
 		return nil
 	}
@@ -269,9 +184,6 @@ func responderMetadataMap(responder *ResponderInfo) map[string]any {
 		"com.beeper.ai.model_id":      responder.ModelID,
 		"com.beeper.ai.context_limit": responder.ContextLimit,
 		"com.beeper.ai.capabilities":  responder.ModelCapabilities(),
-	}
-	if responder.AgentID != "" {
-		metadata["com.beeper.ai.agent"] = responder.AgentID
 	}
 	return metadata
 }

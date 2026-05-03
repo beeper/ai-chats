@@ -6,6 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 )
 
 type testAgentCatalog struct {
@@ -25,23 +26,38 @@ func (c testAgentCatalog) ResolveAgent(_ context.Context, _ *bridgev2.UserLogin,
 	return c.byIdentifier[identifier], nil
 }
 
-func newTestConversation(cfg *Config[struct{}, *struct{}], state sdkConversationState) *Conversation {
-	return newConversation(
-		context.Background(),
-		&bridgev2.Portal{
-			Portal: &database.Portal{
-				MXID:     "!room:test",
-				Metadata: &SDKPortalMetadata{Conversation: state},
+func newTestConversation(t *testing.T, cfg *Config[struct{}, *struct{}], state sdkConversationState) *Conversation {
+	t.Helper()
+	store := newConversationStateStore()
+	portal := &bridgev2.Portal{
+		Portal: &database.Portal{
+			MXID: "!room:test",
+			PortalKey: networkid.PortalKey{
+				ID:       "room",
+				Receiver: "login",
 			},
 		},
+	}
+	conv := newConversation(
+		context.Background(),
+		portal,
 		nil,
 		bridgev2.EventSender{},
-		&staticRuntime[struct{}, *struct{}]{cfg: cfg},
 	)
+	conv.store = store
+	if cfg != nil {
+		conv.agent = cfg.Agent
+		conv.agentCatalog = cfg.AgentCatalog
+		conv.roomFeatures = cfg.RoomFeatures
+	}
+	if err := conv.saveState(context.Background(), &state); err != nil {
+		t.Fatalf("saveState failed: %v", err)
+	}
+	return conv
 }
 
 func TestConversationCurrentRoomFeaturesUsesConfiguredDefaultAgent(t *testing.T) {
-	conv := newTestConversation(&Config[struct{}, *struct{}]{
+	conv := newTestConversation(t, &Config[struct{}, *struct{}]{
 		Agent: &Agent{
 			ID: "default",
 			Capabilities: AgentCapabilities{
@@ -61,7 +77,7 @@ func TestConversationCurrentRoomFeaturesUsesConfiguredDefaultAgent(t *testing.T)
 }
 
 func TestConversationCurrentRoomFeaturesFallsBackAfterUnresolvedAgents(t *testing.T) {
-	conv := newTestConversation(&Config[struct{}, *struct{}]{
+	conv := newTestConversation(t, &Config[struct{}, *struct{}]{
 		Agent: &Agent{
 			ID: "default",
 			Capabilities: AgentCapabilities{
@@ -83,7 +99,7 @@ func TestConversationCurrentRoomFeaturesFallsBackAfterUnresolvedAgents(t *testin
 }
 
 func TestConversationCurrentRoomFeaturesIgnoresUnresolvedAgentsWhenOneResolves(t *testing.T) {
-	conv := newTestConversation(&Config[struct{}, *struct{}]{
+	conv := newTestConversation(t, &Config[struct{}, *struct{}]{
 		AgentCatalog: testAgentCatalog{
 			byIdentifier: map[string]*Agent{
 				"found": {

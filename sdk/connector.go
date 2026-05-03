@@ -2,7 +2,7 @@ package sdk
 
 import (
 	"context"
-	"fmt"
+	"maps"
 	"sync"
 
 	"go.mau.fi/util/configupgrade"
@@ -10,12 +10,14 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
+type loginAwareClient interface {
+	SetUserLogin(*bridgev2.UserLogin)
+}
+
 // NewConnectorBase builds an SDK-backed connector base that can be embedded by custom bridges.
-func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *agentremote.ConnectorBase {
+func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Config[SessionT, ConfigDataT]) *ConnectorBase {
 	mu, clientsRef := cfg.ClientCacheMu, cfg.ClientCache
 	if mu == nil {
 		mu = &sync.Mutex{}
@@ -31,20 +33,20 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 	}
 	loadLogin := cfg.LoadLogin
 	if loadLogin == nil {
-		loadLogin = agentremote.TypedClientLoader(agentremote.TypedClientLoaderSpec[bridgev2.NetworkAPI]{
-			Accept: cfg.AcceptLogin,
-			LoadUserLoginConfig: agentremote.LoadUserLoginConfig[bridgev2.NetworkAPI]{
+		loadLogin = func(_ context.Context, login *bridgev2.UserLogin) error {
+			return LoadUserLogin(login, LoadUserLoginConfig[bridgev2.NetworkAPI]{
 				Mu:         mu,
 				Clients:    *clientsRef,
 				ClientsRef: clientsRef,
 				BridgeName: cfg.Name,
 				MakeBroken: cfg.MakeBrokenLogin,
+				Accept:     cfg.AcceptLogin,
 				Update: func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin) {
 					if cfg.UpdateClient != nil {
 						cfg.UpdateClient(client, login)
 						return
 					}
-					if typed, ok := client.(*sdkClient[SessionT, ConfigDataT]); ok {
+					if typed, ok := client.(loginAwareClient); ok {
 						typed.SetUserLogin(login)
 					}
 				},
@@ -59,13 +61,17 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 						cfg.AfterLoadClient(client)
 					}
 				},
-			},
-		})
+			})
+		}
 	}
-	return agentremote.NewConnector(agentremote.ConnectorSpec{
+	return NewConnector(ConnectorSpec{
 		ProtocolID: protocolID,
 		Init: func(bridge *bridgev2.Bridge) {
-			agentremote.EnsureClientMap(mu, clientsRef)
+			mu.Lock()
+			if *clientsRef == nil {
+				*clientsRef = make(map[networkid.UserLoginID]bridgev2.NetworkAPI)
+			}
+			mu.Unlock()
 			if cfg.InitConnector != nil {
 				cfg.InitConnector(bridge)
 			}
@@ -78,7 +84,12 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			return nil
 		},
 		Stop: func(ctx context.Context, bridge *bridgev2.Bridge) {
-			agentremote.StopClients(mu, clientsRef)
+			mu.Lock()
+			cloned := maps.Clone(*clientsRef)
+			mu.Unlock()
+			for _, client := range cloned {
+				client.Disconnect()
+			}
 			if cfg.StopConnector != nil {
 				cfg.StopConnector(ctx, bridge)
 			}
@@ -109,24 +120,19 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if cfg.DBMeta != nil {
 				return cfg.DBMeta()
 			}
-			return database.MetaTypes{
-				Portal:    func() any { return &map[string]any{} },
-				Message:   func() any { return &map[string]any{} },
-				UserLogin: func() any { return &map[string]any{} },
-				Ghost:     func() any { return &map[string]any{} },
-			}
+			return database.MetaTypes{}
 		},
 		Capabilities: func() *bridgev2.NetworkGeneralCapabilities {
 			if cfg.NetworkCapabilities != nil {
 				return cfg.NetworkCapabilities()
 			}
-			return agentremote.DefaultNetworkCapabilities()
+			return &bridgev2.NetworkGeneralCapabilities{}
 		},
 		BridgeInfoVersion: func() (info, capabilities int) {
 			if cfg.BridgeInfoVersion != nil {
 				return cfg.BridgeInfoVersion()
 			}
-			return agentremote.DefaultBridgeInfoVersion()
+			return DefaultBridgeInfoVersion()
 		},
 		FillBridgeInfo: func(portal *bridgev2.Portal, content *event.BridgeEventContent) {
 			if cfg.FillBridgeInfo != nil {
@@ -136,28 +142,18 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if portal == nil || content == nil || protocolID == "" {
 				return
 			}
-			agentremote.ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType, agentremote.AIRoomKindAgent)
+			ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType)
 		},
 		LoadLogin: loadLogin,
 		LoginFlows: func() []bridgev2.LoginFlow {
 			if cfg.GetLoginFlows != nil {
 				return cfg.GetLoginFlows()
 			}
-			if len(cfg.LoginFlows) > 0 {
-				return cfg.LoginFlows
-			}
-			return []bridgev2.LoginFlow{{
-				ID:          "sdk-default",
-				Name:        cfg.Name,
-				Description: fmt.Sprintf("Login to %s", cfg.Name),
-			}}
+			return cfg.LoginFlows
 		},
 		CreateLogin: func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) {
 			if cfg.CreateLogin != nil {
 				return cfg.CreateLogin(ctx, user, flowID)
-			}
-			if flowID == "sdk-default" {
-				return &sdkAutoLogin{user: user}, nil
 			}
 			return nil, bridgev2.ErrInvalidLoginFlowID
 		},

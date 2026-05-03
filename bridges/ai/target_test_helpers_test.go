@@ -9,13 +9,3 @@ func modelModeTestMeta(modelID string) *PortalMetadata {
 		},
 	}
 }
-
-func agentModeTestMeta(agentID string) *PortalMetadata {
-	return &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			GhostID: agentUserID(agentID),
-			AgentID: agentID,
-		},
-	}
-}

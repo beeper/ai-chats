@@ -44,7 +44,7 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Build agentremote release binary
+      - name: Build AgentRemote Manager release binary
         env:
           CGO_ENABLED: "1"
         run: go build -tags goolm -trimpath -o "$RUNNER_TEMP/agentremote" ./cmd/agentremote

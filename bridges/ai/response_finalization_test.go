@@ -10,11 +10,11 @@ import (
 
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func testStreamingState(turnID string) *streamingState {
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(turnID)
 	return &streamingState{
@@ -46,7 +46,7 @@ func TestBuildFinalEditUIMessage_IncludesSourceAndFileParts(t *testing.T) {
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-1", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-1"})
 
-	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	if ui == nil {
 		t.Fatalf("expected final edit UI message")
 	}
@@ -118,7 +118,7 @@ func TestBuildFinalEditUIMessage_OmitsTextButKeepsReasoningAndToolPartsWhenTheyF
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-delta", "id": "reasoning-2", "delta": "thinking"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "reasoning-end", "id": "reasoning-2"})
 
-	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	parts, _ := ui["parts"].([]any)
 	foundReasoning := false
 	foundTool := false
@@ -156,7 +156,7 @@ func TestBuildFinalEditUIMessage_UsesNestedUsageContextLimitFromSnapshot(t *test
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-delta", "id": "text-usage", "delta": "hello"})
 	streamui.ApplyChunk(state.turn.UIState(), map[string]any{"type": "text-end", "id": "text-usage"})
 
-	ui := bridgesdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
+	ui := sdk.BuildCompactFinalUIMessage(oc.buildStreamUIMessage(state, modelModeTestMeta("openai/gpt-4.1"), nil))
 	metadata, ok := ui["metadata"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected metadata map, got %T", ui["metadata"])
@@ -189,7 +189,7 @@ func TestFinalRenderedBodyFallback_UsesVisibleTurnText(t *testing.T) {
 	}
 }
 
-func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
+func TestBuildFinalEditPayloadKeepsOnlyEditMetadataTopLevel(t *testing.T) {
 	uiMessage := map[string]any{
 		"id":   "turn-3",
 		"role": "assistant",
@@ -198,8 +198,12 @@ func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 		MatchedURL: "https://example.com",
 	}}
 
-	extra := bridgesdk.BuildDefaultFinalEditTopLevelExtra()
+	payload := sdk.BuildFinalEditPayload(event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    "done",
+	}, uiMessage, PreviewsToMapSlice(previews), "")
 
+	extra := payload.TopLevelExtra
 	if _, ok := extra["body"]; ok {
 		t.Fatalf("expected body fallback to come from Matrix edit content, got %#v", extra["body"])
 	}
@@ -224,13 +228,7 @@ func TestBuildFinalEditTopLevelExtra_KeepsOnlyEditMetadata(t *testing.T) {
 }
 
 func TestBuildFinalEditPayloadMovesCanonicalFieldsIntoNewContent(t *testing.T) {
-	topLevelExtra := map[string]any{
-		"com.beeper.ai":                 map[string]any{"id": "turn-4"},
-		"com.beeper.linkpreviews":       []map[string]any{{"matched_url": "https://example.com"}},
-		"com.beeper.dont_render_edited": true,
-	}
-
-	payload := buildFinalEditPayload(event.MessageEventContent{
+	payload := sdk.BuildFinalEditPayload(event.MessageEventContent{
 		MsgType:       event.MsgText,
 		Body:          "done",
 		Format:        event.FormatHTML,
@@ -239,7 +237,7 @@ func TestBuildFinalEditPayloadMovesCanonicalFieldsIntoNewContent(t *testing.T) {
 		Mentions: &event.Mentions{
 			UserIDs: []id.UserID{"@alice:example.com"},
 		},
-	}, topLevelExtra)
+	}, map[string]any{"id": "turn-4"}, []map[string]any{{"matched_url": "https://example.com"}}, "")
 	if payload == nil || payload.Content == nil {
 		t.Fatalf("expected final edit payload")
 	}

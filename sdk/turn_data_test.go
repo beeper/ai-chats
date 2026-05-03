@@ -2,8 +2,6 @@ package sdk
 
 import (
 	"testing"
-
-	"github.com/beeper/agentremote"
 )
 
 func TestTurnDataFromUIMessageRoundTrip(t *testing.T) {
@@ -77,14 +75,14 @@ func TestBuildTurnDataFromUIMessageMergesRuntimeState(t *testing.T) {
 	td := BuildTurnDataFromUIMessage(ui, TurnDataBuildOptions{
 		Metadata:  map[string]any{"finish_reason": "stop"},
 		Reasoning: "thinking",
-		ToolCalls: []agentremote.ToolCallMetadata{{
+		ToolCalls: []ToolCallMetadata{{
 			CallID:   "tool-1",
 			ToolName: "search",
 			ToolType: "function",
 			Status:   "output-available",
 			Output:   map[string]any{"ok": true},
 		}},
-		GeneratedFiles: []agentremote.GeneratedFileRef{{
+		GeneratedFiles: []GeneratedFileRef{{
 			URL:      "mxc://file",
 			MimeType: "image/png",
 		}},

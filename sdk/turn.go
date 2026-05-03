@@ -2,22 +2,15 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"maps"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/turns"
 )
@@ -25,7 +18,6 @@ import (
 type FinalMetadataProvider interface {
 	FinalMetadata(turn *Turn, finishReason string) any
 }
-
 type FinalMetadataProviderFunc func(turn *Turn, finishReason string) any
 
 func (f FinalMetadataProviderFunc) FinalMetadata(turn *Turn, finishReason string) any {
@@ -40,62 +32,10 @@ type PlaceholderMessagePayload struct {
 	Extra      map[string]any
 	DBMetadata any
 }
-
 type FinalEditPayload struct {
 	Content       *event.MessageEventContent
 	Extra         map[string]any
 	TopLevelExtra map[string]any
-}
-
-type sdkApprovalHandle struct {
-	approvalID string
-	toolCallID string
-	turn       *Turn
-}
-
-func (h *sdkApprovalHandle) ID() string {
-	if h == nil {
-		return ""
-	}
-	return h.approvalID
-}
-
-func (h *sdkApprovalHandle) ToolCallID() string {
-	if h == nil {
-		return ""
-	}
-	return h.toolCallID
-}
-
-func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, error) {
-	if h == nil || h.turn == nil || h.turn.conv == nil || h.turn.turnCtx == nil {
-		return ToolApprovalResponse{}, nil
-	}
-	runtime := h.turn.conv.runtime
-	if runtime == nil || runtime.approvalFlowValue() == nil {
-		return ToolApprovalResponse{}, nil
-	}
-	approvalFlow := runtime.approvalFlowValue()
-	decision, ok := approvalFlow.Wait(ctx, h.approvalID)
-	if !ok {
-		reason := agentremote.ApprovalReasonTimeout
-		if ctx != nil && ctx.Err() != nil {
-			reason = agentremote.ApprovalReasonCancelled
-		}
-		h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, false, reason)
-		approvalFlow.FinishResolved(h.approvalID, agentremote.ApprovalDecisionPayload{
-			ApprovalID: h.approvalID,
-			Reason:     reason,
-		})
-		return ToolApprovalResponse{Reason: reason}, nil
-	}
-	h.turn.Writer().Approvals().Respond(h.turn.turnCtx, h.approvalID, h.toolCallID, decision.Approved, decision.Reason)
-	approvalFlow.FinishResolved(h.approvalID, decision)
-	return ToolApprovalResponse{
-		Approved: decision.Approved,
-		Always:   decision.Always,
-		Reason:   decision.Reason,
-	}, nil
 }
 
 // Turn is the central abstraction for an AI response turn.
@@ -150,7 +90,7 @@ func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *Sour
 		ctx = context.Background()
 	}
 	turnCtx, cancel := context.WithCancel(ctx)
-	turnID := uuid.NewString()
+	turnID := NewTurnID()
 	state := &streamui.UIState{TurnID: turnID}
 	state.InitMaps()
 
@@ -179,14 +119,12 @@ func newTurn(ctx context.Context, conv *Conversation, agent *Agent, source *Sour
 	}
 	return t
 }
-
 func (t *Turn) providerIdentity() ProviderIdentity {
-	if t.conv != nil && t.conv.runtime != nil {
-		return t.conv.runtime.providerIdentity()
+	if t.conv != nil {
+		return t.conv.providerIdentity
 	}
 	return normalizedProviderIdentity(ProviderIdentity{})
 }
-
 func (t *Turn) resolveAgent(ctx context.Context) *Agent {
 	if t.agent != nil {
 		return t.agent
@@ -197,7 +135,6 @@ func (t *Turn) resolveAgent(ctx context.Context) *Agent {
 	agent, _ := t.conv.resolveDefaultAgent(ctx)
 	return agent
 }
-
 func (t *Turn) resolveSender(ctx context.Context) bridgev2.EventSender {
 	if t.sender.Sender != "" || t.sender.IsFromMe {
 		return t.sender
@@ -210,280 +147,6 @@ func (t *Turn) resolveSender(ctx context.Context) bridgev2.EventSender {
 		t.sender = t.conv.sender
 	}
 	return t.sender
-}
-
-func (t *Turn) buildPlaceholderMessage() *bridgev2.ConvertedMessage {
-	extra := map[string]any{}
-	msgContent := &event.MessageEventContent{
-		MsgType:  event.MsgText,
-		Body:     "...",
-		Mentions: &event.Mentions{},
-	}
-	var dbMetadata any
-	if t.placeholderPayload != nil {
-		if t.placeholderPayload.Content != nil {
-			cloned := *t.placeholderPayload.Content
-			msgContent = &cloned
-		}
-		if len(t.placeholderPayload.Extra) > 0 {
-			extra = maps.Clone(t.placeholderPayload.Extra)
-			if extra == nil {
-				extra = map[string]any{}
-			}
-		}
-		dbMetadata = t.placeholderPayload.DBMetadata
-	}
-	if msgContent.Mentions == nil {
-		msgContent.Mentions = &event.Mentions{}
-	}
-	if _, ok := extra[matrixevents.BeeperAIKey]; !ok {
-		extra[matrixevents.BeeperAIKey] = map[string]any{
-			"id":   t.turnID,
-			"role": "assistant",
-			"metadata": map[string]any{
-				"turn_id": t.turnID,
-			},
-			"parts": []any{},
-		}
-	}
-	if t.session != nil {
-		if descriptor, err := t.session.Descriptor(t.turnCtx); err == nil && descriptor != nil {
-			msgContent.BeeperStream = descriptor
-		}
-	}
-	if relatesTo := t.buildRelatesTo(); relatesTo != nil {
-		msgContent.RelatesTo = relatesTo
-	}
-	return &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
-			ID:         networkid.PartID("0"),
-			Type:       event.EventMessage,
-			Content:    msgContent,
-			Extra:      extra,
-			DBMetadata: dbMetadata,
-		}},
-	}
-}
-
-func (t *Turn) buildRelatesTo() *event.RelatesTo {
-	if t.threadRoot != "" {
-		replyTo := t.replyTo
-		if replyTo == "" && t.source != nil && t.source.EventID != "" {
-			replyTo = id.EventID(t.source.EventID)
-		}
-		rel := &event.RelatesTo{
-			Type:          event.RelThread,
-			EventID:       t.threadRoot,
-			IsFallingBack: true,
-		}
-		if replyTo != "" {
-			rel.InReplyTo = &event.InReplyTo{EventID: replyTo}
-		}
-		return rel
-	}
-	if t.replyTo != "" {
-		return &event.RelatesTo{InReplyTo: &event.InReplyTo{EventID: t.replyTo}}
-	}
-	if t.source != nil && t.source.EventID != "" {
-		return &event.RelatesTo{EventID: id.EventID(t.source.EventID)}
-	}
-	return nil
-}
-
-func (t *Turn) ensureSession() {
-	t.sessionOnce.Do(func() {
-		var logger zerolog.Logger
-		if t.conv != nil && t.conv.login != nil {
-			logger = t.conv.login.Log.With().Str("component", "sdk_turn").Logger()
-		}
-		sender := t.resolveSender(t.turnCtx)
-
-		t.session = turns.NewStreamSession(turns.StreamSessionParams{
-			TurnID:  t.turnID,
-			AgentID: strings.TrimSpace(string(sender.Sender)),
-			GetStreamTarget: func() turns.StreamTarget {
-				return turns.StreamTarget{NetworkMessageID: t.NetworkMessageID()}
-			},
-			ResolveTargetEventID: func(callCtx context.Context, target turns.StreamTarget) (id.EventID, error) {
-				if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil {
-					return "", nil
-				}
-				receiver := t.conv.portal.Receiver
-				if receiver == "" {
-					receiver = t.conv.login.ID
-				}
-				return turns.ResolveTargetEventIDFromDB(callCtx, t.conv.login.Bridge, receiver, target)
-			},
-			GetRoomID: func() id.RoomID {
-				if t.conv == nil || t.conv.portal == nil {
-					return ""
-				}
-				return t.conv.portal.MXID
-			},
-			GetTargetEventID: func() id.EventID { return t.InitialEventID() },
-			GetSuppressSend:  t.SuppressSend,
-			GetStreamType: func() string {
-				return matrixevents.StreamEventMessageType.Type
-			},
-			NextSeq: t.nextSeq,
-			GetStreamPublisher: func(callCtx context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-				return t.defaultStreamPublisher(callCtx)
-			},
-			SendHook: t.streamHook,
-			Logger:   &logger,
-		})
-	})
-}
-
-func (t *Turn) nextSeq() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.state.InitMaps()
-	t.state.UIStepCount++
-	return t.state.UIStepCount
-}
-
-func (t *Turn) defaultStreamPublisher(callCtx context.Context) (bridgev2.BeeperStreamPublisher, bool) {
-	if t.streamPublisherFunc != nil {
-		return t.streamPublisherFunc(callCtx)
-	}
-	if t.conv == nil || t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.login.Bridge.Matrix == nil {
-		return nil, false
-	}
-	publisher := t.conv.login.Bridge.GetBeeperStreamPublisher()
-	if publisher == nil {
-		return nil, false
-	}
-	return publisher, true
-}
-
-func (t *Turn) ensureSenderJoined() error {
-	return t.ensureSenderJoinedWithContext(t.turnCtx)
-}
-
-func (t *Turn) ensureStarted() {
-	t.mu.Lock()
-	if t.started || t.ended {
-		t.mu.Unlock()
-		return
-	}
-	t.started = true
-	t.mu.Unlock()
-	if t.conv != nil {
-		if agent := t.resolveAgent(t.turnCtx); agent != nil {
-			t.agent = agent
-			if err := t.conv.EnsureRoomAgent(t.turnCtx, agent); err != nil && t.startErr == nil {
-				t.startErr = err
-			}
-		}
-	}
-	t.ensureSession()
-	if !t.SuppressSend() {
-		if err := t.ensureSenderJoined(); err != nil && t.startErr == nil {
-			t.startErr = err
-		}
-		if t.startErr != nil {
-			return
-		}
-		if t.sendFunc != nil {
-			evtID, msgID, err := t.sendFunc(t.turnCtx)
-			if err == nil {
-				t.applyPlaceholderSendResult(evtID, msgID)
-			} else if t.startErr == nil {
-				t.startErr = err
-			}
-		} else if t.conv != nil && t.conv.portal != nil && t.conv.login != nil {
-			identity := t.providerIdentity()
-			timing := agentremote.ResolveEventTiming(time.UnixMilli(t.startedAtMs), 0)
-			evtID, msgID, err := agentremote.SendViaPortal(agentremote.SendViaPortalParams{
-				Login:       t.conv.login,
-				Portal:      t.conv.portal,
-				Sender:      t.resolveSender(t.turnCtx),
-				IDPrefix:    identity.IDPrefix,
-				LogKey:      identity.LogKey,
-				Timestamp:   timing.Timestamp,
-				StreamOrder: timing.StreamOrder,
-				Converted:   t.buildPlaceholderMessage(),
-			})
-			if err == nil {
-				t.applyPlaceholderSendResult(evtID, msgID)
-			} else if t.startErr == nil {
-				t.startErr = err
-			}
-		}
-	}
-	baseMeta := map[string]any{
-		"turnId": t.turnID,
-	}
-	if t.agent != nil {
-		baseMeta["agentId"] = t.agent.ID
-		if t.agent.ModelKey != "" {
-			baseMeta["modelKey"] = t.agent.ModelKey
-		}
-	}
-	t.Writer().Start(t.turnCtx, baseMeta)
-}
-
-func (t *Turn) applyPlaceholderSendResult(evtID id.EventID, msgID networkid.MessageID) {
-	t.mu.Lock()
-	t.initialEventID = evtID
-	t.networkMessageID = msgID
-	t.mu.Unlock()
-	if evtID != "" && t.session != nil {
-		if streamErr := t.session.Start(t.turnCtx, evtID); streamErr != nil && t.startErr == nil {
-			t.startErr = streamErr
-		}
-	}
-	t.ensureStreamStartedAsync()
-}
-
-// requestApproval creates a new approval request and returns its handle.
-func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
-	t.ensureStarted()
-	if t.approvalRequester != nil {
-		return t.approvalRequester(t.turnCtx, t, req)
-	}
-	if t.conv == nil || t.conv.portal == nil || t.conv.runtime == nil || t.conv.runtime.approvalFlowValue() == nil {
-		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
-	}
-	approvalFlow := t.conv.runtime.approvalFlowValue()
-	approvalID := strings.TrimSpace(req.ApprovalID)
-	if approvalID == "" {
-		approvalID = "sdk-" + uuid.NewString()
-	}
-	ttl := req.TTL
-	if ttl <= 0 {
-		ttl = agentremote.DefaultApprovalExpiry
-	}
-	_, _ = approvalFlow.Register(approvalID, ttl, &pendingSDKApprovalData{
-		RoomID:     t.conv.portal.MXID,
-		TurnID:     t.turnID,
-		ToolCallID: req.ToolCallID,
-		ToolName:   req.ToolName,
-	})
-	t.Approvals().EmitRequest(t.turnCtx, approvalID, req.ToolCallID)
-	presentation := agentremote.ApprovalPromptPresentation{
-		Title:       req.ToolName,
-		AllowAlways: true,
-	}
-	if req.Presentation != nil {
-		presentation = *req.Presentation
-	}
-	approvalFlow.SendPrompt(t.turnCtx, t.conv.portal, agentremote.SendPromptParams{
-		ApprovalPromptMessageParams: agentremote.ApprovalPromptMessageParams{
-			ApprovalID:        approvalID,
-			ToolCallID:        req.ToolCallID,
-			ToolName:          req.ToolName,
-			TurnID:            t.turnID,
-			Presentation:      presentation,
-			ReplyToEventID:    t.InitialEventID(),
-			ThreadRootEventID: t.ThreadRoot(),
-			ExpiresAt:         time.Now().Add(ttl),
-		},
-		RoomID:    t.conv.portal.MXID,
-		OwnerMXID: t.conv.login.UserMXID,
-	})
-	return &sdkApprovalHandle{approvalID: approvalID, toolCallID: req.ToolCallID, turn: t}
 }
 
 // SetReplyTo sets the m.in_reply_to relation for this turn's message.
@@ -566,301 +229,19 @@ func (t *Turn) NetworkMessageID() networkid.MessageID {
 	return t.networkMessageID
 }
 
-// SetStreamTransport overrides the stream delivery mechanism. The provided
-// function is called for every emitted part instead of the default session-
-// based transport. UIState tracking (ApplyChunk) is still handled automatically.
-func (t *Turn) SetStreamTransport(fn func(ctx context.Context, portal *bridgev2.Portal, part map[string]any)) {
-	if fn == nil {
-		return
-	}
-	t.emitter.Emit = func(callCtx context.Context, portal *bridgev2.Portal, part map[string]any) {
-		t.emitPart(callCtx, portal, part, func() {
-			fn(callCtx, portal, part)
-		})
-	}
-}
-
-// SetStreamPublisherFunc overrides how the Turn resolves the shared stream publisher.
-func (t *Turn) SetStreamPublisherFunc(fn func(ctx context.Context) (bridgev2.BeeperStreamPublisher, bool)) {
-	t.streamPublisherFunc = fn
-}
-
 // SendStatus emits a bridge-level status update for the source event when possible.
 func (t *Turn) SendStatus(status event.MessageStatus, message string) {
-	if t.conv == nil || t.conv.portal == nil || t.conv.login == nil || t.source == nil || t.source.EventID == "" {
+	if t.conv == nil || t.conv.portal == nil || t.source == nil || t.source.EventID == "" {
 		return
 	}
-	identity := t.providerIdentity()
-	_, _ = t.conv.login.Bridge.Bot.SendMessage(t.turnCtx, t.conv.portal.MXID, event.BeeperMessageStatus, &event.Content{
-		Parsed: &event.BeeperMessageStatusEventContent{
-			Network:   identity.StatusNetwork,
-			RelatesTo: event.RelatesTo{EventID: id.EventID(t.source.EventID)},
-			Status:    status,
-			Message:   message,
-		},
-	}, nil)
-}
-
-func (t *Turn) finalMetadata(finishReason string) agentremote.BaseMessageMetadata {
-	uiMessage := streamui.SnapshotUIMessage(t.state)
-	snapshot := BuildTurnSnapshot(uiMessage, TurnDataBuildOptions{
-		ID:   t.turnID,
-		Role: "assistant",
-		Text: strings.TrimSpace(t.VisibleText()),
-	}, "")
-	var agentID string
-	if t.agent != nil {
-		agentID = t.agent.ID
-	}
-	runtimeMeta := agentremote.BuildAssistantBaseMetadata(agentremote.AssistantMetadataParams{
-		Body:              snapshot.Body,
-		FinishReason:      finishReason,
-		TurnID:            t.turnID,
-		AgentID:           agentID,
-		StartedAtMs:       t.startedAtMs,
-		CompletedAtMs:     time.Now().UnixMilli(),
-		CanonicalTurnData: snapshot.TurnData.ToMap(),
-		ThinkingContent:   snapshot.ThinkingContent,
-		ToolCalls:         snapshot.ToolCalls,
-		GeneratedFiles:    snapshot.GeneratedFiles,
+	SendMessageStatus(t.turnCtx, t.conv.portal, &event.Event{
+		ID:     id.EventID(t.source.EventID),
+		RoomID: t.conv.portal.MXID,
+	}, bridgev2.MessageStatus{
+		Status:    status,
+		Message:   message,
+		IsCertain: true,
 	})
-	merged := supportedBaseMetadataFromMap(t.metadata)
-	merged.CopyFromBase(&runtimeMeta)
-	return merged
-}
-
-func (t *Turn) persistFinalMessage(finishReason string) {
-	finalCtx := t.finalizationContext()
-	if t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
-		return
-	}
-	sender := t.resolveSender(finalCtx)
-	metadata := any(t.finalMetadata(finishReason))
-	if t.finalMetadataProvider != nil {
-		if custom := t.finalMetadataProvider.FinalMetadata(t, finishReason); custom != nil {
-			metadata = custom
-		}
-	}
-	agentremote.UpsertAssistantMessage(finalCtx, agentremote.UpsertAssistantMessageParams{
-		Login:            t.conv.login,
-		Portal:           t.conv.portal,
-		SenderID:         sender.Sender,
-		NetworkMessageID: t.networkMessageID,
-		InitialEventID:   t.initialEventID,
-		Metadata:         metadata,
-		Logger:           t.conv.login.Log.With().Str("component", "sdk_turn").Logger(),
-	})
-}
-
-func (t *Turn) buildFinalEdit() (networkid.MessageID, *bridgev2.ConvertedEdit) {
-	if t == nil {
-		return "", nil
-	}
-	payload := t.finalEditPayload
-	if payload == nil || payload.Content == nil {
-		return "", nil
-	}
-	target := t.networkMessageID
-	if target == "" {
-		target = agentremote.MatrixMessageID(t.initialEventID)
-	}
-	if target == "" {
-		return "", nil
-	}
-	fittedPayload, fitDetails, err := FitFinalEditPayload(payload, t.initialEventID)
-	if err != nil {
-		fallbackPayload := BuildTextOnlyFinalEditPayload(payload)
-		fallbackFittedPayload, fallbackFitDetails, fallbackErr := FitFinalEditPayload(fallbackPayload, t.initialEventID)
-		if fallbackErr == nil {
-			fittedPayload = fallbackFittedPayload
-			fitDetails = fallbackFitDetails
-			err = nil
-		} else if t.conv != nil && t.conv.login != nil {
-			t.conv.login.Log.Warn().
-				Str("component", "sdk_turn").
-				Int("original_bytes", fitDetails.OriginalSize).
-				Int("original_final_bytes", fitDetails.FinalSize).
-				Err(err).
-				Int("fallback_bytes", fallbackFitDetails.OriginalSize).
-				Int("fallback_final_bytes", fallbackFitDetails.FinalSize).
-				Str("fallback_error", fallbackErr.Error()).
-				Msg("Skipped final edit because payload could not fit Matrix content limits")
-			return "", nil
-		} else {
-			return "", nil
-		}
-	}
-	if fittedPayload == nil || fittedPayload.Content == nil {
-		return "", nil
-	}
-	if fitDetails.Changed() && t.conv != nil && t.conv.login != nil {
-		t.conv.login.Log.Warn().
-			Str("component", "sdk_turn").
-			Int("original_bytes", fitDetails.OriginalSize).
-			Int("final_bytes", fitDetails.FinalSize).
-			Str("reductions", fitDetails.Summary()).
-			Msg("Reduced final edit payload to fit Matrix content limits")
-	}
-	content := *fittedPayload.Content
-	if content.Mentions == nil {
-		content.Mentions = &event.Mentions{}
-	}
-	content.RelatesTo = nil
-	extra := maps.Clone(fittedPayload.Extra)
-	topLevelExtra := maps.Clone(fittedPayload.TopLevelExtra)
-	if extra == nil {
-		extra = map[string]any{}
-	}
-	if topLevelExtra == nil {
-		topLevelExtra = map[string]any{}
-	}
-	if t.session != nil {
-		// Explicitly clear the live-stream descriptor on terminal edits so the
-		// edited event no longer looks like an active placeholder.
-		content.BeeperStream = nil
-		extra["com.beeper.stream"] = nil
-		topLevelExtra["com.beeper.stream"] = nil
-	}
-	if t.initialEventID != "" {
-		topLevelExtra["m.relates_to"] = (&event.RelatesTo{}).SetReplace(t.initialEventID)
-	}
-	return target, &bridgev2.ConvertedEdit{
-		ModifiedParts: []*bridgev2.ConvertedEditPart{{
-			Type:          event.EventMessage,
-			Content:       &content,
-			Extra:         extra,
-			TopLevelExtra: topLevelExtra,
-		}},
-	}
-}
-
-func (t *Turn) sendFinalEdit(ctx context.Context) {
-	if t == nil || t.conv == nil || t.conv.login == nil || t.conv.portal == nil {
-		return
-	}
-	target, edit := t.buildFinalEdit()
-	if target == "" || edit == nil {
-		return
-	}
-	if err := t.ensureSenderJoinedWithContext(ctx); err != nil && t.conv.login != nil {
-		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to ensure sender joined before final turn edit")
-	}
-	sender := t.resolveSender(ctx)
-	if err := agentremote.SendEditViaPortal(
-		t.conv.login,
-		t.conv.portal,
-		sender,
-		target,
-		time.Now(),
-		0,
-		"sdk_edit_target",
-		edit,
-	); err != nil && t.conv.login != nil {
-		t.conv.login.Log.Warn().Err(err).Str("component", "sdk_turn").Msg("Failed to send final turn edit")
-	}
-}
-
-func (t *Turn) dispatchFinalEdit(ctx context.Context) {
-	if t == nil {
-		return
-	}
-	if t.sendFinalEditFunc != nil {
-		t.sendFinalEditFunc(ctx)
-		return
-	}
-	t.sendFinalEdit(ctx)
-}
-
-func supportedBaseMetadataFromMap(metadata map[string]any) agentremote.BaseMessageMetadata {
-	if len(metadata) == 0 {
-		return agentremote.BaseMessageMetadata{}
-	}
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		return agentremote.BaseMessageMetadata{}
-	}
-	var decoded agentremote.BaseMessageMetadata
-	if err = json.Unmarshal(data, &decoded); err != nil {
-		return agentremote.BaseMessageMetadata{}
-	}
-	return decoded
-}
-
-// End finishes the turn with a reason.
-func (t *Turn) End(finishReason string) {
-	t.mu.Lock()
-	if t.ended {
-		t.mu.Unlock()
-		return
-	}
-	if !t.started {
-		t.ended = true
-		t.mu.Unlock()
-		t.cancel()
-		return
-	}
-	t.ended = true
-	t.mu.Unlock()
-	t.stopIdleTimeout()
-	defer t.cancel()
-	t.Writer().Finish(t.turnCtx, finishReason, t.metadata)
-	t.finalizeTurn(turns.EndReasonFinish, finishReason, "")
-}
-
-// EndWithError finishes the turn with an error.
-func (t *Turn) EndWithError(errText string) {
-	t.mu.Lock()
-	if t.ended {
-		t.mu.Unlock()
-		return
-	}
-	t.ended = true
-	started := t.started
-	t.mu.Unlock()
-	t.stopIdleTimeout()
-	defer t.cancel()
-	if !started {
-		// No content was ever written — skip placeholder message creation.
-		// Still send a fail status if we have a source event.
-		t.SendStatus(event.MessageStatusFail, errText)
-		return
-	}
-	t.Writer().Error(t.turnCtx, errText)
-	t.SendStatus(event.MessageStatusFail, errText)
-	t.Writer().Finish(t.turnCtx, "error", t.metadata)
-	t.finalizeTurn(turns.EndReasonError, "error", errText)
-}
-
-// Abort aborts the turn.
-func (t *Turn) Abort(reason string) {
-	t.mu.Lock()
-	if t.ended {
-		t.mu.Unlock()
-		return
-	}
-	t.ended = true
-	started := t.started
-	t.mu.Unlock()
-	t.stopIdleTimeout()
-	defer t.cancel()
-	if !started {
-		// No content was ever written — skip placeholder message creation.
-		t.SendStatus(event.MessageStatusRetriable, reason)
-		return
-	}
-	t.Writer().Abort(t.turnCtx, reason)
-	t.finalizeTurn(turns.EndReasonDisconnect, "abort", reason)
-}
-
-func (t *Turn) finalizeTurn(endReason turns.EndReason, finishReason, fallbackBody string) {
-	finalCtx := t.finalizationContext()
-	t.flushPendingStream(finalCtx)
-	t.ensureDefaultFinalEditPayload(finishReason, fallbackBody)
-	if t.session != nil {
-		t.session.End(finalCtx, endReason)
-	}
-	t.dispatchFinalEdit(finalCtx)
-	t.persistFinalMessage(finishReason)
 }
 
 // ID returns the turn's unique identifier.
@@ -885,227 +266,14 @@ func (t *Turn) Context() context.Context { return t.turnCtx }
 // Source returns the turn's structured source reference.
 func (t *Turn) Source() *SourceRef { return t.source }
 
-// Agent returns the turn's selected agent.
-func (t *Turn) Agent() *Agent { return t.agent }
-
 // SetSender overrides the bridge sender used for turn output. Call before the
 // turn produces visible output.
 func (t *Turn) SetSender(sender bridgev2.EventSender) { t.sender = sender }
 
-// Emitter returns the underlying streamui.Emitter for escape hatch access.
-func (t *Turn) Emitter() *streamui.Emitter { return t.emitter }
-
 // UIState returns the underlying streamui.UIState.
 func (t *Turn) UIState() *streamui.UIState { return t.state }
-
-// Session returns the underlying turns.StreamSession.
-func (t *Turn) Session() *turns.StreamSession { return t.session }
-
-// StreamDescriptor returns the com.beeper.stream descriptor for the turn's placeholder message.
-func (t *Turn) StreamDescriptor(ctx context.Context) (*event.BeeperStreamInfo, error) {
-	t.ensureSession()
-	if t.session == nil {
-		return nil, context.Canceled
-	}
-	return t.session.Descriptor(ctx)
-}
 
 // Err returns any startup error encountered by the turn transport.
 func (t *Turn) Err() error {
 	return t.startErr
-}
-
-func (t *Turn) emitPart(callCtx context.Context, _ *bridgev2.Portal, part map[string]any, deliver func()) {
-	if part == nil {
-		return
-	}
-	t.ensureStarted()
-	t.resetIdleTimeout()
-	streamui.ApplyChunk(t.state, part)
-	if deliver != nil {
-		deliver()
-	}
-}
-
-func (t *Turn) defaultFinalEditPayload(finishReason, fallbackBody string) *FinalEditPayload {
-	if t == nil {
-		return nil
-	}
-	body := strings.TrimSpace(t.VisibleText())
-	fallbackBody = strings.TrimSpace(fallbackBody)
-	uiMessage := BuildCompactFinalUIMessage(streamui.SnapshotUIMessage(t.state))
-	if body == "" && fallbackBody == "" && !hasMeaningfulFinalUIMessage(uiMessage) {
-		return nil
-	}
-	if body == "" {
-		body = fallbackBody
-	}
-	if body == "" {
-		switch strings.TrimSpace(finishReason) {
-		case "error":
-			body = "Response failed"
-		case "abort", "disconnect":
-			body = "Response interrupted"
-		default:
-			body = "Completed response"
-		}
-	}
-	uiMessage = withFinalEditFinishReason(uiMessage, finishReason)
-	return &FinalEditPayload{
-		Content: &event.MessageEventContent{
-			MsgType:  event.MsgText,
-			Body:     body,
-			Mentions: &event.Mentions{},
-		},
-		Extra:         BuildDefaultFinalEditExtra(uiMessage),
-		TopLevelExtra: BuildDefaultFinalEditTopLevelExtra(),
-	}
-}
-
-func (t *Turn) ensureDefaultFinalEditPayload(finishReason, fallbackBody string) {
-	if t == nil || t.suppressFinalEdit {
-		return
-	}
-	if t.finalEditPayload != nil && t.finalEditPayload.Content != nil {
-		return
-	}
-	payload := t.defaultFinalEditPayload(finishReason, fallbackBody)
-	if payload == nil || payload.Content == nil {
-		return
-	}
-	t.finalEditPayload = payload
-}
-
-func (t *Turn) resolvedIdleTimeout() time.Duration {
-	const defaultIdleTimeout = time.Minute
-	if t == nil || t.conv == nil || t.conv.runtime == nil || t.conv.runtime.turnConfig() == nil {
-		return defaultIdleTimeout
-	}
-	timeoutMs := t.conv.runtime.turnConfig().IdleTimeoutMs
-	switch {
-	case timeoutMs < 0:
-		return 0
-	case timeoutMs == 0:
-		return defaultIdleTimeout
-	default:
-		return time.Duration(timeoutMs) * time.Millisecond
-	}
-}
-
-func (t *Turn) resetIdleTimeout() {
-	timeout := t.resolvedIdleTimeout()
-	if timeout <= 0 {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if !t.started || t.ended {
-		return
-	}
-	if t.idleTimer != nil {
-		t.idleTimer.Stop()
-	}
-	t.idleTimerSeq++
-	seq := t.idleTimerSeq
-	t.idleTimer = time.AfterFunc(timeout, func() {
-		t.handleIdleTimeout(seq)
-	})
-}
-
-func (t *Turn) stopIdleTimeout() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.idleTimerSeq++
-	if t.idleTimer != nil {
-		t.idleTimer.Stop()
-		t.idleTimer = nil
-	}
-}
-
-func (t *Turn) handleIdleTimeout(seq uint64) {
-	t.mu.Lock()
-	if !t.started || t.ended || t.idleTimerSeq != seq {
-		t.mu.Unlock()
-		return
-	}
-	t.mu.Unlock()
-	t.Abort("timeout")
-}
-
-func (t *Turn) ensureStreamStartedAsync() {
-	if t == nil || t.session == nil {
-		return
-	}
-	t.streamStartOnce.Do(func() {
-		go t.awaitStreamStart()
-	})
-}
-
-func (t *Turn) awaitStreamStart() {
-	if t == nil || t.session == nil {
-		return
-	}
-	ticker := time.NewTicker(15 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		started, err := t.session.EnsureStarted(t.turnCtx)
-		if err == nil && started {
-			return
-		}
-		if err != nil && (errors.Is(err, turns.ErrClosed) ||
-			errors.Is(err, turns.ErrNoPublisher) ||
-			errors.Is(err, turns.ErrNoRoomID) ||
-			errors.Is(err, turns.ErrNoTargetEventID) ||
-			errors.Is(err, context.Canceled)) {
-			return
-		}
-		select {
-		case <-t.turnCtx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func (t *Turn) flushPendingStream(ctx context.Context) {
-	if t == nil || t.session == nil {
-		return
-	}
-	if err := t.session.FlushPending(ctx); err != nil && t.startErr == nil {
-		t.startErr = err
-	}
-}
-
-func (t *Turn) finalizationContext() context.Context {
-	if t == nil {
-		return context.Background()
-	}
-	if t.turnCtx != nil && t.turnCtx.Err() == nil {
-		return t.turnCtx
-	}
-	if t.conv != nil && t.conv.ctx != nil && t.conv.ctx.Err() == nil {
-		return t.conv.ctx
-	}
-	if t.ctx != nil && t.ctx.Err() == nil {
-		return t.ctx
-	}
-	if t.conv != nil && t.conv.login != nil && t.conv.login.Bridge != nil && t.conv.login.Bridge.BackgroundCtx != nil {
-		return t.conv.login.Bridge.BackgroundCtx
-	}
-	return context.Background()
-}
-
-func (t *Turn) ensureSenderJoinedWithContext(ctx context.Context) error {
-	if t == nil || t.conv == nil || t.conv.portal == nil || t.conv.portal.MXID == "" {
-		return nil
-	}
-	if t.conv.intentOverride == nil && (t.conv.login == nil || t.conv.login.Bridge == nil || t.conv.portal.Bridge == nil) {
-		return nil
-	}
-	intent, err := t.conv.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	return intent.EnsureJoined(ctx, t.conv.portal.MXID)
 }

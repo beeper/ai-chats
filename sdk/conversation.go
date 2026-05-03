@@ -2,19 +2,12 @@ package sdk
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 // Conversation represents a chat room the agent is participating in.
@@ -22,22 +15,28 @@ type Conversation struct {
 	ID    string
 	Title string
 
-	ctx     context.Context
-	portal  *bridgev2.Portal
-	login   *bridgev2.UserLogin
-	sender  bridgev2.EventSender
-	runtime conversationRuntime
+	ctx    context.Context
+	portal *bridgev2.Portal
+	login  *bridgev2.UserLogin
+	sender bridgev2.EventSender
 
-	intentOverride func(context.Context) (bridgev2.MatrixAPI, error)
+	agent                *Agent
+	agentCatalog         AgentCatalog
+	roomFeatures         *RoomFeatures
+	roomFeaturesOverride func(*Conversation) *RoomFeatures
+	turnConfig           *TurnConfig
+	store                *conversationStateStore
+	approvalFlow         *ApprovalFlow[*pendingSDKApprovalData]
+	providerIdentity     ProviderIdentity
 }
 
-func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender, runtime conversationRuntime) *Conversation {
+func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridgev2.UserLogin, sender bridgev2.EventSender) *Conversation {
 	conv := &Conversation{
-		ctx:     ctx,
-		portal:  portal,
-		login:   login,
-		sender:  sender,
-		runtime: runtime,
+		ctx:              ctx,
+		portal:           portal,
+		login:            login,
+		sender:           sender,
+		providerIdentity: normalizedProviderIdentity(ProviderIdentity{}),
 	}
 	if portal != nil {
 		conv.ID = string(portal.ID)
@@ -46,25 +45,59 @@ func newConversation(ctx context.Context, portal *bridgev2.Portal, login *bridge
 	return conv
 }
 
-func (c *Conversation) getIntent(ctx context.Context) (bridgev2.MatrixAPI, error) {
-	if c != nil && c.intentOverride != nil {
-		return c.intentOverride(ctx)
+func normalizedProviderIdentity(identity ProviderIdentity) ProviderIdentity {
+	if identity.IDPrefix == "" {
+		identity.IDPrefix = "sdk"
 	}
-	if c.portal == nil || c.login == nil {
-		return nil, fmt.Errorf("no portal or login")
+	if identity.LogKey == "" {
+		identity.LogKey = identity.IDPrefix + "_msg_id"
 	}
-	intent, ok := c.portal.GetIntentFor(ctx, c.sender, c.login, bridgev2.RemoteEventMessage)
-	if !ok || intent == nil {
-		return nil, fmt.Errorf("failed to get intent")
+	if identity.StatusNetwork == "" {
+		identity.StatusNetwork = identity.IDPrefix
 	}
-	return intent, nil
+	return identity
+}
+
+// NewConversationOptions configures optional parameters for NewConversation.
+type NewConversationOptions struct {
+	ApprovalFlow *ApprovalFlow[*pendingSDKApprovalData]
+	StateStore   *conversationStateStore
+}
+
+// NewConversation creates an SDK conversation wrapper for provider bridges that
+// want to drive SDK turns without using the default sdkClient implementation.
+func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
+	conv := newConversation(ctx, portal, login, sender)
+	var options NewConversationOptions
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	conv.store = options.StateStore
+	if conv.store == nil {
+		conv.store = newConversationStateStore()
+	}
+	conv.approvalFlow = options.ApprovalFlow
+	if cfg == nil {
+		return conv
+	}
+	conv.providerIdentity = normalizedProviderIdentity(cfg.ProviderIdentity)
+	conv.agent = cfg.Agent
+	conv.agentCatalog = cfg.AgentCatalog
+	conv.roomFeatures = cfg.RoomFeatures
+	conv.turnConfig = cfg.TurnManagement
+	if cfg.GetCapabilities != nil {
+		conv.roomFeaturesOverride = func(conv *Conversation) *RoomFeatures {
+			return cfg.GetCapabilities(session, conv)
+		}
+	}
+	return conv
 }
 
 func (c *Conversation) stateStore() *conversationStateStore {
-	if c == nil || c.runtime == nil {
+	if c == nil {
 		return nil
 	}
-	return c.runtime.conversationStore()
+	return c.store
 }
 
 func (c *Conversation) state() *sdkConversationState {
@@ -90,13 +123,10 @@ func (c *Conversation) resolveDefaultAgent(ctx context.Context) (*Agent, error) 
 			return agent, nil
 		}
 	}
-	if c.runtime == nil {
-		return nil, nil
-	}
-	if agent := c.runtime.agent(); agent != nil {
+	if agent := c.agent; agent != nil {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog(); catalog != nil {
+	if catalog := c.agentCatalog; catalog != nil {
 		return catalog.DefaultAgent(ctx, c.login)
 	}
 	return nil, nil
@@ -106,13 +136,10 @@ func (c *Conversation) resolveAgentByIdentifier(ctx context.Context, identifier 
 	if c == nil || strings.TrimSpace(identifier) == "" {
 		return nil, nil
 	}
-	if c.runtime == nil {
-		return nil, nil
-	}
-	if agent := c.runtime.agent(); agent != nil && agent.ID == identifier {
+	if agent := c.agent; agent != nil && agent.ID == identifier {
 		return agent, nil
 	}
-	if catalog := c.runtime.agentCatalog(); catalog != nil {
+	if catalog := c.agentCatalog; catalog != nil {
 		return catalog.ResolveAgent(ctx, c.login, identifier)
 	}
 	return nil, nil
@@ -122,10 +149,13 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	if c == nil {
 		return nil
 	}
-	if c.runtime != nil {
-		if rf := c.runtime.roomFeatures(c); rf != nil {
+	if c.roomFeaturesOverride != nil {
+		if rf := c.roomFeaturesOverride(c); rf != nil {
 			return rf
 		}
+	}
+	if c.roomFeatures != nil {
+		return c.roomFeatures
 	}
 	state := c.state()
 	agents := make([]*Agent, 0, len(state.RoomAgents.AgentIDs))
@@ -147,89 +177,6 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 	return computeRoomFeaturesForAgents(agents)
 }
 
-func (c *Conversation) aiRoomKind() string {
-	if c == nil {
-		return agentremote.AIRoomKindAgent
-	}
-	state := c.state()
-	if state.Kind == ConversationKindDelegated || strings.TrimSpace(state.ParentConversationID) != "" {
-		return "subagent"
-	}
-	return agentremote.AIRoomKindAgent
-}
-
-// SendHTML sends a message with both plaintext and HTML body.
-func (c *Conversation) SendHTML(ctx context.Context, text, html string) error {
-	content := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    text,
-	}
-	if html != "" {
-		content.Format = event.FormatHTML
-		content.FormattedBody = html
-	}
-	return c.sendMessageContent(ctx, content)
-}
-
-// SendMedia sends a media message.
-func (c *Conversation) SendMedia(ctx context.Context, data []byte, mediaType, filename string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	mxcURL, encFile, err := intent.UploadMedia(ctx, c.portal.MXID, data, filename, mediaType)
-	if err != nil {
-		return err
-	}
-	msgType := event.MsgFile
-	switch {
-	case strings.HasPrefix(mediaType, "image/"):
-		msgType = event.MsgImage
-	case strings.HasPrefix(mediaType, "audio/"):
-		msgType = event.MsgAudio
-	case strings.HasPrefix(mediaType, "video/"):
-		msgType = event.MsgVideo
-	}
-	content := &event.MessageEventContent{
-		MsgType: msgType,
-		Body:    filename,
-		Info: &event.FileInfo{
-			MimeType: mediaType,
-			Size:     len(data),
-		},
-	}
-	if encFile != nil {
-		content.File = encFile
-	} else {
-		content.URL = mxcURL
-	}
-	wrappedContent := &event.Content{Parsed: content}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, wrappedContent, nil)
-	return err
-}
-
-// SendNotice sends a notice message.
-func (c *Conversation) SendNotice(ctx context.Context, text string) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil
-	}
-	return c.sendMessageContent(ctx, &event.MessageEventContent{
-		MsgType:  event.MsgNotice,
-		Body:     text,
-		Mentions: &event.Mentions{},
-	})
-}
-
-func (c *Conversation) sendMessageContent(ctx context.Context, content *event.MessageEventContent) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = intent.SendMessage(ctx, c.portal.MXID, event.EventMessage, &event.Content{Parsed: content}, nil)
-	return err
-}
-
 // Stream starts a new streaming response in this conversation.
 func (c *Conversation) Stream(ctx context.Context) *Turn {
 	return newTurn(ctx, c, nil, nil)
@@ -243,14 +190,6 @@ func (c *Conversation) StartTurn(ctx context.Context, agent *Agent, source *Sour
 // Context returns the conversation's context.
 func (c *Conversation) Context() context.Context {
 	return c.ctx
-}
-
-// LoginHandle returns the login-scoped conversation helper.
-func (c *Conversation) LoginHandle() *LoginHandle {
-	if c == nil {
-		return nil
-	}
-	return newLoginHandle(c.login, c.runtime)
 }
 
 // Spec returns the current persisted conversation spec snapshot.
@@ -273,8 +212,14 @@ func (c *Conversation) EnsureRoomAgent(ctx context.Context, agent *Agent) error 
 	if c == nil || agent == nil {
 		return nil
 	}
-	if err := agent.EnsureGhost(ctx, c.login); err != nil {
-		return err
+	if c.login != nil && c.login.Bridge != nil {
+		ghost, err := c.login.Bridge.GetGhostByID(ctx, networkid.UserID(agent.ID))
+		if err != nil {
+			return err
+		}
+		if ghost != nil {
+			ghost.UpdateInfo(ctx, agent.UserInfo())
+		}
 	}
 	state := c.state()
 	state.RoomAgents.AgentIDs = append(state.RoomAgents.AgentIDs, agent.ID)
@@ -306,56 +251,6 @@ func (c *Conversation) RoomAgents(ctx context.Context) (*RoomAgentSet, error) {
 	return &result, nil
 }
 
-// SetTyping sets the typing indicator for this conversation.
-func (c *Conversation) SetTyping(ctx context.Context, typing bool) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	timeout := 30 * time.Second
-	if !typing {
-		timeout = 0
-	}
-	return intent.MarkTyping(ctx, c.portal.MXID, bridgev2.TypingTypeText, timeout)
-}
-
-// SetRoomName sets the room name.
-func (c *Conversation) SetRoomName(ctx context.Context, name string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	content := &event.Content{Parsed: &event.RoomNameEventContent{Name: name}}
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateRoomName, "", content, time.Time{})
-	return err
-}
-
-// SetRoomTopic sets the room topic.
-func (c *Conversation) SetRoomTopic(ctx context.Context, topic string) error {
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	content := &event.Content{Parsed: &event.TopicEventContent{Topic: topic}}
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateTopic, "", content, time.Time{})
-	return err
-}
-
-// BroadcastCapabilities computes and sends room capability state events.
-func (c *Conversation) BroadcastCapabilities(ctx context.Context) error {
-	features := c.currentRoomFeatures(ctx)
-	if features == nil {
-		return nil
-	}
-	intent, err := c.getIntent(ctx)
-	if err != nil {
-		return err
-	}
-	rf := convertRoomFeatures(features)
-	_, err = intent.SendState(ctx, c.portal.MXID, event.StateBeeperRoomFeatures, "", &event.Content{Parsed: rf}, time.Time{})
-	return err
-}
-
 // Portal returns the underlying bridgev2.Portal.
 func (c *Conversation) Portal() *bridgev2.Portal { return c.portal }
 
@@ -364,66 +259,3 @@ func (c *Conversation) Login() *bridgev2.UserLogin { return c.login }
 
 // Sender returns the event sender for this conversation.
 func (c *Conversation) Sender() bridgev2.EventSender { return c.sender }
-
-// QueueRemoteEvent queues a remote event for processing.
-func (c *Conversation) QueueRemoteEvent(evt bridgev2.RemoteEvent) {
-	if c.login != nil {
-		c.login.Bridge.QueueRemoteEvent(c.login, evt)
-	}
-}
-
-func normalizeConversationSpec(spec ConversationSpec) ConversationSpec {
-	if spec.Kind == "" {
-		spec.Kind = ConversationKindNormal
-	}
-	if spec.Kind == ConversationKindDelegated {
-		if spec.Visibility == "" {
-			spec.Visibility = ConversationVisibilityHidden
-		}
-		spec.ArchiveOnCompletion = true
-	}
-	if spec.Visibility == "" {
-		spec.Visibility = ConversationVisibilityNormal
-	}
-	if strings.TrimSpace(spec.PortalID) == "" {
-		spec.PortalID = "sdk:" + uuid.NewString()
-	}
-	return spec
-}
-
-func conversationStateFromSpec(spec ConversationSpec) *sdkConversationState {
-	spec = normalizeConversationSpec(spec)
-	return &sdkConversationState{
-		Kind:                 spec.Kind,
-		Visibility:           spec.Visibility,
-		ParentConversationID: strings.TrimSpace(spec.ParentConversationID),
-		ParentEventID:        strings.TrimSpace(spec.ParentEventID),
-		ArchiveOnCompletion:  spec.ArchiveOnCompletion,
-		Metadata:             spec.Metadata,
-	}
-}
-
-func ensureConversationPortal(ctx context.Context, login *bridgev2.UserLogin, spec ConversationSpec) (*bridgev2.Portal, error) {
-	if login == nil || login.Bridge == nil {
-		return nil, fmt.Errorf("login bridge unavailable")
-	}
-	spec = normalizeConversationSpec(spec)
-	key := networkid.PortalKey{
-		ID: networkid.PortalID(spec.PortalID),
-	}
-	if login.ID != "" {
-		key.Receiver = login.ID
-	}
-	portal, err := login.Bridge.GetPortalByKey(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if portal.RoomType == "" {
-		portal.RoomType = database.RoomTypeDefault
-	}
-	if strings.TrimSpace(spec.Title) != "" {
-		portal.Name = strings.TrimSpace(spec.Title)
-		portal.NameSet = true
-	}
-	return portal, nil
-}

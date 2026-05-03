@@ -6,7 +6,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
@@ -33,22 +32,21 @@ func buildGroupIntro(roomName string, activation string) string {
 	return strings.Join(lines, " ") + " Address the specific sender noted in the message context."
 }
 
-func buildSessionIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
+func buildRoomIdentityHint(portal *bridgev2.Portal, _ *PortalMetadata) string {
 	if portal == nil {
 		return ""
 	}
 
 	// Use a single identifier to avoid confusing the model.
-	// This should match what tools call "sessionKey".
-	session := ""
+	room := ""
 	if portal.MXID != "" {
-		session = strings.TrimSpace(portal.MXID.String())
+		room = strings.TrimSpace(portal.MXID.String())
 	}
-	if session == "" {
+	if room == "" {
 		return ""
 	}
 
-	return "sessionKey: " + session
+	return "room_id: " + room
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptText(
@@ -58,7 +56,6 @@ func (oc *AIClient) buildAdditionalSystemPromptText(
 ) string {
 	return joinPromptFragments(
 		oc.buildAdditionalSystemPromptCoreText(ctx, portal, meta),
-		oc.buildMemoryPromptContextText(ctx, portal, meta),
 	)
 }
 
@@ -67,10 +64,7 @@ func (oc *AIClient) buildSystemPromptText(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) string {
-	base := oc.effectiveAgentPrompt(ctx, portal, meta)
-	if base == "" {
-		base = oc.effectivePrompt(meta)
-	}
+	base := oc.effectivePrompt(meta)
 	return joinPromptFragments(base, oc.buildAdditionalSystemPromptText(ctx, portal, meta))
 }
 
@@ -81,10 +75,7 @@ func (oc *AIClient) buildConversationSystemPromptText(
 	includeGreeting bool,
 ) string {
 	base := oc.buildSystemPromptText(ctx, portal, meta)
-	if !includeGreeting {
-		return base
-	}
-	return joinPromptFragments(sessionGreetingFragment(ctx, portal, meta, oc.log), base)
+	return base
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptCoreText(
@@ -102,32 +93,9 @@ func (oc *AIClient) buildAdditionalSystemPromptCoreText(
 		}
 	}
 
-	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
-		out = append(out, accountHint)
-	}
-
-	if ident := buildSessionIdentityHint(portal, meta); ident != "" {
+	if ident := buildRoomIdentityHint(portal, meta); ident != "" {
 		out = append(out, ident)
 	}
 
 	return joinPromptFragments(out...)
-}
-
-func (oc *AIClient) buildMemoryPromptContextText(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) string {
-	if oc == nil || len(oc.integrationModules) == 0 {
-		return ""
-	}
-	module := oc.integrationModules["memory"]
-	augmentor, ok := module.(integrationruntime.PromptContextIntegration)
-	if !ok || augmentor == nil {
-		return ""
-	}
-	return strings.TrimSpace(augmentor.PromptContextText(ctx, integrationruntime.PromptScope{
-		Portal: portal,
-		Meta:   meta,
-	}))
 }

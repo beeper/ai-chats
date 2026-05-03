@@ -1,22 +1,5 @@
 package ai
 
-import "context"
-
-// AIProvider defines a common interface for OpenAI-compatible AI providers
-type AIProvider interface {
-	// Name returns the provider name (e.g., "openai", "openrouter")
-	Name() string
-
-	// GenerateStream generates a streaming response
-	GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error)
-
-	// Generate generates a non-streaming response
-	Generate(ctx context.Context, params GenerateParams) (*GenerateResponse, error)
-
-	// ListModels returns available models for this provider
-	ListModels(ctx context.Context) ([]ModelInfo, error)
-}
-
 // GenerateParams contains parameters for generation requests
 type GenerateParams struct {
 	Model               string
@@ -35,29 +18,6 @@ type GenerateResponse struct {
 	ResponseID   string // For Responses API continuation
 	ToolCalls    []ToolCallResult
 	Usage        UsageInfo
-}
-
-// StreamEventType identifies the type of streaming event
-type StreamEventType string
-
-const (
-	StreamEventDelta     StreamEventType = "delta"     // Text content delta
-	StreamEventReasoning StreamEventType = "reasoning" // Reasoning/thinking delta
-	StreamEventToolCall  StreamEventType = "tool_call" // Tool call request
-	StreamEventComplete  StreamEventType = "complete"  // Generation complete
-	StreamEventError     StreamEventType = "error"     // Error occurred
-)
-
-// StreamEvent represents a single event from a streaming response
-type StreamEvent struct {
-	Type           StreamEventType
-	Delta          string          // Text chunk for delta events
-	ReasoningDelta string          // Thinking/reasoning chunk
-	ToolCall       *ToolCallResult // For tool_call events
-	FinishReason   string          // For complete events
-	ResponseID     string          // Response ID (for Responses API)
-	Usage          *UsageInfo      // Token usage (usually on complete)
-	Error          error           // For error events
 }
 
 // ToolCallResult represents a tool/function call from the model

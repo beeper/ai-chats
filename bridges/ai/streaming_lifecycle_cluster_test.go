@@ -5,36 +5,26 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/agentremote/sdk"
 )
 
-func TestChatCompletionsHandleStreamStepErrorFinalizesContextLength(t *testing.T) {
+func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
 
-	adapter := &chatCompletionsTurnAdapter{
-		agentLoopProviderBase: agentLoopProviderBase{
-			oc:    &AIClient{},
-			log:   zerolog.Nop(),
-			state: state,
-		},
-	}
+	client := &AIClient{}
 	stepErr := errors.New("This model's maximum context length is 100 tokens. However, your messages resulted in 120 tokens.")
 
-	cle, err := adapter.handleStreamStepError(context.Background(), openai.ChatCompletionNewParams{}, nil, stepErr)
+	cle, err := client.finalizeStreamingStepError(context.Background(), nil, state, nil, true, context.Background(), stepErr, func(error) {})
 	if cle == nil {
 		t.Fatal("expected context-length error")
 	}
-	if err == nil {
-		t.Fatal("expected stream finalization error")
-	}
-	var preDelta *PreDeltaError
-	if !errors.As(err, &preDelta) {
-		t.Fatalf("expected PreDeltaError wrapper, got %T", err)
+	if err != nil {
+		t.Fatalf("expected context-length finalization to preserve retry path, got %v", err)
 	}
 	if state.finishReason != "context-length" {
 		t.Fatalf("expected finish reason to be context-length, got %q", state.finishReason)
@@ -47,7 +37,7 @@ func TestChatCompletionsHandleStreamStepErrorFinalizesContextLength(t *testing.T
 func TestBuildStreamingMessageMetadataHandlesNilTurn(t *testing.T) {
 	state := newStreamingState(context.Background(), nil, "")
 
-	meta := (&AIClient{}).buildStreamingMessageMetadata(state, nil, nil)
+	meta := (&AIClient{}).buildStreamingMessageMetadata(state, nil, sdk.TurnData{})
 	if meta == nil {
 		t.Fatal("expected metadata")
 	}
@@ -59,7 +49,7 @@ func TestBuildStreamingMessageMetadataHandlesNilTurn(t *testing.T) {
 	}
 }
 
-func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
+func TestProcessResponseStreamEventEmitsMetadataForCompleted(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	oc := &AIClient{}
 
@@ -67,11 +57,24 @@ func TestHandleResponseLifecycleEventEmitsMetadataForCompleted(t *testing.T) {
 		"turn_id": state.turn.ID(),
 	})
 
-	oc.handleResponseLifecycleEvent(context.Background(), nil, state, nil, "response.completed", responses.Response{
-		ID:     "resp_123",
-		Status: "completed",
-		Model:  "gpt-4.1",
-	})
+	rsc := &responseStreamContext{
+		base: &streamProviderBase{
+			oc:    oc,
+			log:   zerolog.Nop(),
+			state: state,
+		},
+	}
+	_, _, err := oc.processResponseStreamEvent(context.Background(), rsc, responses.ResponseStreamEventUnion{
+		Type: "response.completed",
+		Response: responses.Response{
+			ID:     "resp_123",
+			Status: "completed",
+			Model:  "gpt-4.1",
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("unexpected completed error: %v", err)
+	}
 
 	message := streamui.SnapshotUIMessage(state.turn.UIState())
 	if message == nil {
@@ -97,10 +100,8 @@ func TestBuildStreamUIMessageCanonicalizesTerminalResponseStatus(t *testing.T) {
 		"turn_id": state.turn.ID(),
 	})
 
-	oc.handleResponseLifecycleEvent(context.Background(), nil, state, nil, "response.in_progress", responses.Response{
-		ID:     "resp_123",
-		Status: "in_progress",
-	})
+	state.responseID = "resp_123"
+	state.responseStatus = "in_progress"
 	state.completedAtMs = 123
 	state.finishReason = "stop"
 
@@ -124,7 +125,7 @@ func TestProcessResponseStreamEventUpdatesCompletedResponseStatus(t *testing.T) 
 	})
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,
@@ -168,7 +169,7 @@ func TestProcessResponseStreamEventCompletedSignalsLoopStop(t *testing.T) {
 	oc := &AIClient{}
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,
@@ -193,7 +194,7 @@ func TestProcessResponseStreamEventCompletedSignalsLoopStop(t *testing.T) {
 	}
 }
 
-func TestResponsesTurnAdapterFinalizeAgentLoopDoesNotSkipTerminalLifecycle(t *testing.T) {
+func TestResponsesTurnAdapterFinalizeStreamingTurnDoesNotSkipTerminalLifecycle(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
 	state.writer().TextDelta(context.Background(), "done")
@@ -201,17 +202,17 @@ func TestResponsesTurnAdapterFinalizeAgentLoopDoesNotSkipTerminalLifecycle(t *te
 	state.finishReason = "stop"
 
 	adapter := &responsesTurnAdapter{
-		agentLoopProviderBase: agentLoopProviderBase{
+		streamProviderBase: streamProviderBase{
 			oc:    &AIClient{},
 			log:   zerolog.Nop(),
 			state: state,
 		},
 	}
 
-	adapter.FinalizeAgentLoop(context.Background())
+	adapter.FinalizeStreamingTurn(context.Background())
 
 	if !state.isFinalized() {
-		t.Fatal("expected finalize agent loop to finalize terminal response state")
+		t.Fatal("expected finalization to mark terminal response state")
 	}
 
 	message := streamui.SnapshotUIMessage(state.turn.UIState())
@@ -228,7 +229,7 @@ func TestProcessResponseStreamEventFailedFinalizesAsError(t *testing.T) {
 	oc := &AIClient{}
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,

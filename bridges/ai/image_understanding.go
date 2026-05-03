@@ -10,79 +10,29 @@ import (
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
-	return meta != nil && hasAssignedAgent(meta)
+	if oc == nil || oc.connector == nil {
+		return false
+	}
+	modelID := oc.effectiveModel(meta)
+	if modelID == "" {
+		return false
+	}
+	info := oc.findModelInfo(modelID)
+	return info != nil && info.SupportsToolCalling
 }
 
 type modelCapsFilter func(ModelCapabilities) bool
 type modelInfoFilter func(ModelInfo) bool
 
-func collectModelCandidates(primary string, fallbacks []string) []string {
-	var candidates []string
-	if strings.TrimSpace(primary) != "" {
-		candidates = append(candidates, primary)
-	}
-	for _, fb := range fallbacks {
-		if strings.TrimSpace(fb) == "" {
-			continue
-		}
-		candidates = append(candidates, fb)
-	}
-	return candidates
-}
-
 func (oc *AIClient) resolveUnderstandingModel(
 	ctx context.Context,
-	meta *PortalMetadata,
-	supportsCaps modelCapsFilter,
 	supportsInfo modelInfoFilter,
-	logLabel string,
 ) string {
-	if !oc.canUseMediaUnderstanding(meta) {
-		return ""
-	}
-
-	agentID := resolveAgentID(meta)
-	if agentID == "" {
-		return ""
-	}
-
-	store := NewAgentStoreAdapter(oc)
-	agent, err := store.GetAgentByID(ctx, agentID)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent_id", agentID).Msg(fmt.Sprintf("Failed to load agent for %s understanding", logLabel))
-		return ""
-	}
-	if agent == nil {
-		return ""
-	}
-
-	candidates := collectModelCandidates(agent.Model.Primary, agent.Model.Fallbacks)
-	for _, candidate := range candidates {
-		resolved := ResolveAlias(candidate)
-		if resolved == "" {
-			continue
-		}
-		responder := oc.responderForMeta(ctx, &PortalMetadata{
-			ResolvedTarget: &ResolvedTarget{
-				Kind:    ResolvedTargetModel,
-				ModelID: resolved,
-				GhostID: modelUserID(resolved),
-			},
-		})
-		if responder == nil {
-			continue
-		}
-		caps := responder.ModelCapabilities()
-		if supportsCaps(caps) {
-			return resolved
-		}
-	}
-
-	loginMeta := loginMetadata(oc.UserLogin)
-	provider := loginMeta.Provider
+	loginState := oc.loginStateSnapshot(ctx)
+	provider := loginMetadata(oc.UserLogin).Provider
 
 	// Prefer cached/provider-listed models first.
-	if modelID := oc.pickModelFromCache(loginMeta.ModelCache, provider, supportsInfo); modelID != "" {
+	if modelID := oc.pickModelFromCache(loginState.ModelCache, provider, supportsInfo); modelID != "" {
 		return modelID
 	}
 	models, err := oc.listAvailableModels(ctx, false)
@@ -123,14 +73,11 @@ func (oc *AIClient) resolveModelForCapability(
 	return fallbackID, true
 }
 
-// resolveImageUnderstandingModel returns a vision-capable model from the agent's model chain.
+// resolveImageUnderstandingModel returns a vision-capable model.
 func (oc *AIClient) resolveImageUnderstandingModel(ctx context.Context, meta *PortalMetadata) string {
 	return oc.resolveUnderstandingModel(
 		ctx,
-		meta,
-		func(caps ModelCapabilities) bool { return caps.SupportsVision },
 		func(info ModelInfo) bool { return info.SupportsVision },
-		"image",
 	)
 }
 

@@ -23,16 +23,16 @@ type profileState struct {
 	DeviceID string      `json:"device_id,omitempty"`
 }
 
-// configRoot returns ~/.config/agentremote
+// configRoot returns ~/.config/<binaryName>.
 func configRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "agentremote"), nil
+	return filepath.Join(home, ".config", binaryName), nil
 }
 
-// profileRoot returns ~/.config/agentremote/profiles/<profile>
+// profileRoot returns ~/.config/<binaryName>/profiles/<profile>.
 func profileRoot(profile string) (string, error) {
 	root, err := configRoot()
 	if err != nil {
@@ -253,6 +253,6 @@ func listInstancesForProfile(profile string) ([]string, error) {
 
 func missingAuthError(profile string) func() error {
 	return func() error {
-		return fmt.Errorf("not logged in (profile %q). Run: agentremote login --profile %s", profile, profile)
+		return fmt.Errorf("not logged in (profile %q). Run: %s login --profile %s", profile, binaryName, profile)
 	}
 }

@@ -2,15 +2,14 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 // createStreamingTurn builds an sdk.Turn configured with bridges/ai-specific
@@ -22,24 +21,24 @@ func (oc *AIClient) createStreamingTurn(
 	state *streamingState,
 	sourceEventID id.EventID,
 	senderID string,
-) *bridgesdk.Turn {
-	var sdkConfig *bridgesdk.Config[*AIClient, *Config]
-	if oc.connector != nil {
-		sdkConfig = oc.connector.sdkConfig
+) *sdk.Turn {
+	sdkConfig := &sdk.Config[*AIClient, *Config]{
+		ProviderIdentity: sdk.ProviderIdentity{
+			IDPrefix:      oc.ClientBase.MessageIDPrefix,
+			LogKey:        oc.ClientBase.MessageLogKey,
+			StatusNetwork: oc.ClientBase.MessageIDPrefix,
+		},
 	}
 	var sender bridgev2.EventSender
 	if oc.UserLogin != nil {
 		sender = oc.senderForPortal(ctx, portal)
 	}
-	conv := bridgesdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
-	turn := conv.StartTurn(ctx, nil, &bridgesdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
+	conv := sdk.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
+	turn := conv.StartTurn(ctx, nil, &sdk.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
 	turn.SetSender(sender)
-	turn.SetFinalMetadataProvider(bridgesdk.FinalMetadataProviderFunc(func(_ *bridgesdk.Turn, _ string) any {
-		return oc.buildStreamingMessageMetadata(state, meta, nil)
+	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, _ string) any {
+		return oc.buildStreamingMessageMetadata(state, meta, buildCanonicalTurnData(state, nil))
 	}))
-	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *bridgesdk.Turn, req bridgesdk.ApprovalRequest) bridgesdk.ApprovalHandle {
-		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)
-	})
 	placeholderExtra := map[string]any{
 		BeeperAIKey: map[string]any{
 			"id":   turn.ID(),
@@ -50,14 +49,14 @@ func (oc *AIClient) createStreamingTurn(
 			"parts": []any{},
 		},
 	}
-	turn.SetPlaceholderMessagePayload(&bridgesdk.PlaceholderMessagePayload{
+	turn.SetPlaceholderMessagePayload(&sdk.PlaceholderMessagePayload{
 		Content: &event.MessageEventContent{
 			MsgType:  event.MsgText,
 			Body:     "...",
 			Mentions: &event.Mentions{},
 		},
 		Extra: placeholderExtra,
-		DBMetadata: &MessageMetadata{BaseMessageMetadata: agentremote.BaseMessageMetadata{
+		DBMetadata: &MessageMetadata{BaseMessageMetadata: sdk.BaseMessageMetadata{
 			Role:   "assistant",
 			TurnID: turn.ID(),
 		}},
@@ -86,7 +85,6 @@ type streamingRunPrep struct {
 	State         *streamingState
 	TypingSignals *TypingSignaler
 	TouchTyping   func()
-	IsHeartbeat   bool
 }
 
 // prepareStreamingRun performs the shared preamble for both the Responses API
@@ -116,16 +114,19 @@ func (oc *AIClient) prepareStreamingRun(
 		roomID = portal.MXID
 	}
 	state := newStreamingState(ctx, meta, roomID)
-	if responder, err := oc.ResolveResponderForMeta(ctx, meta); err == nil && responder != nil {
+	opts := ResponderResolveOptions{}
+	if meta != nil {
+		opts.RuntimeModelOverride = strings.TrimSpace(meta.RuntimeModelOverride)
+	}
+	if responder, err := oc.resolveResponder(ctx, meta, opts); err == nil && responder != nil {
 		state.respondingGhostID = string(responder.GhostID)
-		state.respondingAgentID = responder.AgentID
 		state.respondingModelID = responder.ModelID
 		state.respondingContextLimit = responder.ContextLimit
 	} else if err != nil {
 		log.Warn().Err(err).Msg("Failed to resolve responder for streaming turn")
 	}
 
-	// Create SDK Turn for writer/emitter/session management.
+	// Create SDK Turn for writer/emitter state.
 	turn := oc.createStreamingTurn(ctx, portal, meta, state, sourceEventID, senderID)
 	state.turn = turn
 	oc.bindRoomRunState(roomID, state)
@@ -149,16 +150,15 @@ func (oc *AIClient) prepareStreamingRun(
 	var typingCtrl *TypingController
 	var typingSignals *TypingSignaler
 	touchTyping := func() {}
-	isHeartbeat := state.heartbeat != nil
-	if !state.suppressSend && !isHeartbeat {
-		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), isHeartbeat)
+	if !state.suppressSend {
+		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx))
 		interval := oc.resolveTypingInterval(meta)
 		if interval > 0 && mode != TypingModeNever {
 			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
 				Interval: interval,
 				TTL:      typingTTL,
 			})
-			typingSignals = NewTypingSignaler(typingCtrl, mode, isHeartbeat)
+			typingSignals = NewTypingSignaler(typingCtrl, mode)
 			touchTyping = func() {
 				typingCtrl.RefreshTTL()
 			}
@@ -179,7 +179,6 @@ func (oc *AIClient) prepareStreamingRun(
 		State:         state,
 		TypingSignals: typingSignals,
 		TouchTyping:   touchTyping,
-		IsHeartbeat:   isHeartbeat,
 	}
 	return prep, cleanup
 }

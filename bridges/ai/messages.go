@@ -1,6 +1,10 @@
 package ai
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/beeper/agentremote/sdk"
+)
 
 type PromptRole string
 
@@ -77,7 +81,40 @@ func (m PromptMessage) VisibleText() string {
 
 // PromptContext is the bridge-local prompt envelope used throughout bridges/ai.
 type PromptContext struct {
-	SystemPrompt string
-	Messages     []PromptMessage
-	Tools        []ToolDefinition
+	SystemPrompt    string
+	Messages        []PromptMessage
+	Tools           []ToolDefinition
+	CurrentTurnData sdk.TurnData
+}
+
+func promptCurrentUserVisibleText(prompt PromptContext) string {
+	if prompt.CurrentTurnData.Role != "" || prompt.CurrentTurnData.ID != "" || len(prompt.CurrentTurnData.Parts) > 0 {
+		return turnDataVisibleText(prompt.CurrentTurnData)
+	}
+	for i := len(prompt.Messages) - 1; i >= 0; i-- {
+		if prompt.Messages[i].Role != PromptRoleUser {
+			continue
+		}
+		text := strings.TrimSpace(prompt.Messages[i].VisibleText())
+		if text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func turnDataVisibleText(turn sdk.TurnData) string {
+	var parts []string
+	for _, part := range turn.Parts {
+		if part.Type == "text" {
+			text := strings.TrimSpace(part.Text)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, "\n")
+	}
+	return ""
 }

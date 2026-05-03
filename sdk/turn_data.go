@@ -38,6 +38,25 @@ type TurnPart struct {
 	Extra            map[string]any `json:"extra,omitempty"`
 }
 
+var turnPartReservedFields = []string{
+	"type",
+	"state",
+	"text",
+	"reasoning",
+	"toolCallId",
+	"toolName",
+	"toolType",
+	"input",
+	"output",
+	"errorText",
+	"approval",
+	"url",
+	"title",
+	"filename",
+	"mediaType",
+	"providerExecuted",
+}
+
 func (td TurnData) Clone() TurnData {
 	data, err := json.Marshal(td)
 	if err != nil {
@@ -112,28 +131,7 @@ func TurnDataFromUIMessage(uiMessage map[string]any) (TurnData, bool) {
 		if !ok {
 			continue
 		}
-		part := TurnPart{
-			Type:       normalizeTurnPartType(stringValue(partMap["type"])),
-			State:      stringValue(partMap["state"]),
-			Text:       stringValue(partMap["text"]),
-			Reasoning:  stringValue(partMap["reasoning"]),
-			ToolCallID: stringValue(partMap["toolCallId"]),
-			ToolName:   stringValue(partMap["toolName"]),
-			ToolType:   stringValue(partMap["toolType"]),
-			Input:      jsonutil.DeepCloneAny(partMap["input"]),
-			Output:     jsonutil.DeepCloneAny(partMap["output"]),
-			ErrorText:  stringValue(partMap["errorText"]),
-			Approval:   jsonutil.DeepCloneMap(jsonutil.ToMap(partMap["approval"])),
-			URL:        stringValue(partMap["url"]),
-			Title:      stringValue(partMap["title"]),
-			Filename:   stringValue(partMap["filename"]),
-			MediaType:  stringValue(partMap["mediaType"]),
-			Extra:      extraFields(partMap, "type", "state", "text", "reasoning", "toolCallId", "toolName", "toolType", "input", "output", "errorText", "approval", "url", "title", "filename", "mediaType", "providerExecuted"),
-		}
-		if value, ok := partMap["providerExecuted"].(bool); ok {
-			part.ProviderExecuted = value
-		}
-		td.Parts = append(td.Parts, part)
+		td.Parts = append(td.Parts, decodeTurnPart(partMap))
 	}
 	return td, td.Role != "" || td.ID != "" || len(td.Parts) > 0
 }
@@ -162,61 +160,90 @@ func UIMessageFromTurnData(td TurnData) map[string]any {
 	}
 	parts := make([]any, 0, len(td.Parts))
 	for _, part := range td.Parts {
-		partMap := map[string]any{
-			"type": part.Type,
-		}
-		if part.State != "" {
-			partMap["state"] = part.State
-		}
-		if part.Text != "" {
-			partMap["text"] = part.Text
-		}
-		if part.Reasoning != "" {
-			partMap["reasoning"] = part.Reasoning
-		}
-		if part.ToolCallID != "" {
-			partMap["toolCallId"] = part.ToolCallID
-		}
-		if part.ToolName != "" {
-			partMap["toolName"] = part.ToolName
-		}
-		if part.ToolType != "" {
-			partMap["toolType"] = part.ToolType
-		}
-		if part.Input != nil {
-			partMap["input"] = jsonutil.DeepCloneAny(part.Input)
-		}
-		if part.Output != nil {
-			partMap["output"] = jsonutil.DeepCloneAny(part.Output)
-		}
-		if part.ErrorText != "" {
-			partMap["errorText"] = part.ErrorText
-		}
-		if len(part.Approval) > 0 {
-			partMap["approval"] = jsonutil.DeepCloneMap(part.Approval)
-		}
-		if part.URL != "" {
-			partMap["url"] = part.URL
-		}
-		if part.Title != "" {
-			partMap["title"] = part.Title
-		}
-		if part.Filename != "" {
-			partMap["filename"] = part.Filename
-		}
-		if part.MediaType != "" {
-			partMap["mediaType"] = part.MediaType
-		}
-		if part.ProviderExecuted {
-			partMap["providerExecuted"] = true
-		}
-		for key, value := range jsonutil.DeepCloneMap(part.Extra) {
-			partMap[key] = value
-		}
-		parts = append(parts, partMap)
+		parts = append(parts, encodeTurnPart(part))
 	}
 	ui["parts"] = parts
 	return ui
+}
+
+func decodeTurnPart(partMap map[string]any) TurnPart {
+	part := TurnPart{
+		Type:       normalizeTurnPartType(stringValue(partMap["type"])),
+		State:      stringValue(partMap["state"]),
+		Text:       stringValue(partMap["text"]),
+		Reasoning:  stringValue(partMap["reasoning"]),
+		ToolCallID: stringValue(partMap["toolCallId"]),
+		ToolName:   stringValue(partMap["toolName"]),
+		ToolType:   stringValue(partMap["toolType"]),
+		Input:      jsonutil.DeepCloneAny(partMap["input"]),
+		Output:     jsonutil.DeepCloneAny(partMap["output"]),
+		ErrorText:  stringValue(partMap["errorText"]),
+		Approval:   jsonutil.DeepCloneMap(jsonutil.ToMap(partMap["approval"])),
+		URL:        stringValue(partMap["url"]),
+		Title:      stringValue(partMap["title"]),
+		Filename:   stringValue(partMap["filename"]),
+		MediaType:  stringValue(partMap["mediaType"]),
+		Extra:      extraFields(partMap, turnPartReservedFields...),
+	}
+	if value, ok := partMap["providerExecuted"].(bool); ok {
+		part.ProviderExecuted = value
+	}
+	return part
+}
+
+func encodeTurnPart(part TurnPart) map[string]any {
+	partMap := map[string]any{
+		"type": part.Type,
+	}
+	if part.State != "" {
+		partMap["state"] = part.State
+	}
+	if part.Text != "" {
+		partMap["text"] = part.Text
+	}
+	if part.Reasoning != "" {
+		partMap["reasoning"] = part.Reasoning
+	}
+	if part.ToolCallID != "" {
+		partMap["toolCallId"] = part.ToolCallID
+	}
+	if part.ToolName != "" {
+		partMap["toolName"] = part.ToolName
+	}
+	if part.ToolType != "" {
+		partMap["toolType"] = part.ToolType
+	}
+	if part.Input != nil {
+		partMap["input"] = jsonutil.DeepCloneAny(part.Input)
+	}
+	if part.Output != nil {
+		partMap["output"] = jsonutil.DeepCloneAny(part.Output)
+	}
+	if part.ErrorText != "" {
+		partMap["errorText"] = part.ErrorText
+	}
+	if len(part.Approval) > 0 {
+		partMap["approval"] = jsonutil.DeepCloneMap(part.Approval)
+	}
+	if part.URL != "" {
+		partMap["url"] = part.URL
+	}
+	if part.Title != "" {
+		partMap["title"] = part.Title
+	}
+	if part.Filename != "" {
+		partMap["filename"] = part.Filename
+	}
+	if part.MediaType != "" {
+		partMap["mediaType"] = part.MediaType
+	}
+	if part.ProviderExecuted {
+		partMap["providerExecuted"] = true
+	}
+	for key, value := range jsonutil.DeepCloneMap(part.Extra) {
+		partMap[key] = value
+	}
+	return partMap
 }
 
 // extractUIMessageParts normalises the "parts" field of a UI message into a

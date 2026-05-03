@@ -6,31 +6,24 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go/v3/responses"
-	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type toolLifecycle struct {
-	oc     *AIClient
-	portal *bridgev2.Portal
-	state  *streamingState
+	state *streamingState
 }
 
-func (oc *AIClient) toolLifecycle(portal *bridgev2.Portal, state *streamingState) toolLifecycle {
-	return toolLifecycle{
-		oc:     oc,
-		portal: portal,
-		state:  state,
-	}
+func newToolLifecycle(state *streamingState) toolLifecycle {
+	return toolLifecycle{state: state}
 }
 
 func (l toolLifecycle) ensureInputStart(ctx context.Context, tool *activeToolCall, providerExecuted bool, extra map[string]any) {
 	if tool == nil {
 		return
 	}
-	l.state.writer().Tools().EnsureInputStart(ctx, tool.callID, nil, bridgesdk.ToolInputOptions{
+	l.state.writer().Tools().EnsureInputStart(ctx, tool.callID, nil, sdk.ToolInputOptions{
 		ToolName:         tool.toolName,
 		ProviderExecuted: providerExecuted,
 		DisplayTitle:     toolDisplayTitle(tool.toolName),
@@ -74,7 +67,7 @@ func (l toolLifecycle) finalize(ctx context.Context, tool *activeToolCall, opts 
 	case ResultStatusError:
 		l.state.writer().Tools().OutputError(ctx, tool.callID, opts.errorText, opts.providerExecuted)
 	default:
-		l.state.writer().Tools().Output(ctx, tool.callID, opts.output, bridgesdk.ToolOutputOptions{
+		l.state.writer().Tools().Output(ctx, tool.callID, opts.output, sdk.ToolOutputOptions{
 			ProviderExecuted: opts.providerExecuted,
 			Streaming:        opts.streaming,
 		})

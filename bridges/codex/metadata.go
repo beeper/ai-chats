@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 type UserLoginMetadata struct {
@@ -30,9 +30,9 @@ const (
 )
 
 type PortalMetadata struct {
+	IsCodexRoom      bool   `json:"is_codex_room,omitempty"`
 	Title            string `json:"title,omitempty"`
 	Slug             string `json:"slug,omitempty"`
-	IsCodexRoom      bool   `json:"is_codex_room,omitempty"`
 	CodexThreadID    string `json:"codex_thread_id,omitempty"`
 	CodexCwd         string `json:"codex_cwd,omitempty"`
 	ElevatedLevel    string `json:"elevated_level,omitempty"`
@@ -41,11 +41,11 @@ type PortalMetadata struct {
 }
 
 type MessageMetadata struct {
-	agentremote.BaseMessageMetadata
-	agentremote.AssistantMessageMetadata
+	sdk.BaseMessageMetadata
+	sdk.AssistantMessageMetadata
 }
 
-type ToolCallMetadata = agentremote.ToolCallMetadata
+type ToolCallMetadata = sdk.ToolCallMetadata
 
 type GhostMetadata struct {
 	LastSync jsontime.Unix `json:"last_sync,omitempty"`
@@ -58,16 +58,15 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	mm.CopyFromBase(&src.BaseMessageMetadata)
-	mm.CopyFromAssistant(&src.AssistantMessageMetadata)
+	sdk.CopyFromBaseAndAssistant(&mm.BaseMessageMetadata, &src.BaseMessageMetadata, &mm.AssistantMessageMetadata, &src.AssistantMessageMetadata)
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	return agentremote.EnsureLoginMetadata[UserLoginMetadata](login)
+	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	return agentremote.EnsurePortalMetadata[PortalMetadata](portal)
+	return sdk.EnsurePortalMetadata[PortalMetadata](portal)
 }
 
 func normalizedCodexAuthSource(meta *UserLoginMetadata) string {

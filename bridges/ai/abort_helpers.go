@@ -8,7 +8,10 @@ import (
 	"unicode/utf8"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 type stopPlanKind string
@@ -36,10 +39,9 @@ type userStopPlan struct {
 }
 
 type userStopResult struct {
-	Plan             userStopPlan
-	ActiveStopped    bool
-	QueuedStopped    int
-	SubagentsStopped int
+	Plan          userStopPlan
+	ActiveStopped bool
+	QueuedStopped int
 }
 
 func stopLabel(count int, singular string) string {
@@ -54,9 +56,6 @@ func formatAbortNotice(result userStopResult) string {
 	case stopPlanKindNoMatch:
 		return "No matching active or queued turn found for that reply."
 	case stopPlanKindActive:
-		if result.SubagentsStopped > 0 {
-			return fmt.Sprintf("Stopped that turn. Stopped %d %s.", result.SubagentsStopped, stopLabel(result.SubagentsStopped, "sub-agent"))
-		}
 		return "Stopped that turn."
 	case stopPlanKindQueued:
 		if result.QueuedStopped <= 1 {
@@ -70,9 +69,6 @@ func formatAbortNotice(result userStopResult) string {
 		}
 		if result.QueuedStopped > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d queued %s", result.QueuedStopped, stopLabel(result.QueuedStopped, "turn")))
-		}
-		if result.SubagentsStopped > 0 {
-			parts = append(parts, fmt.Sprintf("stopped %d %s", result.SubagentsStopped, stopLabel(result.SubagentsStopped, "sub-agent")))
 		}
 		if len(parts) == 0 {
 			return "No active or queued turns to stop."
@@ -137,8 +133,17 @@ func (oc *AIClient) resolveUserStopPlan(req userStopRequest) userStopPlan {
 
 func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendingQueueItem) int {
 	for _, item := range items {
-		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
-		oc.sendQueueRejectedStatus(ctx, item.pending.Portal, item.pending.Event, item.pending.StatusEvents, "Stopped.")
+		message := "Stopped."
+		err := fmt.Errorf("%s", message)
+		msgStatus := bridgev2.WrapErrorInStatus(err).
+			WithStatus(event.MessageStatusRetriable).
+			WithErrorReason(event.MessageStatusGenericError).
+			WithMessage(message).
+			WithIsCertain(true).
+			WithSendNotice(false)
+		for _, statusEvt := range queueStatusEvents(item.pending.Event, item.pending.StatusEvents) {
+			sdk.SendMessageStatus(ctx, item.pending.Portal, statusEvt, msgStatus)
+		}
 	}
 	return len(items)
 }
@@ -155,15 +160,12 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
 		}
 		result.QueuedStopped = oc.finalizeStoppedQueueItems(ctx, oc.drainPendingQueue(roomID))
-		result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
 	case stopPlanKindActive:
 		markedStopped := oc.markRoomRunStopped(roomID, buildStopMetadata(plan, req))
 		if markedStopped {
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
 		}
-		if result.ActiveStopped {
-			result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
-		} else {
+		if !result.ActiveStopped {
 			result.Plan.Kind = stopPlanKindNoMatch
 		}
 	case stopPlanKindQueued:
@@ -173,12 +175,9 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 		}
 	}
 
-	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0 || result.SubagentsStopped > 0) {
+	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0) {
 		req.Meta.AbortedLastRun = true
 		oc.savePortalQuiet(ctx, req.Portal, "stop")
-	}
-	if req.Meta != nil && result.QueuedStopped > 0 {
-		oc.notifySessionMutation(ctx, req.Portal, req.Meta, false)
 	}
 	return result
 }

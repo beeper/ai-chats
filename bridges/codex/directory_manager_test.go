@@ -26,7 +26,7 @@ func TestParseCodexCommandIgnoresNormalText(t *testing.T) {
 
 func TestResolveManagedPathArgumentDefaultsToCurrentRoomPath(t *testing.T) {
 	cc := newTestCodexClient("@owner:example.com")
-	got, err := cc.resolveManagedPathArgument("", &PortalMetadata{CodexCwd: "/tmp/repo"})
+	got, err := cc.resolveManagedPathArgument("", &codexPortalState{CodexCwd: "/tmp/repo"})
 	if err != nil {
 		t.Fatalf("expected current room path fallback, got error: %v", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -33,61 +32,6 @@ func normalizeGravatarEmail(email string) (string, error) {
 func gravatarHash(email string) string {
 	hash := sha256.Sum256([]byte(email))
 	return hex.EncodeToString(hash[:])
-}
-
-func ensureGravatarState(meta *UserLoginMetadata) *GravatarState {
-	if meta.Gravatar == nil {
-		meta.Gravatar = &GravatarState{}
-	}
-	return meta.Gravatar
-}
-
-func fetchGravatarProfile(ctx context.Context, email string) (*GravatarProfile, error) {
-	normalized, err := normalizeGravatarEmail(email)
-	if err != nil {
-		return nil, err
-	}
-	hash := gravatarHash(normalized)
-
-	reqURL := fmt.Sprintf("%s/profiles/%s", gravatarAPIBaseURL, hash)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch Gravatar profile: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("gravatar profile not found for %s", normalized)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("gravatar profile request failed: status %d", resp.StatusCode)
-	}
-
-	var profile map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
-		return nil, fmt.Errorf("failed to decode Gravatar profile: %w", err)
-	}
-
-	if _, ok := profile["hash"]; !ok {
-		profile["hash"] = hash
-	}
-	if _, ok := profile["avatar_url"]; !ok {
-		profile["avatar_url"] = fmt.Sprintf("%s/%s", gravatarAvatarBaseURL, hash)
-	}
-
-	return &GravatarProfile{
-		Email:     normalized,
-		Hash:      hash,
-		Profile:   profile,
-		FetchedAt: time.Now().Unix(),
-	}, nil
 }
 
 func formatGravatarMarkdown(profile *GravatarProfile, status string) string {
@@ -182,9 +126,9 @@ func formatGravatarScalar(value any) string {
 }
 
 func (oc *AIClient) gravatarContext() string {
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta == nil || loginMeta.Gravatar == nil || loginMeta.Gravatar.Primary == nil {
+	loginConfig := oc.loginConfigSnapshot(context.Background())
+	if loginConfig == nil || loginConfig.Gravatar == nil || loginConfig.Gravatar.Primary == nil {
 		return ""
 	}
-	return formatGravatarMarkdown(loginMeta.Gravatar.Primary, "primary")
+	return formatGravatarMarkdown(loginConfig.Gravatar.Primary, "primary")
 }

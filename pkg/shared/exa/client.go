@@ -4,17 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"strings"
 
 	"github.com/beeper/agentremote/pkg/shared/httputil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
-
-// Enabled returns true when the Exa provider is enabled and has credentials.
-func Enabled(enabled *bool, apiKey string) bool {
-	return stringutil.BoolPtrOr(enabled, true) && strings.TrimSpace(apiKey) != ""
-}
 
 // Endpoint resolves an Exa API endpoint path against the configured base URL.
 func Endpoint(baseURL, path string) (string, error) {
@@ -42,14 +35,4 @@ func PostAndDecodeJSON(ctx context.Context, baseURL, path, apiKey string, payloa
 		return err
 	}
 	return json.Unmarshal(data, out)
-}
-
-// ApplyEnv fills empty Exa credentials from standard environment variables.
-func ApplyEnv(apiKey, baseURL *string) {
-	if apiKey != nil {
-		*apiKey = stringutil.EnvOr(*apiKey, os.Getenv("EXA_API_KEY"))
-	}
-	if baseURL != nil {
-		*baseURL = stringutil.EnvOr(*baseURL, os.Getenv("EXA_BASE_URL"))
-	}
 }

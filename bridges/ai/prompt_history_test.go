@@ -2,15 +2,18 @@ package ai
 
 import "testing"
 
-func TestFilterPromptBlocksForHistoryDropsThinking(t *testing.T) {
-	filtered := filterPromptBlocksForHistory([]PromptBlock{
-		{Type: PromptBlockThinking, Text: "internal analysis"},
-		{Type: PromptBlockText, Text: "visible reply"},
-	}, false)
-	if len(filtered) != 1 {
-		t.Fatalf("expected 1 block after filtering, got %d", len(filtered))
+func TestFilterPromptMessagesForHistoryDropsThinking(t *testing.T) {
+	filtered := filterPromptMessagesForHistory([]PromptMessage{{
+		Role: PromptRoleAssistant,
+		Blocks: []PromptBlock{
+			{Type: PromptBlockThinking, Text: "internal analysis"},
+			{Type: PromptBlockText, Text: "visible reply"},
+		},
+	}}, false)
+	if len(filtered) != 1 || len(filtered[0].Blocks) != 1 {
+		t.Fatalf("expected one visible prompt block after filtering, got %#v", filtered)
 	}
-	if filtered[0].Type != PromptBlockText || filtered[0].Text != "visible reply" {
+	if filtered[0].Blocks[0].Type != PromptBlockText || filtered[0].Blocks[0].Text != "visible reply" {
 		t.Fatalf("unexpected filtered blocks: %#v", filtered)
 	}
 }

@@ -191,3 +191,23 @@ func TestFitFinalEditPayloadBinarySearchUsesOriginalBody(t *testing.T) {
 		t.Fatal("expected body trimming details to be reported")
 	}
 }
+
+func TestBuildFinalEditPayloadStampsFinishReasonIntoUIMessage(t *testing.T) {
+	payload := BuildFinalEditPayload(event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    "done",
+	}, map[string]any{
+		"id":       "turn-1",
+		"role":     "assistant",
+		"metadata": map[string]any{},
+	}, nil, "completed")
+
+	if payload == nil || payload.Extra == nil {
+		t.Fatal("expected final edit payload with extra metadata")
+	}
+	uiMessage, _ := payload.Extra[matrixevents.BeeperAIKey].(map[string]any)
+	metadata, _ := uiMessage["metadata"].(map[string]any)
+	if got := metadata["finish_reason"]; got != "completed" {
+		t.Fatalf("expected finish_reason to be stamped, got %#v", got)
+	}
+}

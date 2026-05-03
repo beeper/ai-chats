@@ -9,9 +9,10 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
+
+	"slices"
 )
 
 // modelConfig is the SINGLE SOURCE OF TRUTH for which models are available.
@@ -22,8 +23,6 @@ import (
 var modelConfig = struct {
 	// Models to fetch from OpenRouter - ID -> display name override (empty = use API name)
 	Models map[string]string
-	// Aliases for stable references
-	Aliases map[string]string
 }{
 	Models: map[string]string{
 		"anthropic/claude-haiku-4.5":    "Claude Haiku 4.5",
@@ -55,15 +54,6 @@ var modelConfig = struct {
 		"x-ai/grok-4.20-beta":           "Grok 4.20 Beta",
 		"x-ai/grok-code-fast-1":         "Grok Code Fast 1",
 		"z-ai/glm-5-turbo":              "GLM 5 Turbo",
-	},
-	Aliases: map[string]string{
-		// Default alias
-		"beeper/default": "anthropic/claude-opus-4.6",
-
-		// Stable aliases that can be remapped
-		"beeper/fast":      "openai/gpt-5.4-mini",
-		"beeper/smart":     "openai/gpt-5.4",
-		"beeper/reasoning": "openai/o3",
 	},
 }
 
@@ -256,20 +246,12 @@ func availableToolsJSON(caps ModelCapabilities) []string {
 	return tools
 }
 
-func resolveModelAPIForManifest(modelID string) string {
-	if strings.HasPrefix(modelID, "openai/") {
-		return "openai-responses"
-	}
-	return "openai-completions"
-}
-
-// resolvedModel holds the resolved display name, capabilities, and API label
-// for a single model entry. Both Go and JSON generators use this to avoid
-// duplicating the resolution logic.
+// resolvedModel holds the resolved display name and capabilities for a single
+// model entry. Both Go and JSON generators use this to avoid duplicating the
+// resolution logic.
 type resolvedModel struct {
 	ID          string
 	DisplayName string
-	API         string
 	Caps        ModelCapabilities
 }
 
@@ -287,7 +269,6 @@ func resolveAllModels(apiModels map[string]OpenRouterModel) []resolvedModel {
 		resolved = append(resolved, resolvedModel{
 			ID:          modelID,
 			DisplayName: displayName,
-			API:         resolveModelAPIForManifest(modelID),
 			Caps:        detectCapabilities(modelID, apiModel, hasAPIData),
 		})
 	}
@@ -302,11 +283,9 @@ func generateGoFile(apiModels map[string]OpenRouterModel, outputPath string) err
 
 package ai
 
-// ModelManifest contains all model definitions and aliases.
-// Models are fetched from OpenRouter API, aliases are defined in the generator config.
+// ModelManifest contains the allowed model definitions fetched from OpenRouter.
 var ModelManifest = struct {
-	Models  map[string]ModelInfo
-	Aliases map[string]string
+	Models map[string]ModelInfo
 }{
 	Models: map[string]ModelInfo{
 `)
@@ -316,7 +295,6 @@ var ModelManifest = struct {
 			ID:                  %q,
 			Name:                %q,
 			Provider:            "openrouter",
-			API:                 %q,
 			SupportsVision:      %t,
 			SupportsToolCalling: %t,
 			SupportsReasoning:   %t,
@@ -330,21 +308,12 @@ var ModelManifest = struct {
 			AvailableTools:      %s,
 		},
 `,
-			m.ID, m.ID, m.DisplayName, m.API,
+			m.ID, m.ID, m.DisplayName,
 			m.Caps.Vision, m.Caps.ToolCalling, m.Caps.Reasoning, m.Caps.WebSearch,
 			m.Caps.ImageGen, m.Caps.Audio, m.Caps.Video, m.Caps.PDF,
 			m.Caps.ContextWindow, m.Caps.MaxOutputTokens,
 			availableToolsGo(m.Caps),
 		))
-	}
-
-	buf.WriteString(`	},
-	Aliases: map[string]string{
-`)
-
-	aliasKeys := slices.Sorted(maps.Keys(modelConfig.Aliases))
-	for _, alias := range aliasKeys {
-		fmt.Fprintf(&buf, "\t\t%q: %q,\n", alias, modelConfig.Aliases[alias])
 	}
 
 	buf.WriteString(`	},
@@ -363,7 +332,6 @@ type JSONModelInfo struct {
 	ID                  string   `json:"id"`
 	Name                string   `json:"name"`
 	Provider            string   `json:"provider"`
-	API                 string   `json:"api,omitempty"`
 	Description         string   `json:"description,omitempty"`
 	SupportsVision      bool     `json:"supports_vision"`
 	SupportsToolCalling bool     `json:"supports_tool_calling"`
@@ -380,8 +348,7 @@ type JSONModelInfo struct {
 
 // JSONManifest is the full manifest structure for JSON output.
 type JSONManifest struct {
-	Models  []JSONModelInfo   `json:"models"`
-	Aliases map[string]string `json:"aliases"`
+	Models []JSONModelInfo `json:"models"`
 }
 
 func generateJSONFile(apiModels map[string]OpenRouterModel, outputPath string) error {
@@ -392,7 +359,6 @@ func generateJSONFile(apiModels map[string]OpenRouterModel, outputPath string) e
 			ID:                  m.ID,
 			Name:                m.DisplayName,
 			Provider:            "openrouter",
-			API:                 m.API,
 			SupportsVision:      m.Caps.Vision,
 			SupportsToolCalling: m.Caps.ToolCalling,
 			SupportsReasoning:   m.Caps.Reasoning,
@@ -407,7 +373,7 @@ func generateJSONFile(apiModels map[string]OpenRouterModel, outputPath string) e
 		})
 	}
 
-	data, err := json.MarshalIndent(JSONManifest{Models: models, Aliases: modelConfig.Aliases}, "", "  ")
+	data, err := json.MarshalIndent(JSONManifest{Models: models}, "", "  ")
 	if err != nil {
 		return err
 	}

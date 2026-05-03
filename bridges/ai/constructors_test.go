@@ -8,23 +8,17 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
-func TestNewAIConnectorUsesSDKConfig(t *testing.T) {
+func TestNewAIConnectorUsesDirectBridgev2Methods(t *testing.T) {
 	conn := NewAIConnector()
-	if conn.sdkConfig == nil {
-		t.Fatal("expected sdkConfig to be initialized")
-	}
 	if conn.clients == nil {
 		t.Fatal("expected client cache map to be initialized")
 	}
-	if conn.ConnectorBase == nil {
-		t.Fatal("expected ConnectorBase to be initialized")
-	}
 
 	name := conn.GetName()
-	if name.DisplayName != "Beeper Cloud" {
+	if name.DisplayName != "Beeper AI" {
 		t.Fatalf("unexpected display name %q", name.DisplayName)
 	}
 	if name.NetworkURL != "https://www.beeper.com/ai" {
@@ -75,7 +69,7 @@ func TestNewAIConnectorLoadLoginUsesCustomLoader(t *testing.T) {
 	if err := conn.LoadUserLogin(context.Background(), login); err != nil {
 		t.Fatalf("load login returned error: %v", err)
 	}
-	if _, ok := login.Client.(*agentremote.BrokenLoginClient); !ok {
+	if _, ok := login.Client.(*sdk.BrokenLoginClient); !ok {
 		t.Fatalf("expected broken login client for missing API key, got %T", login.Client)
 	}
 }

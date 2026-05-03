@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/openai/openai-go/v3/responses"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 func TestHandleResponseOutputItemDoneEmitsLateArrivingToolInput(t *testing.T) {
@@ -16,7 +18,7 @@ func TestHandleResponseOutputItemDoneEmitsLateArrivingToolInput(t *testing.T) {
 		callID:      "call_123",
 		itemID:      "item_123",
 		toolName:    "web_search",
-		toolType:    ToolTypeFunction,
+		toolType:    matrixevents.ToolTypeFunction,
 	}
 	activeTools.byKey[tool.registryKey] = tool
 	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)

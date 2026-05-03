@@ -5,18 +5,17 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func newTestStreamingStateWithTurn() *streamingState {
 	state := newStreamingState(context.Background(), nil, "")
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 	return state
 }
@@ -87,19 +86,20 @@ func TestStreamFailureErrorUsesAnyMessageTarget(t *testing.T) {
 	})
 }
 
-func TestFinishStreamingWithFailureCancelledEndsTurnAsCancelled(t *testing.T) {
+func TestFinalizeStreamingTurnCancelledEndsTurnAsCancelled(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
 	state.writer().TextDelta(context.Background(), "hello")
 
-	err := (&AIClient{}).finishStreamingWithFailure(
+	err := (&AIClient{}).finalizeStreamingTurn(
 		context.Background(),
-		zerolog.Nop(),
 		nil,
 		state,
 		nil,
-		"cancelled",
-		context.Canceled,
+		streamingFinalizeParams{
+			reason: "cancelled",
+			err:    context.Canceled,
+		},
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected wrapped cancellation error, got %#v", err)

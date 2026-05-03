@@ -62,15 +62,15 @@ Envelope rules:
 - `seq` is strictly positive and monotonic per turn
 - `part` is required
 - `m.relates_to.event_id` must point at the placeholder event
-- `agent_id` may be included when the sender wants multi-agent routing hints
+- optional bridge-specific metadata may be included by the sender
 
 ## Final message
 
 The final timeline edit is the canonical result.
 
-The final `com.beeper.ai` payload is compacted before it is attached to the edit, dropping live-only parts that are useful during streaming but not in the stored message.
+The final `com.beeper.ai` payload drops live-only parts that are useful during streaming but not in the stored message.
 In the replacement event, the canonical final payload lives in `m.new_content`; only Matrix edit fallback fields and the `m.replace` relation stay at the top level.
 
 ## Out of scope
 
-This document does not define the wire protocol behind the stream publisher abstraction. For the broader Matrix event surface, see [`docs/matrix-ai-matrix-spec-v1.md`](../matrix-ai-matrix-spec-v1.md).
+This document does not define the wire protocol behind the stream publisher abstraction.

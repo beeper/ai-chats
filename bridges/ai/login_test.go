@@ -8,6 +8,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestOpenAILoginStartRejectsInvalidFlow(t *testing.T) {
@@ -48,7 +50,7 @@ func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
 	}
 }
 
-func TestOpenAILoginFinishLoginRejectsProviderMismatch(t *testing.T) {
+func TestOpenAILoginCompleteLoginRejectsProviderMismatch(t *testing.T) {
 	mxid := id.UserID("@alice:example.com")
 	login := &OpenAILogin{
 		User: &bridgev2.User{User: &database.User{MXID: mxid}},
@@ -60,12 +62,63 @@ func TestOpenAILoginFinishLoginRejectsProviderMismatch(t *testing.T) {
 			},
 		},
 	}
-	_, err := login.finishLogin(context.Background(), ProviderOpenAI, "key", "", nil)
+	_, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderOpenAI,
+		APIKey:   "key",
+	})
 	var respErr bridgev2.RespError
 	if !errors.As(err, &respErr) {
 		t.Fatalf("expected RespError, got %T", err)
 	}
 	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.PROVIDER_MISMATCH" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
+	}
+}
+
+func TestOpenAILoginCompleteLoginBuildsClientBeforePersistedConfigExists(t *testing.T) {
+	connector, _, user := newDBBackedLoginHarness(t)
+	login := &OpenAILogin{
+		User:      user,
+		Connector: connector,
+		FlowID:    ProviderMagicProxy,
+	}
+
+	step, err := login.completeLogin(context.Background(), loginCompletionInput{
+		Provider: ProviderMagicProxy,
+		APIKey:   "proxy-token",
+		BaseURL:  "https://temporary-ai-proxy.beeper-tools.com",
+	})
+	if err != nil {
+		t.Fatalf("completeLogin returned error: %v", err)
+	}
+	if step == nil || step.CompleteParams == nil || step.CompleteParams.UserLogin == nil {
+		t.Fatalf("expected completed login step with user login, got %#v", step)
+	}
+
+	created := step.CompleteParams.UserLogin
+	if _, ok := created.Client.(*sdk.BrokenLoginClient); ok {
+		t.Fatalf("expected freshly created login to have a real AI client, got broken client")
+	}
+	typed, ok := created.Client.(*AIClient)
+	if !ok {
+		t.Fatalf("expected AIClient after completeLogin, got %T", created.Client)
+	}
+	if typed.apiKey != "proxy-token" {
+		t.Fatalf("unexpected api key on created client: %q", typed.apiKey)
+	}
+
+	cfg, err := loadAILoginConfig(context.Background(), created)
+	if err != nil {
+		t.Fatalf("loadAILoginConfig returned error: %v", err)
+	}
+	if cfg.Credentials == nil || cfg.Credentials.APIKey != "proxy-token" {
+		t.Fatalf("expected persisted login config credentials, got %#v", cfg.Credentials)
+	}
+	cached, ok := connector.clients[created.ID].(*AIClient)
+	if !ok {
+		t.Fatalf("expected cached AIClient for created login, got %T", connector.clients[created.ID])
+	}
+	if cached != typed {
+		t.Fatal("expected completeLogin to keep the initially constructed client cached without rebuilding it")
 	}
 }

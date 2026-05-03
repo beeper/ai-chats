@@ -3,7 +3,20 @@ package ai
 import (
 	"sort"
 	"strings"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
+
+type activeToolCall struct {
+	callID      string
+	registryKey string
+	itemID      string
+	toolName    string
+	toolType    matrixevents.ToolType
+	input       strings.Builder
+	result      string
+	startedAtMs int64
+}
 
 type streamToolRegistry struct {
 	byKey      map[string]*activeToolCall
@@ -31,14 +44,6 @@ func streamToolCallKey(callID string) string {
 		return ""
 	}
 	return "call:" + callID
-}
-
-func streamToolApprovalKey(approvalID string) string {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return ""
-	}
-	return "approval:" + approvalID
 }
 
 func (r *streamToolRegistry) canonicalKey(key string) string {

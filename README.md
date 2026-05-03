@@ -1,8 +1,8 @@
 # AgentRemote
 
-AgentRemote securely brings agents to Beeper. You can connect agents like OpenClaw, OpenCode, Codex and more to Beeper with streaming, native interfaces for tool calls and approvals. You can run coding agents on your laptop and use your iPhone to manage them.
+AgentRemote securely brings model chats to Beeper with streaming and native tool UI where the model supports it.
 
-AgentRemote can run on the same device as your agent and can work behind a firewall. It connects to Beeper Cloud directly and creates an E2EE tunnel. 
+AgentRemote can run on the same device as the bridge runtime and can work behind a firewall. It connects to Beeper directly and creates an E2EE tunnel.
 
 **This repository is still experimental. Expect everything to be broken for now.
 **
@@ -20,28 +20,25 @@ Other supported install paths:
 - Download a release archive from [GitHub Releases](https://github.com/beeper/agentremote/releases)
 - Install via Homebrew: `brew install --cask beeper/tap/agentremote`
 
-The installed CLI stores profile state under `~/.config/agentremote/`.
+The AgentRemote Manager stores profile state under `~/.config/agentremote/`.
 
 ## Included bridges
 
 | Bridge | What it connects |
 | --- | --- |
-| `ai` | Talk to any model on Beeper |
-| [`codex`](./bridges/codex/README.md) | A local `codex app-server` runtime, requires Codex to be installed |
-| [`opencode`](./bridges/opencode/README.md) | A remote OpenCode server or a bridge-managed local OpenCode process |
-| [`openclaw`](./bridges/openclaw/README.md) | Connect directly to OpenClaw Gateway, bring all your sessions to one app |
+| [`AI Chats`](./bridges/ai/README.md) | Talk to any model on Beeper AI |
 
 ## Quick start
 
 ```bash
 agentremote login
 agentremote list
-agentremote run codex
+agentremote run ai
 ```
 
 Useful commands:
 
-- `agentremote up <bridge>` starts a bridge in the background
+- `agentremote start <bridge>` starts a bridge in the background
 - `agentremote status` shows local and remote bridge state
 - `agentremote logs <instance> --follow` tails logs
 - `agentremote stop <instance>` stops a running instance
@@ -50,7 +47,7 @@ Instance state lives under `~/.config/agentremote/profiles/<profile>/instances/`
 
 ## Docker
 
-The CLI is also published as a multi-arch Linux container image:
+The AgentRemote Manager is also published as a multi-arch Linux container image:
 
 ```bash
 docker run --rm -it \
@@ -60,19 +57,19 @@ docker run --rm -it \
 
 The container sets `HOME=/data`, so mounted state is persisted under `/data/.config/agentremote/`. See [`docker/agentremote/README.md`](./docker/agentremote/README.md) for usage details.
 
-## SDK
+## AgentRemote SDK
 
-Custom bridges in this repo are built on [`sdk/`](./sdk), using:
+Custom bridges in this repo are built on [`sdk/`](./sdk), the AgentRemote SDK metaframework, using:
 
-- `bridgesdk.NewStandardConnectorConfig(...)`
-- `bridgesdk.NewConnectorBase(...)`
+- `sdk.NewStandardConnectorConfig(...)`
+- `sdk.NewConnectorBase(...)`
 - `sdk.Config`, `sdk.Agent`, `sdk.Conversation`, and `sdk.Turn`
 
-See [`bridges/dummybridge`](./bridges/dummybridge) for a minimal bridge example.
+See [`bridges/ai`](./bridges/ai) for the model chat bridge.
 
 ## Docs
 
-- CLI reference: [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md)
+- AgentRemote Manager reference: [`docs/bridge-orchestrator.md`](./docs/bridge-orchestrator.md)
 - Matrix transport surface: [`docs/matrix-ai-matrix-spec-v1.md`](./docs/matrix-ai-matrix-spec-v1.md)
 - Streaming note: [`docs/msc/com.beeper.mscXXXX-streaming.md`](./docs/msc/com.beeper.mscXXXX-streaming.md)
 - Command profile: [`docs/msc/com.beeper.mscXXXX-commands.md`](./docs/msc/com.beeper.mscXXXX-commands.md)

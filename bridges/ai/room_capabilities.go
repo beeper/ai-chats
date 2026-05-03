@@ -32,8 +32,7 @@ func (oc *AIClient) canRunMediaUnderstanding(ctx context.Context, meta *PortalMe
 	return false
 }
 
-// getRoomCapabilities returns effective room capabilities, including media-understanding
-// unions (image, audio, video) when an agent is assigned.
+// getRoomCapabilities returns effective room capabilities, including media understanding.
 func (oc *AIClient) getRoomCapabilities(ctx context.Context, meta *PortalMetadata) ModelCapabilities {
 	caps := oc.getModelCapabilitiesForMeta(ctx, meta)
 	if !caps.SupportsVision && oc.canRunMediaUnderstanding(ctx, meta, MediaCapabilityImage) {

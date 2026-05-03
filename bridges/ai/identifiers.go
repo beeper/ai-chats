@@ -1,10 +1,8 @@
 package ai
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/rs/xid"
@@ -13,8 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/agents"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func baseLoginID(providerSlug string, mxid id.UserID) networkid.UserLoginID {
@@ -53,36 +50,9 @@ func portalKeyForChat(loginID networkid.UserLoginID) networkid.PortalKey {
 	}
 }
 
-func defaultChatPortalKey(loginID networkid.UserLoginID) networkid.PortalKey {
-	return networkid.PortalKey{
-		ID:       networkid.PortalID(fmt.Sprintf("openai:%s:default-chat", loginID)),
-		Receiver: loginID,
-	}
-}
-
 func modelUserID(modelID string) networkid.UserID {
 	// Convert "gpt-4.1" to "model-gpt-4.1"
 	return networkid.UserID(fmt.Sprintf("model-%s", url.PathEscape(modelID)))
-}
-
-func agentUsesGlobalGhostIdentity(agentID string) bool {
-	normalized := normalizeAgentID(agentID)
-	return agents.IsPreset(normalized) || agents.IsBossAgent(normalized)
-}
-
-// Format: "agent-{agent-id}"
-func agentUserID(agentID string) networkid.UserID {
-	return networkid.UserID(fmt.Sprintf("agent-%s", url.PathEscape(agentID)))
-}
-
-// Format: "agent-login-{base64-login-id}:{agent-id}"
-func agentUserIDForLogin(loginID networkid.UserLoginID, agentID string) networkid.UserID {
-	normalized := normalizeAgentID(agentID)
-	if normalized == "" || loginID == "" || agentUsesGlobalGhostIdentity(normalized) {
-		return agentUserID(normalized)
-	}
-	encodedLoginID := base64.RawURLEncoding.EncodeToString([]byte(loginID))
-	return networkid.UserID(fmt.Sprintf("agent-login-%s:%s", encodedLoginID, url.PathEscape(normalized)))
 }
 
 // parseModelFromGhostID extracts the model ID from a ghost ID (format: "model-{escaped-model-id}")
@@ -97,50 +67,19 @@ func parseModelFromGhostID(ghostID string) string {
 	return ""
 }
 
-// parseAgentFromGhostID extracts the agent ID from a ghost ID (format: "agent-{escaped-agent-id}").
-// Returns empty string and false if the ghost ID is not an agent-only ghost.
-func parseAgentFromGhostID(ghostID string) (agentID string, ok bool) {
-	if strings.Contains(ghostID, ":model-") {
-		return "", false
-	}
-	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-login-"); hasPrefix {
-		encodedLoginID, encodedAgentID, found := strings.Cut(suffix, ":")
-		if !found || encodedLoginID == "" || encodedAgentID == "" {
-			return "", false
-		}
-		if _, err := base64.RawURLEncoding.DecodeString(encodedLoginID); err != nil {
-			return "", false
-		}
-		agentID, err := url.PathUnescape(encodedAgentID)
-		if err == nil && strings.TrimSpace(agentID) != "" {
-			return strings.TrimSpace(agentID), true
-		}
-		return "", false
-	}
-	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-"); hasPrefix {
-		agentID, err := url.PathUnescape(suffix)
-		if err == nil {
-			return strings.TrimSpace(agentID), true
-		}
-	}
-	return "", false
-}
-
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
-	return agentremote.HumanUserID("openai-user", loginID)
+	return sdk.HumanUserID("openai-user", loginID)
 }
 
 const (
 	ResolvedTargetUnknown = ""
 	ResolvedTargetModel   = "model"
-	ResolvedTargetAgent   = "agent"
 )
 
 type ResolvedTarget struct {
 	Kind    string
 	GhostID networkid.UserID
 	ModelID string
-	AgentID string
 }
 
 func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
@@ -154,29 +93,28 @@ func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
 			ModelID: modelID,
 		}
 	}
-	if agentID, ok := parseAgentFromGhostID(string(ghostID)); ok && strings.TrimSpace(agentID) != "" {
-		return &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			GhostID: ghostID,
-			AgentID: strings.TrimSpace(agentID),
-		}
-	}
 	return nil
 }
 
 func portalMeta(portal *bridgev2.Portal) *PortalMetadata {
-	meta := agentremote.EnsurePortalMetadata[PortalMetadata](portal)
+	meta := sdk.EnsurePortalMetadata[PortalMetadata](portal)
 	if meta != nil && portal != nil {
 		meta.ResolvedTarget = resolveTargetFromGhostID(portal.OtherUserID)
 	}
 	return meta
 }
 
-func resolveAgentID(meta *PortalMetadata) string {
-	if meta == nil || meta.ResolvedTarget == nil {
-		return ""
+func setPortalResolvedTarget(portal *bridgev2.Portal, meta *PortalMetadata, ghostID networkid.UserID) {
+	if portal == nil {
+		return
 	}
-	return meta.ResolvedTarget.AgentID
+	portal.OtherUserID = ghostID
+	if meta == nil {
+		meta = portalMeta(portal)
+	}
+	if meta != nil {
+		meta.ResolvedTarget = resolveTargetFromGhostID(ghostID)
+	}
 }
 
 func messageMeta(msg *database.Message) *MessageMetadata {
@@ -187,16 +125,14 @@ func messageMeta(msg *database.Message) *MessageMetadata {
 }
 
 // Filters out non-conversation messages and messages explicitly excluded
-// (e.g., welcome messages).
+// (e.g. welcome notices).
 func shouldIncludeInHistory(meta *MessageMetadata) bool {
 	if meta == nil {
 		return false
 	}
-	// Skip messages explicitly excluded (welcome messages, etc.)
 	if meta.ExcludeFromHistory {
 		return false
 	}
-	// Only include user and assistant messages
 	if meta.Role != "user" && meta.Role != "assistant" {
 		return false
 	}
@@ -204,18 +140,9 @@ func shouldIncludeInHistory(meta *MessageMetadata) bool {
 }
 
 func loginMetadata(login *bridgev2.UserLogin) *UserLoginMetadata {
-	return agentremote.EnsureLoginMetadata[UserLoginMetadata](login)
+	return sdk.EnsureLoginMetadata[UserLoginMetadata](login)
 }
 
 func formatChatSlug(index int) string {
 	return fmt.Sprintf("chat-%d", index)
-}
-
-func parseChatSlug(slug string) (int, bool) {
-	if suffix, ok := strings.CutPrefix(slug, "chat-"); ok {
-		if idx, err := strconv.Atoi(suffix); err == nil {
-			return idx, true
-		}
-	}
-	return 0, false
 }

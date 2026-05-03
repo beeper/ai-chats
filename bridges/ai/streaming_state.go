@@ -9,10 +9,8 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/citations"
 	"github.com/beeper/agentremote/sdk"
@@ -22,7 +20,6 @@ import (
 type streamingState struct {
 	turn *sdk.Turn
 
-	agentID         string
 	startedAtMs     int64
 	lastStreamOrder int64
 	firstTokenAtMs  int64
@@ -30,7 +27,6 @@ type streamingState struct {
 	roomID          id.RoomID
 
 	respondingGhostID      string
-	respondingAgentID      string
 	respondingModelID      string
 	respondingContextLimit int
 
@@ -42,7 +38,6 @@ type streamingState struct {
 	accumulated            strings.Builder
 	reasoning              strings.Builder
 	toolCalls              []ToolCallMetadata
-	pendingImages          []generatedImage
 	pendingFunctionOutputs []functionCallOutput // Function outputs to send back to API for continuation
 	pendingSteeringPrompts []string
 	sourceCitations        []citations.SourceCitation
@@ -51,9 +46,7 @@ type streamingState struct {
 	finishReason           string
 	responseID             string
 	responseStatus         string
-	statusSent             bool
-	statusSentIDs          map[id.EventID]bool
-
+	currentUserMessage     string
 	// Directive processing
 	replyTarget      ReplyTarget
 	replyAccumulator *runtimeparse.StreamingDirectiveAccumulator
@@ -61,17 +54,11 @@ type streamingState struct {
 	// Used when a tool continuation resumes a previously-started assistant message.
 	needsTextSeparator bool
 
-	// Heartbeat handling
-	heartbeat         *HeartbeatRunConfig
-	heartbeatResultCh chan HeartbeatRunOutcome
-	suppressSave      bool
-	suppressSend      bool
-
-	// Pending MCP approvals to resolve before the turn can continue.
-	pendingMcpApprovals     []mcpApprovalRequest
-	pendingMcpApprovalsSeen map[string]bool
+	suppressSave bool
+	suppressSend bool
 
 	finalized atomic.Bool
+	accepted  atomic.Bool
 	stop      atomic.Pointer[assistantStopMetadata]
 }
 
@@ -124,27 +111,100 @@ func (s *streamingState) isFinalized() bool {
 	return s.finalized.Load()
 }
 
-func (s *streamingState) nextMessageTiming() agentremote.EventTiming {
+func (s *streamingState) markAccepted() bool {
 	if s == nil {
-		return agentremote.ResolveEventTiming(time.Time{}, 0)
+		return false
+	}
+	return s.accepted.CompareAndSwap(false, true)
+}
+
+func (s *streamingState) isAccepted() bool {
+	if s == nil {
+		return false
+	}
+	return s.accepted.Load()
+}
+
+func (s *streamingState) nextMessageTiming() sdk.EventTiming {
+	if s == nil {
+		return sdk.ResolveEventTiming(time.Time{}, 0)
 	}
 	ts := time.UnixMilli(s.startedAtMs)
 	if s.startedAtMs <= 0 {
 		ts = time.Now()
 	}
-	timing := agentremote.NextEventTiming(s.lastStreamOrder, ts)
+	timing := sdk.NextEventTiming(s.lastStreamOrder, ts)
 	s.lastStreamOrder = timing.StreamOrder
 	return timing
 }
 
-// clearContinuationState resets pending function outputs and MCP approvals
-// after they have been consumed for a continuation round.
+func (s *streamingState) setTerminalFailure(reason string) {
+	if s == nil {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "error"
+	}
+	s.finishReason = reason
+	s.completedAtMs = time.Now().UnixMilli()
+}
+
+func (s *streamingState) finalizeTerminalSuccess() string {
+	if s == nil {
+		return ""
+	}
+	s.completedAtMs = time.Now().UnixMilli()
+	if s.finishReason == "" {
+		s.finishReason = "stop"
+	}
+	if s.responseStatus == "" && s.responseID != "" {
+		s.responseStatus = canonicalResponseStatus(s)
+	}
+	return s.finishReason
+}
+
+func (s *streamingState) applyResponseLifecycleEvent(eventType string, response responses.Response) bool {
+	if s == nil {
+		return false
+	}
+	if responseID := strings.TrimSpace(response.ID); responseID != "" {
+		s.responseID = responseID
+	}
+	if status := strings.TrimSpace(string(response.Status)); status != "" {
+		s.responseStatus = status
+	}
+
+	switch eventType {
+	case "response.completed":
+		if s.responseStatus == "completed" {
+			s.finishReason = "stop"
+		} else {
+			s.finishReason = s.responseStatus
+		}
+	case "response.failed":
+		s.finishReason = "error"
+	case "response.incomplete":
+		s.finishReason = strings.TrimSpace(string(response.IncompleteDetails.Reason))
+		if s.finishReason == "" {
+			s.finishReason = "other"
+		}
+	case "response.created", "response.queued", "response.in_progress":
+		// No terminal state changes needed.
+	default:
+		return false
+	}
+
+	return true
+}
+
+// clearContinuationState resets pending continuation state after it has been
+// consumed for a continuation round.
 func (s *streamingState) clearContinuationState() {
 	if s == nil {
 		return
 	}
 	s.pendingFunctionOutputs = nil
-	s.pendingMcpApprovals = nil
 	s.pendingSteeringPrompts = nil
 }
 
@@ -171,34 +231,11 @@ func (s *streamingState) trackFirstToken() {
 	}
 }
 
-type mcpApprovalRequest struct {
-	approvalID  string
-	toolCallID  string
-	toolName    string
-	serverLabel string
-	handle      sdk.ApprovalHandle
-}
-
 func newStreamingState(ctx context.Context, meta *PortalMetadata, roomID id.RoomID) *streamingState {
-	agentID := ""
-	if meta != nil {
-		agentID = resolveAgentID(meta)
-	}
 	state := &streamingState{
-		agentID:                 agentID,
-		startedAtMs:             time.Now().UnixMilli(),
-		roomID:                  roomID,
-		statusSentIDs:           make(map[id.EventID]bool),
-		replyAccumulator:        runtimeparse.NewStreamingDirectiveAccumulator(),
-		pendingMcpApprovalsSeen: make(map[string]bool),
-	}
-	if hb := heartbeatRunFromContext(ctx); hb != nil {
-		state.heartbeat = hb.Config
-		state.heartbeatResultCh = hb.ResultCh
-		if hb.Config != nil {
-			state.suppressSave = hb.Config.SuppressSave
-			state.suppressSend = hb.Config.SuppressSend
-		}
+		startedAtMs:      time.Now().UnixMilli(),
+		roomID:           roomID,
+		replyAccumulator: runtimeparse.NewStreamingDirectiveAccumulator(),
 	}
 	return state
 }
@@ -207,77 +244,23 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 	if oc == nil || state == nil || parsed == nil || !parsed.HasReplyTag {
 		return
 	}
-	mode := runtimeparse.NormalizeReplyToMode(oc.resolveMatrixReplyToMode())
 	if parsed.ReplyToExplicitID != "" {
 		state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(parsed.ReplyToExplicitID))
 	} else if parsed.ReplyToCurrent && state.sourceEventID() != "" {
 		state.replyTarget.ReplyTo = state.sourceEventID()
 	}
-
-	applied := runtimeparse.ApplyReplyToMode([]runtimeparse.ReplyPayload{{
-		ReplyToID:      state.replyTarget.ReplyTo.String(),
-		ReplyToTag:     parsed.HasReplyTag,
-		ReplyToCurrent: parsed.ReplyToCurrent,
-	}}, runtimeparse.ReplyThreadPolicy{
-		Mode:                     mode,
-		AllowExplicitWhenModeOff: false,
-	})
-	if len(applied) == 0 || strings.TrimSpace(applied[0].ReplyToID) == "" {
-		state.replyTarget.ReplyTo = ""
-		return
-	}
-	state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
 }
 
-func (oc *AIClient) finalizeStreamingReplyAccumulator(state *streamingState) {
-	if oc == nil || state == nil || state.replyAccumulator == nil {
+func (oc *AIClient) markTurnAccepted(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
+	if state == nil || !state.markAccepted() {
 		return
 	}
-	parsed := state.replyAccumulator.Consume("", true)
-	if parsed == nil {
-		return
+	if !state.suppressSend {
+		oc.acceptPendingMessages(ctx, portal, state)
 	}
-	oc.applyStreamingReplyTarget(state, parsed)
-}
-
-func (oc *AIClient) markMessageSendSuccess(ctx context.Context, portal *bridgev2.Portal, evt *event.Event, state *streamingState) {
-	if state == nil || state.suppressSend || state.statusSent {
-		return
+	if writer := state.writer(); writer != nil {
+		writer.Start(ctx, oc.buildUIMessageMetadata(state, meta, false))
 	}
-	if queueAcceptedStatusFromContext(ctx) {
-		return
-	}
-	if state.statusSentIDs == nil {
-		state.statusSentIDs = make(map[id.EventID]bool)
-	}
-	events := make([]*event.Event, 0, 4)
-	if evt != nil {
-		events = append(events, evt)
-	}
-	events = append(events, statusEventsFromContext(ctx)...)
-	if portal != nil && portal.MXID != "" {
-		events = append(events, oc.roomRunStatusEvents(portal.MXID)...)
-	}
-	for _, extra := range events {
-		if extra == nil || extra.ID == "" {
-			continue
-		}
-		if state.statusSentIDs[extra.ID] {
-			continue
-		}
-		oc.sendSuccessStatus(ctx, portal, extra)
-		state.statusSentIDs[extra.ID] = true
-	}
-	if len(state.statusSentIDs) > 0 {
-		state.statusSent = true
-	}
-}
-
-// generatedImage tracks a pending image from image generation
-type generatedImage struct {
-	itemID   string
-	imageB64 string
-	turnID   string
 }
 
 // functionCallOutput tracks a completed function call output for API continuation

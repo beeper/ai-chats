@@ -8,31 +8,11 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 type testSDKClient struct {
+	baseTestClient
 	updated int
-}
-
-func (c *testSDKClient) Connect(context.Context)                           {}
-func (c *testSDKClient) Disconnect()                                       {}
-func (c *testSDKClient) IsLoggedIn() bool                                  { return true }
-func (c *testSDKClient) LogoutRemote(context.Context)                      {}
-func (c *testSDKClient) IsThisUser(context.Context, networkid.UserID) bool { return false }
-func (c *testSDKClient) GetChatInfo(context.Context, *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	return nil, nil
-}
-func (c *testSDKClient) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
-	return nil, nil
-}
-func (c *testSDKClient) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomFeatures {
-	return &event.RoomFeatures{}
-}
-func (c *testSDKClient) HandleMatrixMessage(context.Context, *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	return nil, nil
 }
 
 type testApprovalHandle struct {
@@ -88,8 +68,8 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 			}
 			stopCalled++
 		},
-		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient {
-			return agentremote.NewBrokenLoginClient(login, "custom:"+reason)
+		MakeBrokenLogin: func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient {
+			return &BrokenLoginClient{UserLogin: login, Reason: "custom:" + reason}
 		},
 		CreateClient: func(*bridgev2.UserLogin) (bridgev2.NetworkAPI, error) {
 			createCalled++
@@ -134,7 +114,7 @@ func TestNewConnectorBaseUsesHooksAndCustomClients(t *testing.T) {
 	if err := conn.LoadUserLogin(context.Background(), blocked); err != nil {
 		t.Fatalf("blocked login returned error: %v", err)
 	}
-	broken, ok := blocked.Client.(*agentremote.BrokenLoginClient)
+	broken, ok := blocked.Client.(*BrokenLoginClient)
 	if !ok {
 		t.Fatalf("expected broken login client, got %T", blocked.Client)
 	}
@@ -213,15 +193,6 @@ func TestApprovalControllerUsesCustomHandler(t *testing.T) {
 	}
 	if handle.ID() != "approval-2" || handle.ToolCallID() != "tool-2" {
 		t.Fatalf("unexpected handle: id=%q tool=%q", handle.ID(), handle.ToolCallID())
-	}
-}
-
-func TestResolveCommandPrefixTrimsConfiguredValue(t *testing.T) {
-	if got := ResolveCommandPrefix(" /ai ", "!fallback"); got != "/ai" {
-		t.Fatalf("expected trimmed configured prefix, got %q", got)
-	}
-	if got := ResolveCommandPrefix("   ", "!fallback"); got != "!fallback" {
-		t.Fatalf("expected fallback prefix, got %q", got)
 	}
 }
 

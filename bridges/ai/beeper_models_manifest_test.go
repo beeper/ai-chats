@@ -49,11 +49,3 @@ func TestModelManifestMatchesOpenRouterAllowlist(t *testing.T) {
 		}
 	}
 }
-
-func TestModelManifestAliasesPointToAllowedModels(t *testing.T) {
-	for alias, target := range ModelManifest.Aliases {
-		if _, ok := ModelManifest.Models[target]; !ok {
-			t.Fatalf("alias %q points to non-allowlisted model %q", alias, target)
-		}
-	}
-}

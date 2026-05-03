@@ -1,8 +1,6 @@
 package sdk
 
 import (
-	"strings"
-
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/streamui"
@@ -32,10 +30,14 @@ func (t *Turn) Writer() *Writer {
 	if t == nil {
 		return nil
 	}
+	var portal *bridgev2.Portal
+	if t.conv != nil {
+		portal = t.conv.portal
+	}
 	return &Writer{
 		State:   t.state,
 		Emitter: t.emitter,
-		Portal:  turnPortal(t),
+		Portal:  portal,
 		ensureStarted: func() {
 			t.ensureStarted()
 		},
@@ -73,23 +75,10 @@ func (t *Turn) VisibleText() string {
 	if !ok {
 		return ""
 	}
-	var visible strings.Builder
-	for _, part := range td.Parts {
-		if part.Type == "text" {
-			visible.WriteString(part.Text)
-		}
-	}
-	return visible.String()
+	return TurnText(td)
 }
 
-func turnPortal(t *Turn) *bridgev2.Portal {
-	if t == nil || t.conv == nil {
-		return nil
-	}
-	return t.conv.portal
-}
-
-// Emitter returns the underlying stream emitter as an escape hatch.
+// Emitter returns the underlying stream emitter for advanced stream control.
 func (s *TurnStream) Emitter() *streamui.Emitter {
 	if !s.valid() {
 		return nil

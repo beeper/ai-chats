@@ -1,8 +1,11 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInboundConfig_WithDefaults_Nil(t *testing.T) {
@@ -46,7 +49,6 @@ func TestInboundConfig_WithDefaults_CustomValues(t *testing.T) {
 	}
 	result := cfg.WithDefaults()
 
-	// Custom values should be preserved
 	if result.DedupeTTL != 10*time.Minute {
 		t.Errorf("Expected custom DedupeTTL 10m, got %v", result.DedupeTTL)
 	}
@@ -61,19 +63,51 @@ func TestInboundConfig_WithDefaults_CustomValues(t *testing.T) {
 func TestInboundConfig_WithDefaults_PartialValues(t *testing.T) {
 	cfg := &InboundConfig{
 		DedupeTTL: 30 * time.Minute,
-		// DedupeMaxSize and DefaultDebounceMs not set
 	}
 	result := cfg.WithDefaults()
 
-	// Custom value preserved
 	if result.DedupeTTL != 30*time.Minute {
 		t.Errorf("Expected custom DedupeTTL 30m, got %v", result.DedupeTTL)
 	}
-	// Defaults applied for unset values
 	if result.DedupeMaxSize != DefaultDedupeMaxSize {
 		t.Errorf("Expected default DedupeMaxSize %d, got %d", DefaultDedupeMaxSize, result.DedupeMaxSize)
 	}
 	if result.DefaultDebounceMs != DefaultDebounceMs {
 		t.Errorf("Expected default DefaultDebounceMs %d, got %d", DefaultDebounceMs, result.DefaultDebounceMs)
+	}
+}
+
+func TestModelsConfigProviderMatchesNormalizedKeys(t *testing.T) {
+	var cfg ModelsConfig
+	if err := yaml.Unmarshal([]byte(`
+mode: merge
+providers:
+  " OpenAI ":
+    api_key: tok
+`), &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	got := cfg.Provider("openai")
+	if got.APIKey != "tok" {
+		t.Fatalf("expected normalized provider lookup to match, got %#v", got)
+	}
+}
+
+func TestModelsConfigUnmarshalRejectsNormalizedKeyCollisions(t *testing.T) {
+	var cfg ModelsConfig
+	err := yaml.Unmarshal([]byte(`
+mode: merge
+providers:
+  OpenAI:
+    api_key: tok-1
+  " openai ":
+    api_key: tok-2
+`), &cfg)
+	if err == nil {
+		t.Fatal("expected duplicate normalized provider keys to fail")
+	}
+	if !strings.Contains(err.Error(), "duplicate provider key") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

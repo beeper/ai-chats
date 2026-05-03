@@ -26,7 +26,7 @@ func runMediaCLI(
 		return "", errors.New("missing cli command")
 	}
 
-	outputDir, err := os.MkdirTemp("", "agentremote-media-cli-*")
+	outputDir, err := os.MkdirTemp("", "aichats-media-cli-*")
 	if err != nil {
 		return "", err
 	}

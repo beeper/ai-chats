@@ -6,7 +6,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const aiBridgeProtocolID = "ai"
@@ -17,19 +17,22 @@ func aiBridgeProtocolIDForPortal(portal *bridgev2.Portal) string {
 	}
 	loginID := strings.TrimSpace(string(portal.Receiver))
 	provider, _, _ := strings.Cut(loginID, ":")
-	switch provider {
-	case "beeper":
-		// Beeper clients know the Beeper Cloud bridge; the generic "ai" protocol
-		// shows up as an unknown bridge in local Beeper-backed rooms.
+	if provider == "beeper" {
 		return "beeper"
-	default:
-		return aiBridgeProtocolID
 	}
+	return aiBridgeProtocolID
 }
 
-func applyAgentRemoteBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
+func applyAIChatsBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, content *event.BridgeEventContent) {
 	if portal == nil {
 		return
 	}
-	agentremote.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
+	sdk.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType)
+}
+
+func aiPortalKind(meta *PortalMetadata) string {
+	if meta != nil && meta.InternalRoom() {
+		return strings.TrimSpace(meta.InternalRoomKind)
+	}
+	return "chat"
 }

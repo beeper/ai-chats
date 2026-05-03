@@ -14,18 +14,18 @@ Structured invocation:
 
 When both structured data and plain text are present, the structured command wins.
 
-## Built-in user-facing commands
+## Built-in User-Facing Commands
 
 The AI bridge currently publishes these stable user-facing commands:
 
 | Command | Meaning |
 | --- | --- |
-| `new` | Create a new chat of the same type, optionally targeting an agent |
-| `status` | Show current session status |
-| `reset` | Start a new session or thread in the current room |
+| `new` | Create a new AI chat |
+| `status` | Show current room/run status |
+| `reset` | Start a fresh turn history in the current room |
 | `stop` | Abort the active run and clear the pending queue |
 
-Integration modules may register more commands at runtime. Those are also broadcast through MSC4391 when available.
+Bridges may register additional bridge-specific commands. Those are also broadcast through MSC4391 when available.
 
 ## Fallback
 

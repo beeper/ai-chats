@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -32,17 +33,9 @@ func (oc *AIClient) resolveUserTimezone() (string, *time.Location) {
 	if oc == nil || oc.UserLogin == nil {
 		return defaultTimezone, time.UTC
 	}
-	if oc.connector != nil && oc.connector.Config.Agents != nil && oc.connector.Config.Agents.Defaults != nil {
-		cfgTZ := strings.TrimSpace(oc.connector.Config.Agents.Defaults.UserTimezone)
-		if cfgTZ != "" {
-			if tz, loc, err := normalizeTimezone(cfgTZ); err == nil {
-				return tz, loc
-			}
-		}
-	}
-	loginMeta := loginMetadata(oc.UserLogin)
-	if loginMeta != nil && strings.TrimSpace(loginMeta.Timezone) != "" {
-		if tz, loc, err := normalizeTimezone(loginMeta.Timezone); err == nil {
+	loginCfg := oc.loginConfigSnapshot(context.Background())
+	if loginCfg != nil && strings.TrimSpace(loginCfg.Timezone) != "" {
+		if tz, loc, err := normalizeTimezone(loginCfg.Timezone); err == nil {
 			return tz, loc
 		}
 	}

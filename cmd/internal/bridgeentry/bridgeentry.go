@@ -1,6 +1,9 @@
 package bridgeentry
 
 import (
+	"maps"
+	"slices"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 )
@@ -20,35 +23,38 @@ type Definition struct {
 var (
 	AI = Definition{
 		Name:        "ai",
-		Description: "AgentRemote bridge entry for Beeper built on mautrix-go bridgev2.",
+		Description: "AI bridge built with the AgentRemote SDK.",
 		Port:        29345,
 		DBName:      "ai.db",
 	}
 	Codex = Definition{
 		Name:        "codex",
-		Description: "A Matrix↔Codex bridge built on mautrix-go bridgev2.",
+		Description: "Codex bridge built with the AgentRemote SDK.",
 		Port:        29346,
 		DBName:      "codex.db",
 	}
-	OpenCode = Definition{
-		Name:        "opencode",
-		Description: "A Matrix↔OpenCode bridge built on mautrix-go bridgev2.",
-		Port:        29347,
-		DBName:      "opencode.db",
-	}
-	OpenClaw = Definition{
-		Name:        "openclaw",
-		Description: "A Matrix↔OpenClaw bridge built on mautrix-go bridgev2.",
-		Port:        29348,
-		DBName:      "openclaw.db",
-	}
 	DummyBridge = Definition{
 		Name:        "dummybridge",
-		Description: "A Matrix↔DummyBridge demo bridge built on the AgentRemote SDK.",
+		Description: "DummyBridge demo bridge built with the AgentRemote SDK.",
 		Port:        29349,
 		DBName:      "dummybridge.db",
 	}
 )
+
+var registry = map[string]Definition{
+	AI.Name:          AI,
+	Codex.Name:       Codex,
+	DummyBridge.Name: DummyBridge,
+}
+
+func Lookup(name string) (Definition, bool) {
+	def, ok := registry[name]
+	return def, ok
+}
+
+func Names() []string {
+	return slices.Sorted(maps.Keys(registry))
+}
 
 func (d Definition) NewMain(connector bridgev2.NetworkConnector) *mxmain.BridgeMain {
 	return &mxmain.BridgeMain{
@@ -62,6 +68,10 @@ func (d Definition) NewMain(connector bridgev2.NetworkConnector) *mxmain.BridgeM
 
 func Run(def Definition, connector bridgev2.NetworkConnector, tag, commit, buildTime string) {
 	m := def.NewMain(connector)
+	RunMain(m, tag, commit, buildTime)
+}
+
+func RunMain(m *mxmain.BridgeMain, tag, commit, buildTime string) {
 	m.InitVersion(tag, commit, buildTime)
 	m.Run()
 }

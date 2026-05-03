@@ -3,11 +3,14 @@ package ai
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 func (oc *AIClient) sendGeneratedMedia(
@@ -22,10 +25,13 @@ func (oc *AIClient) sendGeneratedMedia(
 	asVoice bool,
 	caption string,
 ) (id.EventID, string, error) {
-	// Get intent for upload (standard pattern — 7 reference bridges use intent.UploadMedia)
-	intent, err := oc.getIntentForPortal(ctx, portal, bridgev2.RemoteEventMessage)
-	if err != nil {
-		return "", "", fmt.Errorf("intent resolution failed: %w", err)
+	if portal == nil || portal.MXID == "" {
+		return "", "", fmt.Errorf("invalid portal")
+	}
+	sender := oc.senderForPortal(ctx, portal)
+	intent, ok := portal.GetIntentFor(ctx, sender, oc.UserLogin, bridgev2.RemoteEventMessage)
+	if !ok || intent == nil {
+		return "", "", fmt.Errorf("intent resolution failed")
 	}
 
 	uri, file, err := intent.UploadMedia(ctx, portal.MXID, data, fileName, mimeType)
@@ -59,16 +65,6 @@ func (oc *AIClient) sendGeneratedMedia(
 		}
 	}
 
-	if msgType == event.MsgVideo {
-		if w, h, dur := analyzeVideo(ctx, data); w > 0 && h > 0 {
-			info.Width = w
-			info.Height = h
-			if dur > 0 {
-				info.Duration = dur
-			}
-		}
-	}
-
 	populateAudioMessageContent(content, data, mimeType, asVoice, msgType)
 
 	if turnID != "" && metadataKey != "" {
@@ -85,7 +81,16 @@ func (oc *AIClient) sendGeneratedMedia(
 			}},
 		}
 
-		eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+		eventID, _, sendErr := sdk.SendViaPortal(sdk.SendViaPortalParams{
+			Login:       oc.UserLogin,
+			Portal:      portal,
+			Sender:      sender,
+			IDPrefix:    oc.ClientBase.MessageIDPrefix,
+			LogKey:      oc.ClientBase.MessageLogKey,
+			Timestamp:   time.Now(),
+			StreamOrder: 0,
+			Converted:   converted,
+		})
 		if sendErr != nil {
 			return "", "", fmt.Errorf("send failed: %w", sendErr)
 		}
@@ -100,29 +105,25 @@ func (oc *AIClient) sendGeneratedMedia(
 		}},
 	}
 
-	eventID, _, sendErr := oc.sendViaPortal(ctx, portal, converted, "")
+	eventID, _, sendErr := sdk.SendViaPortal(sdk.SendViaPortalParams{
+		Login:       oc.UserLogin,
+		Portal:      portal,
+		Sender:      sender,
+		IDPrefix:    oc.ClientBase.MessageIDPrefix,
+		LogKey:      oc.ClientBase.MessageLogKey,
+		Timestamp:   time.Now(),
+		StreamOrder: 0,
+		Converted:   converted,
+	})
 	if sendErr != nil {
 		return "", "", fmt.Errorf("send failed: %w", sendErr)
 	}
 	return eventID, string(uri), nil
 }
 
-func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) string {
-	if ext, ok := overrides[mimeType]; ok {
-		return ext
-	}
-	return defaultExt
-}
-
 func populateAudioMessageContent(content *event.MessageEventContent, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
 	if msgType != event.MsgAudio {
 		return
-	}
-	if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-		content.MSC1767Audio = &event.MSC1767Audio{
-			Duration: durationMs,
-			Waveform: waveform,
-		}
 	}
 	if asVoice {
 		content.MSC3245Voice = &event.MSC3245Voice{}

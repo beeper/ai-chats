@@ -3,28 +3,33 @@ package ai
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"maunium.net/go/mautrix"
 )
 
 type testMatrixAPI struct {
-	joinedRooms []id.RoomID
-	sentRoomID  id.RoomID
-	sentType    event.Type
-	sentContent *event.Content
+	joinedRooms  []id.RoomID
+	sentRoomID   id.RoomID
+	sentType     event.Type
+	sentContent  *event.Content
+	createRoomID id.RoomID
+	sendCount    int
+	uploadName   string
+	uploadMime   string
+	uploadData   []byte
 }
 
 func (tma *testMatrixAPI) GetMXID() id.UserID   { return "@ghost:test" }
 func (tma *testMatrixAPI) IsDoublePuppet() bool { return false }
 func (tma *testMatrixAPI) SendMessage(_ context.Context, roomID id.RoomID, evtType event.Type, content *event.Content, _ *bridgev2.MatrixSendExtra) (*mautrix.RespSendEvent, error) {
+	tma.sendCount++
 	tma.sentRoomID = roomID
 	tma.sentType = evtType
 	tma.sentContent = content
@@ -46,8 +51,11 @@ func (tma *testMatrixAPI) DownloadMedia(context.Context, id.ContentURIString, *e
 func (tma *testMatrixAPI) DownloadMediaToFile(context.Context, id.ContentURIString, *event.EncryptedFileInfo, bool, func(*os.File) error) error {
 	return nil
 }
-func (tma *testMatrixAPI) UploadMedia(context.Context, id.RoomID, []byte, string, string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
-	return "", nil, nil
+func (tma *testMatrixAPI) UploadMedia(_ context.Context, _ id.RoomID, data []byte, fileName string, mimeType string) (id.ContentURIString, *event.EncryptedFileInfo, error) {
+	tma.uploadName = fileName
+	tma.uploadMime = mimeType
+	tma.uploadData = append([]byte(nil), data...)
+	return id.ContentURIString("mxc://example.com/upload"), nil, nil
 }
 func (tma *testMatrixAPI) UploadMediaStream(context.Context, id.RoomID, int64, bool, bridgev2.FileStreamCallback) (id.ContentURIString, *event.EncryptedFileInfo, error) {
 	return "", nil, nil
@@ -56,6 +64,9 @@ func (tma *testMatrixAPI) SetDisplayName(context.Context, string) error         
 func (tma *testMatrixAPI) SetAvatarURL(context.Context, id.ContentURIString) error { return nil }
 func (tma *testMatrixAPI) SetExtraProfileMeta(context.Context, any) error          { return nil }
 func (tma *testMatrixAPI) CreateRoom(context.Context, *mautrix.ReqCreateRoom) (id.RoomID, error) {
+	if tma.createRoomID != "" {
+		return tma.createRoomID, nil
+	}
 	return "", nil
 }
 func (tma *testMatrixAPI) DeleteRoom(context.Context, id.RoomID, bool) error { return nil }
@@ -71,101 +82,6 @@ func (tma *testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*eve
 }
 
 var _ bridgev2.MatrixAPI = (*testMatrixAPI)(nil)
-
-func TestSendViaPortalRejectsMissingBridgeState(t *testing.T) {
-	_, _, err := (&AIClient{}).sendViaPortal(context.Background(), &bridgev2.Portal{}, &bridgev2.ConvertedMessage{}, "")
-	if err == nil {
-		t.Fatal("expected bridge unavailable error")
-	}
-	if !strings.Contains(err.Error(), "bridge unavailable") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendViaPortalRejectsInvalidPortal(t *testing.T) {
-	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
-
-	_, _, err := oc.sendViaPortal(context.Background(), nil, &bridgev2.ConvertedMessage{}, "")
-	if err == nil {
-		t.Fatal("expected invalid portal error")
-	}
-	if !strings.Contains(err.Error(), "invalid portal") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendEditViaPortalRejectsMissingBridgeState(t *testing.T) {
-	err := (&AIClient{}).sendEditViaPortal(context.Background(), &bridgev2.Portal{}, networkid.MessageID("msg-1"), &bridgev2.ConvertedEdit{})
-	if err == nil {
-		t.Fatal("expected bridge unavailable error")
-	}
-	if !strings.Contains(err.Error(), "bridge unavailable") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSendEditViaPortalRejectsInvalidTargetMessage(t *testing.T) {
-	oc := &AIClient{UserLogin: &bridgev2.UserLogin{Bridge: &bridgev2.Bridge{}}}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
-
-	err := oc.sendEditViaPortal(context.Background(), portal, "", &bridgev2.ConvertedEdit{})
-	if err == nil {
-		t.Fatal("expected invalid target message error")
-	}
-	if !strings.Contains(err.Error(), "invalid target message") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestResolvePortalSenderAndIntentEnsuresJoined(t *testing.T) {
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
-	intent := &testMatrixAPI{}
-	sender := bridgev2.EventSender{Sender: "agent-test", SenderLogin: "login-1"}
-
-	gotSender, gotIntent, err := resolvePortalSenderAndIntent(
-		context.Background(),
-		portal,
-		sender,
-		bridgev2.RemoteEventMessage,
-		true,
-		func(_ context.Context, _ *bridgev2.Portal, gotSender bridgev2.EventSender, _ bridgev2.RemoteEventType) (bridgev2.MatrixAPI, error) {
-			if gotSender != sender {
-				t.Fatalf("expected sender %#v, got %#v", sender, gotSender)
-			}
-			return intent, nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if gotSender != sender {
-		t.Fatalf("expected sender %#v, got %#v", sender, gotSender)
-	}
-	if gotIntent != intent {
-		t.Fatalf("expected returned intent to match test intent")
-	}
-	if len(intent.joinedRooms) != 1 || intent.joinedRooms[0] != portal.MXID {
-		t.Fatalf("expected EnsureJoined for %s, got %#v", portal.MXID, intent.joinedRooms)
-	}
-}
-
-func TestSenderForPortalUsesResolvedAgentGhost(t *testing.T) {
-	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "magic-proxy:@user:test"}}
-	oc := &AIClient{UserLogin: login}
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			OtherUserID: agentUserIDForLogin(login.ID, "agent-1"),
-		},
-	}
-
-	sender := oc.senderForPortal(context.Background(), portal)
-	if sender.Sender != agentUserIDForLogin(login.ID, "agent-1") {
-		t.Fatalf("expected agent ghost sender, got %q", sender.Sender)
-	}
-	if sender.SenderLogin != login.ID {
-		t.Fatalf("expected sender login %q, got %q", login.ID, sender.SenderLogin)
-	}
-}
 
 func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "magic-proxy:@user:test"}}
@@ -185,34 +101,32 @@ func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	}
 }
 
-func TestSendSystemNoticeUsesBridgeBot(t *testing.T) {
-	bot := &testMatrixAPI{}
-	oc := &AIClient{
-		UserLogin: &bridgev2.UserLogin{
-			Bridge: &bridgev2.Bridge{Bot: bot},
-		},
-	}
-	portal := &bridgev2.Portal{Portal: &database.Portal{MXID: "!room:example.com"}}
+func TestSendGeneratedMediaCanSendVoiceMessage(t *testing.T) {
+	ctx := context.Background()
+	oc := newDBBackedTestAIClient(t, ProviderOpenAI)
+	portal := testAIModelPortal(t, oc, "openai/gpt-5.4")
+	portal.MXID = id.RoomID("!voice:example.com")
 
-	oc.sendSystemNotice(context.Background(), portal, "AI can make mistakes.")
+	eventID, uri, err := oc.sendGeneratedMedia(ctx, portal, []byte("audio"), "audio/mpeg", "turn-1", event.MsgAudio, "reply.mp3", BeeperAIKey, true, "")
+	if err != nil {
+		t.Fatalf("send generated voice: %v", err)
+	}
+	if uri != "mxc://example.com/upload" {
+		t.Fatalf("unexpected send result event=%q uri=%q", eventID, uri)
+	}
+	api := oc.UserLogin.Bridge.Matrix.(*testMatrixConnector).api
+	if api.uploadName != "reply.mp3" || api.uploadMime != "audio/mpeg" || string(api.uploadData) != "audio" {
+		t.Fatalf("unexpected uploaded voice: name=%q mime=%q data=%q", api.uploadName, api.uploadMime, string(api.uploadData))
+	}
+}
 
-	if bot.sentRoomID != portal.MXID {
-		t.Fatalf("expected room %q, got %q", portal.MXID, bot.sentRoomID)
+func TestPopulateAudioMessageContentMarksVoice(t *testing.T) {
+	content := &event.MessageEventContent{MsgType: event.MsgAudio}
+	populateAudioMessageContent(content, []byte("audio"), "audio/mpeg", true, event.MsgAudio)
+	if content.MsgType != event.MsgAudio {
+		t.Fatalf("expected audio message, got %q", content.MsgType)
 	}
-	if bot.sentType != event.EventMessage {
-		t.Fatalf("expected event type %q, got %q", event.EventMessage, bot.sentType)
-	}
-	if bot.sentContent == nil {
-		t.Fatal("expected content to be sent")
-	}
-	content, ok := bot.sentContent.Parsed.(*event.MessageEventContent)
-	if !ok {
-		t.Fatalf("expected message content, got %#v", bot.sentContent.Parsed)
-	}
-	if content.MsgType != event.MsgNotice {
-		t.Fatalf("expected msgtype %q, got %q", event.MsgNotice, content.MsgType)
-	}
-	if content.Body != "AI can make mistakes." {
-		t.Fatalf("expected notice body to be preserved, got %q", content.Body)
+	if content.MSC3245Voice == nil {
+		t.Fatalf("expected Matrix voice metadata")
 	}
 }

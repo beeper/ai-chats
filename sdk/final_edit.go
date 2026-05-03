@@ -74,21 +74,44 @@ func BuildMinimalFinalUIMessage(uiMessage map[string]any) map[string]any {
 	return out
 }
 
-// BuildDefaultFinalEditExtra builds the SDK's default replacement payload
-// that should live inside m.new_content for terminal final edits.
-func BuildDefaultFinalEditExtra(uiMessage map[string]any) map[string]any {
-	extra := map[string]any{}
+// BuildFinalEditPayload constructs the canonical final Matrix edit payload.
+// The visible replacement body lives in Content; AI UI payload and link previews
+// live in m.new_content Extra; edit-only metadata stays top-level.
+func BuildFinalEditPayload(content event.MessageEventContent, uiMessage map[string]any, linkPreviews []map[string]any, finishReason string) *FinalEditPayload {
+	content.RelatesTo = nil
+	content.BeeperLinkPreviews = nil
+
+	var extra map[string]any
 	if len(uiMessage) > 0 {
+		uiMessage = jsonutil.DeepCloneMap(uiMessage)
+		if strings.TrimSpace(finishReason) != "" {
+			metadata := jsonutil.DeepCloneMap(jsonutil.ToMap(uiMessage["metadata"]))
+			if strings.TrimSpace(stringValue(metadata["finish_reason"])) == "" {
+				if metadata == nil {
+					metadata = map[string]any{}
+				}
+				metadata["finish_reason"] = strings.TrimSpace(finishReason)
+				uiMessage["metadata"] = metadata
+			}
+		}
+		if extra == nil {
+			extra = map[string]any{}
+		}
 		extra[matrixevents.BeeperAIKey] = uiMessage
 	}
-	return extra
-}
+	if len(linkPreviews) > 0 {
+		if extra == nil {
+			extra = map[string]any{}
+		}
+		extra["com.beeper.linkpreviews"] = jsonutil.DeepCloneAny(linkPreviews)
+	}
 
-// BuildDefaultFinalEditTopLevelExtra builds the SDK's edit-event-only metadata
-// payload for terminal final edits.
-func BuildDefaultFinalEditTopLevelExtra() map[string]any {
-	return map[string]any{
-		"com.beeper.dont_render_edited": true,
+	return &FinalEditPayload{
+		Content: &content,
+		Extra:   extra,
+		TopLevelExtra: map[string]any{
+			"com.beeper.dont_render_edited": true,
+		},
 	}
 }
 
@@ -118,24 +141,6 @@ func hasMeaningfulFinalUIMessage(uiMessage map[string]any) bool {
 		}
 	}
 	return false
-}
-
-func withFinalEditFinishReason(uiMessage map[string]any, finishReason string) map[string]any {
-	if len(uiMessage) == 0 || strings.TrimSpace(finishReason) == "" {
-		return uiMessage
-	}
-	out := maps.Clone(uiMessage)
-	metadata, _ := out["metadata"].(map[string]any)
-	if metadata == nil {
-		metadata = map[string]any{}
-	} else {
-		metadata = maps.Clone(metadata)
-	}
-	if strings.TrimSpace(stringValue(metadata["finish_reason"])) == "" {
-		metadata["finish_reason"] = strings.TrimSpace(finishReason)
-	}
-	out["metadata"] = metadata
-	return out
 }
 
 type FinalEditFitDetails struct {
@@ -312,14 +317,4 @@ func FitFinalEditPayload(payload *FinalEditPayload, target id.EventID) (*FinalEd
 		return nil, details, fmt.Errorf("final edit payload exceeds Matrix content limit after fitting: %d > %d", size, MaxMatrixEventContentBytes)
 	}
 	return fitted, details, nil
-}
-
-func BuildTextOnlyFinalEditPayload(payload *FinalEditPayload) *FinalEditPayload {
-	minimal := cloneFinalEditPayload(payload)
-	if minimal == nil {
-		return nil
-	}
-	minimal.Extra = nil
-	minimal.TopLevelExtra = nil
-	return minimal
 }

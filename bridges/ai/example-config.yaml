@@ -1,0 +1,101 @@
+# Connector-specific configuration lives under the `network:` section of the
+# main config file.
+
+beeper:
+  user_mxid: ""
+  base_url: ""
+  token: ""
+
+models:
+  providers:
+    openai:
+      api_key: ""
+      base_url: "https://api.openai.com/v1"
+      models: []
+    openrouter:
+      api_key: ""
+      base_url: "https://openrouter.ai/api/v1"
+      models: []
+    magic_proxy:
+      api_key: ""
+      base_url: ""
+      models: []
+
+default_system_prompt: |
+  You are a helpful, concise assistant.
+  Ask clarifying questions when needed.
+  Follow the user's intent and be accurate.
+model_cache_duration: 6h
+
+messages:
+  direct_chat:
+    history_limit: 20
+  group_chat:
+    history_limit: 50
+  queue:
+    mode: "collect"
+    debounce_ms: 1000
+    cap: 20
+    drop: "summarize"
+
+tools:
+  web:
+    search:
+      provider: "exa"
+      exa:
+        api_key: ""
+        base_url: "https://api.exa.ai"
+        type: "auto"
+        num_results: 5
+        include_text: false
+        text_max_chars: 500
+        highlights: true
+    fetch:
+      provider: "direct"
+      exa:
+        api_key: ""
+        base_url: "https://api.exa.ai"
+        include_text: true
+        text_max_chars: 5000
+      direct:
+        enabled: true
+        timeout_seconds: 30
+        max_chars: 50000
+        max_redirects: 3
+  links:
+    enabled: true
+    max_urls_inbound: 3
+    max_urls_outbound: 5
+    fetch_timeout: 10s
+    max_content_chars: 500
+    max_page_bytes: 10485760
+    max_image_bytes: 5242880
+    cache_ttl: 1h
+  media:
+    concurrency: 2
+    image:
+      enabled: true
+      prompt: "Describe the image."
+      max_bytes: 10485760
+      max_chars: 500
+      timeout_seconds: 60
+      models:
+        - provider: "openrouter"
+          model: "google/gemini-3-flash-preview"
+    audio:
+      enabled: true
+      prompt: "Transcribe the audio."
+      language: ""
+      max_bytes: 20971520
+      timeout_seconds: 60
+      models:
+        - provider: "openai"
+          model: "gpt-4o-mini-transcribe"
+    video:
+      enabled: true
+      prompt: "Describe the video."
+      max_bytes: 52428800
+      timeout_seconds: 120
+      models:
+        - provider: "openrouter"
+          model: "google/gemini-3-flash-preview"

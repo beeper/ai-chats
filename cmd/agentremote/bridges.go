@@ -8,8 +8,6 @@ import (
 	aibridge "github.com/beeper/agentremote/bridges/ai"
 	"github.com/beeper/agentremote/bridges/codex"
 	"github.com/beeper/agentremote/bridges/dummybridge"
-	"github.com/beeper/agentremote/bridges/openclaw"
-	"github.com/beeper/agentremote/bridges/opencode"
 	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
@@ -27,18 +25,15 @@ var bridgeRegistry = map[string]bridgeDef{
 		Definition: bridgeentry.Codex,
 		NewFunc:    func() bridgev2.NetworkConnector { return codex.NewConnector() },
 	},
-	"opencode": {
-		Definition: bridgeentry.OpenCode,
-		NewFunc:    func() bridgev2.NetworkConnector { return opencode.NewConnector() },
-	},
-	"openclaw": {
-		Definition: bridgeentry.OpenClaw,
-		NewFunc:    func() bridgev2.NetworkConnector { return openclaw.NewConnector() },
-	},
 	"dummybridge": {
 		Definition: bridgeentry.DummyBridge,
 		NewFunc:    func() bridgev2.NetworkConnector { return dummybridge.NewConnector() },
 	},
+}
+
+func lookupBridge(name string) (bridgeDef, bool) {
+	def, ok := bridgeRegistry[name]
+	return def, ok
 }
 
 func beeperBridgeName(deviceID, bridgeType, name string) string {
@@ -59,7 +54,7 @@ func instanceDirName(bridgeType, name string) string {
 func splitInstanceName(instanceName string) (bridgeType, name string, ok bool) {
 	instanceName = strings.TrimSpace(instanceName)
 	longest := ""
-	for candidate := range bridgeRegistry {
+	for _, candidate := range bridgeentry.Names() {
 		if instanceName == candidate || strings.HasPrefix(instanceName, candidate+"-") {
 			if len(candidate) > len(longest) {
 				longest = candidate

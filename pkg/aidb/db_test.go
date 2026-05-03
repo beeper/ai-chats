@@ -30,7 +30,7 @@ func TestNewChildNilBase(t *testing.T) {
 	}
 }
 
-func TestUpgradeV1Fresh(t *testing.T) {
+func TestUpgradeFresh(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
@@ -38,32 +38,16 @@ func TestUpgradeV1Fresh(t *testing.T) {
 		t.Fatalf("expected child DB")
 	}
 
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := bridgeDB.Upgrade(ctx); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
 
-	var version int
-	if err := bridgeDB.QueryRow(ctx, "SELECT version FROM "+VersionTable).Scan(&version); err != nil {
-		t.Fatalf("read %s failed: %v", VersionTable, err)
-	}
-	if version != 1 {
-		t.Fatalf("expected %s=1, got %d", VersionTable, version)
-	}
-
 	for _, table := range []string{
-		"aichats_memory_files",
-		"aichats_memory_chunks",
-		"aichats_memory_meta",
-		"aichats_memory_embedding_cache",
-		"aichats_memory_session_state",
-		"aichats_memory_session_files",
-		"aichats_cron_jobs",
-		"aichats_cron_job_run_keys",
-		"aichats_managed_heartbeats",
-		"aichats_managed_heartbeat_run_keys",
-		"aichats_system_events",
-		"agentremote_sessions",
-		"agentremote_approvals",
+		"aichats_login_state",
+		"aichats_portal_state",
+		"sdk_conversation_state",
+		"aichats_turns",
+		"aichats_turn_refs",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
@@ -73,27 +57,34 @@ func TestUpgradeV1Fresh(t *testing.T) {
 			t.Fatalf("expected %s to exist", table)
 		}
 	}
+
+	for _, table := range []string{
+		"aichats_cron_jobs",
+		"aichats_cron_job_run_keys",
+		"aichats_system_events",
+		"aichats_tool_approval_rules",
+	} {
+		exists, err := bridgeDB.TableExists(ctx, table)
+		if err != nil {
+			t.Fatalf("check %s absence failed: %v", table, err)
+		}
+		if exists {
+			t.Fatalf("expected %s to be absent", table)
+		}
+	}
 }
 
-func TestNewChildUpgrade(t *testing.T) {
+func TestUpgradeIdempotent(t *testing.T) {
 	ctx := context.Background()
 	parentDB := setupTestDB(t)
 	bridgeDB := NewChild(parentDB, dbutil.NoopLogger)
 	if bridgeDB == nil {
 		t.Fatalf("expected child DB")
 	}
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := bridgeDB.Upgrade(ctx); err != nil {
 		t.Fatalf("upgrade failed: %v", err)
 	}
-	if err := Upgrade(ctx, bridgeDB, "agentremote", "database not initialized"); err != nil {
+	if err := bridgeDB.Upgrade(ctx); err != nil {
 		t.Fatalf("second upgrade failed: %v", err)
-	}
-
-	var version int
-	if err := bridgeDB.QueryRow(ctx, "SELECT version FROM "+VersionTable).Scan(&version); err != nil {
-		t.Fatalf("read %s failed: %v", VersionTable, err)
-	}
-	if version != 1 {
-		t.Fatalf("expected %s=1, got %d", VersionTable, version)
 	}
 }

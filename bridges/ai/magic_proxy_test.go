@@ -37,15 +37,14 @@ func TestParseMagicProxyLinkPreservesPath(t *testing.T) {
 
 func TestResolveServiceConfigMagicProxyUsesJoinedPaths(t *testing.T) {
 	oc := &OpenAIConnector{}
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	cfg := &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy",
 		},
 	}
 
-	services := oc.resolveServiceConfig(meta)
+	services := oc.resolveServiceConfig(ProviderMagicProxy, cfg)
 
 	if got := services[serviceOpenRouter].BaseURL; got != "https://bai.bt.hn/team/proxy/openrouter/v1" {
 		t.Fatalf("unexpected openrouter base URL: %q", got)
@@ -69,15 +68,14 @@ func TestResolveServiceConfigMagicProxyUsesJoinedPaths(t *testing.T) {
 
 func TestResolveServiceConfigMagicProxyNoDuplicateOpenRouterPath(t *testing.T) {
 	oc := &OpenAIConnector{}
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	cfg := &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			APIKey:  "tok",
 			BaseURL: "https://bai.bt.hn/team/proxy/openrouter/v1",
 		},
 	}
 
-	services := oc.resolveServiceConfig(meta)
+	services := oc.resolveServiceConfig(ProviderMagicProxy, cfg)
 	base := services[serviceOpenRouter].BaseURL
 	if strings.Count(base, "/openrouter/v1") != 1 {
 		t.Fatalf("openrouter path duplicated: %q", base)
@@ -98,13 +96,12 @@ func TestResolveExaProxyBaseURLMagicProxyPrefersLoginBase(t *testing.T) {
 			},
 		},
 	}
-	meta := &UserLoginMetadata{
-		Provider: ProviderMagicProxy,
+	cfg := &aiLoginConfig{
 		Credentials: &LoginCredentials{
 			BaseURL: "https://ai.bt.hn/",
 		},
 	}
-	if got := oc.resolveExaProxyBaseURL(meta); got != "https://ai.bt.hn/exa" {
+	if got := oc.resolveExaProxyBaseURL(cfg); got != "https://ai.bt.hn/exa" {
 		t.Fatalf("unexpected exa proxy base: %q", got)
 	}
 }

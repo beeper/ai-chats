@@ -2,28 +2,25 @@ package ai
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
-	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 )
 
 type streamTurnActions struct {
-	oc                           *AIClient
-	ctx                          context.Context
-	log                          zerolog.Logger
-	portal                       *bridgev2.Portal
-	state                        *streamingState
-	meta                         *PortalMetadata
-	activeTools                  *streamToolRegistry
-	typingSignals                *TypingSignaler
-	touchTyping                  func()
-	isHeartbeat                  bool
-	continuationSuffix           string
-	approvalFallbackForNonObject bool
+	oc                         *AIClient
+	ctx                        context.Context
+	log                        zerolog.Logger
+	portal                     *bridgev2.Portal
+	state                      *streamingState
+	meta                       *PortalMetadata
+	activeTools                *streamToolRegistry
+	typingSignals              *TypingSignaler
+	touchTyping                func()
+	continuationSuffix         string
+	checkApprovalWithoutObject bool
 }
 
 func newStreamTurnActions(
@@ -36,27 +33,25 @@ func newStreamTurnActions(
 	activeTools *streamToolRegistry,
 	typingSignals *TypingSignaler,
 	touchTyping func(),
-	isHeartbeat bool,
 	isContinuation bool,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 ) streamTurnActions {
 	suffix := ""
 	if isContinuation {
 		suffix = " (continuation)"
 	}
 	return streamTurnActions{
-		oc:                           oc,
-		ctx:                          ctx,
-		log:                          log,
-		portal:                       portal,
-		state:                        state,
-		meta:                         meta,
-		activeTools:                  activeTools,
-		typingSignals:                typingSignals,
-		touchTyping:                  touchTyping,
-		isHeartbeat:                  isHeartbeat,
-		continuationSuffix:           suffix,
-		approvalFallbackForNonObject: approvalFallbackForNonObject,
+		oc:                         oc,
+		ctx:                        ctx,
+		log:                        log,
+		portal:                     portal,
+		state:                      state,
+		meta:                       meta,
+		activeTools:                activeTools,
+		typingSignals:              typingSignals,
+		touchTyping:                touchTyping,
+		continuationSuffix:         suffix,
+		checkApprovalWithoutObject: checkApprovalWithoutObject,
 	}
 }
 
@@ -101,7 +96,6 @@ func (a streamTurnActions) textDelta(delta string) (string, error) {
 		a.state,
 		a.meta,
 		a.typingSignals,
-		a.isHeartbeat,
 		delta,
 		a.textErrorText(),
 		a.textLogMessage(),
@@ -119,7 +113,6 @@ func (a streamTurnActions) reasoningDelta(delta string) error {
 		a.portal,
 		a.state,
 		a.meta,
-		a.isHeartbeat,
 		delta,
 		a.textErrorText(),
 		a.textLogMessage(),
@@ -156,19 +149,9 @@ func (a streamTurnActions) functionToolInputDone(itemID, name, arguments string)
 		itemID,
 		name,
 		arguments,
-		a.approvalFallbackForNonObject,
+		a.checkApprovalWithoutObject,
 		a.continuationSuffix,
 	)
-}
-
-func (a streamTurnActions) providerToolInProgress(itemID, toolName string, toolType ToolType) {
-	a.touchTool()
-	a.oc.handleProviderToolInProgress(a.ctx, a.portal, a.state, a.meta, a.activeTools, itemID, toolName, toolType)
-}
-
-func (a streamTurnActions) providerToolCompleted(itemID, toolName string, toolType ToolType, failureText string) {
-	a.touch()
-	a.oc.handleProviderToolCompleted(a.ctx, a.portal, a.state, a.activeTools, itemID, toolName, toolType, failureText)
 }
 
 func (a streamTurnActions) outputItemAdded(item responses.ResponseOutputItemUnion) {
@@ -179,64 +162,15 @@ func (a streamTurnActions) outputItemDone(item responses.ResponseOutputItemUnion
 	a.oc.handleResponseOutputItemDone(a.ctx, a.portal, a.state, a.activeTools, item)
 }
 
-func (a streamTurnActions) customToolInputDelta(itemID string, item responses.ResponseOutputItemUnion, delta string) {
-	a.oc.handleCustomToolInputDeltaFromOutputItem(a.ctx, a.portal, a.state, a.activeTools, itemID, item, delta)
-}
-
-func (a streamTurnActions) customToolInputDone(itemID string, item responses.ResponseOutputItemUnion, inputText string) {
-	a.oc.handleCustomToolInputDoneFromOutputItem(a.ctx, a.portal, a.state, a.activeTools, itemID, item, inputText)
-}
-
-func (a streamTurnActions) mcpCallFailed(itemID string, item responses.ResponseOutputItemUnion) {
-	a.oc.handleMCPCallFailedFromOutputItem(a.ctx, a.portal, a.state, a.activeTools, itemID, item)
-}
-
 func (a streamTurnActions) annotationAdded(annotation any, annotationIndex any) {
 	a.oc.handleResponseOutputAnnotationAdded(a.ctx, a.portal, a.state, annotation, annotationIndex)
-}
-
-// approvalRequested registers an MCP approval request through the actions layer.
-// When needsPrompt is false the approval is auto-resolved immediately.
-func (a streamTurnActions) approvalRequested(params ToolApprovalParams, needsPrompt bool) error {
-	handle, err := a.oc.startStreamingMCPApproval(a.ctx, a.portal, a.state, params, needsPrompt)
-	if err != nil {
-		return err
-	}
-	a.state.pendingMcpApprovals = append(a.state.pendingMcpApprovals, mcpApprovalRequest{
-		approvalID:  params.ApprovalID,
-		toolCallID:  params.ToolCallID,
-		toolName:    params.ToolName,
-		serverLabel: params.ServerLabel,
-		handle:      handle,
-	})
-	return nil
 }
 
 // toolResultCompleted finalises a tool call from a Responses API output item
 // through the actions layer, consolidating status-to-result mapping.
 func (a streamTurnActions) toolResultCompleted(tool *activeToolCall, item responses.ResponseOutputItemUnion) {
 	a.touch()
-	a.oc.toolLifecycle(a.portal, a.state).completeFromResponseItem(a.ctx, tool, item)
-}
-
-// emitProviderToolLifecycle handles the common in_progress/completed pattern for
-// provider-managed and MCP tool events, reducing repeated cases in the event switch.
-func (a streamTurnActions) emitProviderToolLifecycle(itemID, toolName string, toolType ToolType, isInProgress bool, failureText string) {
-	if isInProgress {
-		a.providerToolInProgress(itemID, toolName, toolType)
-	} else {
-		a.providerToolCompleted(itemID, toolName, toolType, failureText)
-	}
-}
-
-// emitCustomToolInput handles the common delta/done pattern for custom tool,
-// code interpreter, and MCP call argument events.
-func (a streamTurnActions) emitCustomToolInput(itemID string, item responses.ResponseOutputItemUnion, isDelta bool, content string) {
-	if isDelta {
-		a.customToolInputDelta(itemID, item, content)
-	} else {
-		a.customToolInputDone(itemID, item, content)
-	}
+	newToolLifecycle(a.state).completeFromResponseItem(a.ctx, tool, item)
 }
 
 // finalizeMetadata emits a consolidated metadata update on the writer.
@@ -245,45 +179,4 @@ func (a streamTurnActions) finalizeMetadata() {
 		return
 	}
 	a.state.writer().MessageMetadata(a.ctx, a.oc.buildUIMessageMetadata(a.state, a.meta, true))
-}
-
-func chatToolRegistryKey(index int64) string {
-	return "chat-index:" + strconv.FormatInt(index, 10)
-}
-
-func chatToolDescriptor(toolDelta openai.ChatCompletionChunkChoiceDeltaToolCall) responseToolDescriptor {
-	desc := responseToolDescriptor{
-		registryKey: streamToolItemKey(chatToolRegistryKey(toolDelta.Index)),
-		itemID:      chatToolRegistryKey(toolDelta.Index),
-		callID:      strings.TrimSpace(toolDelta.ID),
-		toolName:    strings.TrimSpace(toolDelta.Function.Name),
-		toolType:    ToolTypeFunction,
-		ok:          true,
-	}
-	if desc.callID == "" {
-		desc.callID = desc.itemID
-	}
-	if desc.registryKey == "" {
-		desc.registryKey = streamToolCallKey(desc.callID)
-	}
-	return desc
-}
-
-func (a streamTurnActions) chatToolInputDelta(toolDelta openai.ChatCompletionChunkChoiceDeltaToolCall) *activeToolCall {
-	a.touchTool()
-	desc := chatToolDescriptor(toolDelta)
-	tool, _ := a.oc.upsertActiveToolFromDescriptor(a.ctx, a.portal, a.state, a.activeTools, desc)
-	if tool == nil {
-		return nil
-	}
-	if tool.input.Len() == 0 {
-		a.oc.toolLifecycle(a.portal, a.state).ensureInputStart(a.ctx, tool, false, nil)
-	}
-	if desc.toolName != "" {
-		tool.toolName = desc.toolName
-	}
-	if toolDelta.Function.Arguments != "" {
-		a.oc.toolLifecycle(a.portal, a.state).appendInputDelta(a.ctx, tool, tool.toolName, toolDelta.Function.Arguments, false)
-	}
-	return tool
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
@@ -28,8 +29,8 @@ type DebounceEntry struct {
 	RoomName     string
 	IsGroup      bool
 	WasMentioned bool
-	AckEventID   id.EventID // Track ack reaction for removal after flush
-	PendingSent  bool       // Whether a pending status was already sent for this event
+	PendingSent  bool // Whether a pending status was already sent for this event
+	DBMessage    *database.Message
 }
 
 // DebounceBuffer holds pending messages for a key.

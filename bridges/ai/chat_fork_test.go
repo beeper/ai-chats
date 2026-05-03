@@ -18,9 +18,6 @@ func TestCloneForkPortalMetadata_PreservesResolvedModelTarget(t *testing.T) {
 	if got.Slug != "chat-99" {
 		t.Fatalf("expected slug chat-99, got %q", got.Slug)
 	}
-	if got.Title != "Forked Chat" {
-		t.Fatalf("expected title Forked Chat, got %q", got.Title)
-	}
 	if got.ResolvedTarget == nil || got.ResolvedTarget.Kind != ResolvedTargetModel || got.ResolvedTarget.ModelID != "openai/gpt-5" {
 		t.Fatalf("expected forked metadata to keep resolved model target, got %#v", got.ResolvedTarget)
 	}

@@ -32,29 +32,10 @@ func normalizeTypingMode(raw string) (TypingMode, bool) {
 	return "", false
 }
 
-func (oc *AIClient) resolveTypingMode(meta *PortalMetadata, ctx *TypingContext, isHeartbeat bool) TypingMode {
-	if isHeartbeat {
-		return TypingModeNever
-	}
+func (oc *AIClient) resolveTypingMode(meta *PortalMetadata, ctx *TypingContext) TypingMode {
 	if meta != nil {
 		if mode, ok := normalizeTypingMode(meta.TypingMode); ok {
 			return mode
-		}
-	}
-	agentID := normalizeAgentID(resolveAgentID(meta))
-	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil {
-		for _, entry := range oc.connector.Config.Agents.List {
-			if normalizeAgentID(entry.ID) != agentID {
-				continue
-			}
-			if mode, ok := normalizeTypingMode(entry.TypingMode); ok {
-				return mode
-			}
-		}
-		if defaults := oc.connector.Config.Agents.Defaults; defaults != nil {
-			if mode, ok := normalizeTypingMode(defaults.TypingMode); ok {
-				return mode
-			}
 		}
 	}
 	isGroup := false
@@ -78,25 +59,6 @@ func (oc *AIClient) resolveTypingInterval(meta *PortalMetadata) time.Duration {
 		}
 		return interval
 	}
-	agentID := normalizeAgentID(resolveAgentID(meta))
-	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil {
-		for _, entry := range oc.connector.Config.Agents.List {
-			if normalizeAgentID(entry.ID) != agentID {
-				continue
-			}
-			if entry.TypingIntervalSec != nil {
-				interval = time.Duration(*entry.TypingIntervalSec) * time.Second
-				if interval <= 0 {
-					return 0
-				}
-				return interval
-			}
-			break
-		}
-		if defaults := oc.connector.Config.Agents.Defaults; defaults != nil && defaults.TypingIntervalSec != nil {
-			interval = time.Duration(*defaults.TypingIntervalSec) * time.Second
-		}
-	}
 	if interval <= 0 {
 		return 0
 	}
@@ -114,8 +76,8 @@ type TypingSignaler struct {
 	hasRenderableText    bool
 }
 
-func NewTypingSignaler(typing *TypingController, mode TypingMode, isHeartbeat bool) *TypingSignaler {
-	disabled := isHeartbeat || mode == TypingModeNever || typing == nil
+func NewTypingSignaler(typing *TypingController, mode TypingMode) *TypingSignaler {
+	disabled := mode == TypingModeNever || typing == nil
 	return &TypingSignaler{
 		mode:                 mode,
 		typing:               typing,

@@ -3,20 +3,21 @@ package codex
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote"
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
-func isWelcomeCodexPortal(meta *PortalMetadata) bool {
-	return meta != nil && meta.IsCodexRoom && meta.AwaitingCwdSetup
+func isWelcomeCodexPortal(state *codexPortalState) bool {
+	return state != nil && state.AwaitingCwdSetup
 }
 
 func codexTopicForPath(path string) string {
@@ -41,59 +42,11 @@ func codexTitleForPath(path string) string {
 	}
 }
 
-func (cc *CodexClient) codexTopicForPortal(_ *bridgev2.Portal, meta *PortalMetadata) string {
-	if meta == nil || isWelcomeCodexPortal(meta) {
+func (cc *CodexClient) codexTopicForPortal(_ *bridgev2.Portal, state *codexPortalState) string {
+	if state == nil || isWelcomeCodexPortal(state) {
 		return ""
 	}
-	return codexTopicForPath(meta.CodexCwd)
-}
-
-func (cc *CodexClient) setRoomName(ctx context.Context, portal *bridgev2.Portal, name string) error {
-	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
-		return fmt.Errorf("portal unavailable")
-	}
-	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
-	}
-	_, err := cc.UserLogin.Bridge.Bot.SendState(ctx, portal.MXID, event.StateRoomName, "", &event.Content{
-		Parsed: &event.RoomNameEventContent{Name: name},
-	}, time.Time{})
-	if err != nil {
-		return fmt.Errorf("failed to set room name: %w", err)
-	}
-	portal.Name = name
-	portal.NameSet = true
-	return portal.Save(ctx)
-}
-
-func (cc *CodexClient) setRoomTopic(ctx context.Context, portal *bridgev2.Portal, topic string) error {
-	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || portal == nil {
-		return fmt.Errorf("portal unavailable")
-	}
-	if portal.MXID == "" {
-		return fmt.Errorf("portal has no Matrix room ID")
-	}
-	_, err := cc.UserLogin.Bridge.Bot.SendState(ctx, portal.MXID, event.StateTopic, "", &event.Content{
-		Parsed: &event.TopicEventContent{Topic: topic},
-	}, time.Time{})
-	if err != nil {
-		return fmt.Errorf("failed to set room topic: %w", err)
-	}
-	portal.Topic = topic
-	return portal.Save(ctx)
-}
-
-func (cc *CodexClient) syncCodexRoomTopic(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) {
-	if cc == nil || portal == nil || meta == nil {
-		return
-	}
-	want := cc.codexTopicForPortal(portal, meta)
-	if strings.TrimSpace(portal.Topic) == strings.TrimSpace(want) {
-		return
-	}
-	if err := cc.setRoomTopic(ctx, portal, want); err != nil {
-		cc.log.Warn().Err(err).Stringer("room", portal.MXID).Msg("Failed to sync Codex room topic")
-	}
+	return codexTopicForPath(state.CodexCwd)
 }
 
 func parseCodexCommand(body string) (string, string, bool) {
@@ -124,13 +77,13 @@ func codexCommandHelpText() string {
 	}, "\n")
 }
 
-func (cc *CodexClient) resolveManagedPathArgument(args string, meta *PortalMetadata) (string, error) {
+func (cc *CodexClient) resolveManagedPathArgument(args string, state *codexPortalState) (string, error) {
 	args = strings.TrimSpace(args)
 	if args != "" {
-		return resolveCodexWorkingDirectory(args)
+		return sdk.NormalizeAbsolutePath(args)
 	}
-	if meta != nil && strings.TrimSpace(meta.CodexCwd) != "" {
-		return strings.TrimSpace(meta.CodexCwd), nil
+	if state != nil && strings.TrimSpace(state.CodexCwd) != "" {
+		return strings.TrimSpace(state.CodexCwd), nil
 	}
 	return "", fmt.Errorf("path is required")
 }
@@ -139,27 +92,73 @@ func (cc *CodexClient) welcomeCodexPortals(ctx context.Context) ([]*bridgev2.Por
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil || cc.UserLogin.Bridge.DB == nil {
 		return nil, nil
 	}
-	userPortals, err := cc.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, cc.UserLogin.UserLogin)
+	records, err := listCodexPortalStateRecords(ctx, cc.UserLogin)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*bridgev2.Portal, 0, len(userPortals))
-	for _, userPortal := range userPortals {
-		if userPortal == nil {
+	out := make([]*bridgev2.Portal, 0, len(records))
+	for _, record := range records {
+		if record.State == nil || !isWelcomeCodexPortal(record.State) {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, userPortal.Portal)
-		if err != nil || portal == nil {
+		if record.Portal == nil {
 			continue
 		}
-		if isWelcomeCodexPortal(portalMeta(portal)) {
-			out = append(out, portal)
-		}
+		out = append(out, record.Portal)
 	}
 	return out, nil
 }
 
-func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Portal, error) {
+func (cc *CodexClient) bootstrapCodexPortal(
+	ctx context.Context,
+	portal *bridgev2.Portal,
+	portalKey networkid.PortalKey,
+	title string,
+	state *codexPortalState,
+	chatInfo *bridgev2.ChatInfo,
+	createRoom bool,
+) (*bridgev2.Portal, bool, error) {
+	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
+		return nil, false, fmt.Errorf("login unavailable")
+	}
+	if state == nil {
+		return nil, false, fmt.Errorf("missing codex portal state")
+	}
+	var err error
+	if portal == nil {
+		portal, err = cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	if portal == nil {
+		return nil, false, fmt.Errorf("missing portal")
+	}
+	portal.RoomType = database.RoomTypeDM
+	portal.OtherUserID = codexGhostID
+	portal.Name = strings.TrimSpace(title)
+	portal.NameSet = portal.Name != ""
+	portalMeta(portal).IsCodexRoom = true
+	if err := saveCodexPortalState(ctx, portal, state); err != nil {
+		return nil, false, err
+	}
+	if !createRoom {
+		return portal, false, nil
+	}
+	created := portal.MXID == ""
+	if created {
+		if err := portal.CreateMatrixRoom(ctx, cc.UserLogin, chatInfo); err != nil {
+			return nil, false, err
+		}
+	} else if chatInfo != nil {
+		portal.UpdateInfo(ctx, chatInfo, cc.UserLogin, nil, time.Time{})
+	}
+	portal.UpdateBridgeInfo(ctx)
+	portal.UpdateCapabilities(ctx, cc.UserLogin, true)
+	return portal, created, nil
+}
+
+func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context, createRoom bool) (*bridgev2.Portal, error) {
 	if cc == nil || cc.UserLogin == nil || cc.UserLogin.Bridge == nil {
 		return nil, fmt.Errorf("login unavailable")
 	}
@@ -167,38 +166,13 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 	if err != nil {
 		return nil, err
 	}
-	portal, err := cc.UserLogin.Bridge.GetPortalByKey(ctx, portalKey)
-	if err != nil {
-		return nil, err
+	state := &codexPortalState{
+		Title:            "New Codex Chat",
+		Slug:             "codex-welcome",
+		AwaitingCwdSetup: true,
 	}
-	if portal.Metadata == nil {
-		portal.Metadata = &PortalMetadata{}
-	}
-	meta := portalMeta(portal)
-	meta.IsCodexRoom = true
-	meta.Title = "New Codex Chat"
-	meta.Slug = "codex-welcome"
-	meta.CodexThreadID = ""
-	meta.CodexCwd = ""
-	meta.AwaitingCwdSetup = true
-	meta.ManagedImport = false
-	if err := agentremote.ConfigureDMPortal(ctx, agentremote.ConfigureDMPortalParams{
-		Portal:      portal,
-		Title:       meta.Title,
-		OtherUserID: codexGhostID,
-		Save:        false,
-	}); err != nil {
-		return nil, err
-	}
-	info := cc.composeCodexChatInfo(portal, meta.Title, false)
-	created, err := bridgesdk.EnsurePortalLifecycle(ctx, bridgesdk.PortalLifecycleOptions{
-		Login:             cc.UserLogin,
-		Portal:            portal,
-		ChatInfo:          info,
-		SaveBeforeCreate:  true,
-		AIRoomKind:        agentremote.AIRoomKindAgent,
-		ForceCapabilities: true,
-	})
+	info := cc.composeCodexChatInfo(nil, state, false)
+	portal, created, err := cc.bootstrapCodexPortal(ctx, nil, portalKey, state.Title, state, info, createRoom)
 	if err != nil {
 		return nil, err
 	}
@@ -206,11 +180,18 @@ func (cc *CodexClient) createWelcomeCodexChat(ctx context.Context) (*bridgev2.Po
 		cc.sendSystemNotice(ctx, portal, "AI Chats can make mistakes.")
 		cc.sendSystemNotice(ctx, portal, "Send an absolute path or `~/...` to start a Codex session.")
 	}
-	if err := portal.Save(ctx); err != nil {
-		return nil, err
-	}
-	cc.syncCodexRoomTopic(ctx, portal, meta)
 	return portal, nil
+}
+
+func codexWelcomePortalKey(loginID networkid.UserLoginID, slug string) (networkid.PortalKey, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return networkid.PortalKey{}, fmt.Errorf("empty welcome slug")
+	}
+	return networkid.PortalKey{
+		ID:       networkid.PortalID(fmt.Sprintf("codex:%s:welcome:%s", loginID, url.PathEscape(slug))),
+		Receiver: loginID,
+	}, nil
 }
 
 func (cc *CodexClient) ensureWelcomeCodexChat(ctx context.Context) error {
@@ -224,7 +205,7 @@ func (cc *CodexClient) ensureWelcomeCodexChat(ctx context.Context) error {
 	if len(portals) > 0 {
 		return nil
 	}
-	_, err = cc.createWelcomeCodexChat(ctx)
+	_, err = cc.createWelcomeCodexChat(ctx, true)
 	return err
 }
 
@@ -259,12 +240,6 @@ func (cc *CodexClient) deletePortalOnly(ctx context.Context, portal *bridgev2.Po
 				Msg("Failed to delete Matrix room during Codex cleanup")
 		}
 	}
-	if err := cc.UserLogin.Bridge.DB.Portal.Delete(ctx, portal.PortalKey); err != nil {
-		cc.log.Warn().Err(err).
-			Str("portal_id", string(portal.PortalKey.ID)).
-			Str("reason", reason).
-			Msg("Failed to delete Codex portal record")
-	}
 }
 
 func (cc *CodexClient) managedImportedPortalsForPath(ctx context.Context, path string) ([]*bridgev2.Portal, error) {
@@ -275,24 +250,19 @@ func (cc *CodexClient) managedImportedPortalsForPath(ctx context.Context, path s
 	if path == "" {
 		return nil, nil
 	}
-	userPortals, err := cc.UserLogin.Bridge.DB.UserPortal.GetAllForLogin(ctx, cc.UserLogin.UserLogin)
+	records, err := listCodexPortalStateRecords(ctx, cc.UserLogin)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*bridgev2.Portal, 0, len(userPortals))
-	for _, userPortal := range userPortals {
-		if userPortal == nil {
+	out := make([]*bridgev2.Portal, 0, len(records))
+	for _, record := range records {
+		if record.State == nil || !record.State.ManagedImport || strings.TrimSpace(record.State.CodexCwd) != path {
 			continue
 		}
-		portal, err := cc.UserLogin.Bridge.GetExistingPortalByKey(ctx, userPortal.Portal)
-		if err != nil || portal == nil {
+		if record.Portal == nil {
 			continue
 		}
-		meta := portalMeta(portal)
-		if meta == nil || !meta.IsCodexRoom || !meta.ManagedImport || strings.TrimSpace(meta.CodexCwd) != path {
-			continue
-		}
-		out = append(out, portal)
+		out = append(out, record.Portal)
 	}
 	return out, nil
 }
@@ -303,16 +273,18 @@ func (cc *CodexClient) forgetManagedDirectory(ctx context.Context, path string) 
 		return 0, err
 	}
 	for _, portal := range portals {
-		meta := portalMeta(portal)
-		if meta != nil {
-			cc.cleanupImportedPortalState(meta.CodexThreadID)
+		if state, err := loadCodexPortalState(ctx, portal); err == nil && state != nil {
+			cc.cleanupImportedPortalState(state.CodexThreadID)
+		}
+		if err := clearCodexPortalState(ctx, portal); err != nil {
+			return 0, err
 		}
 		cc.deletePortalOnly(ctx, portal, "codex directory forgotten")
 	}
 	return len(portals), nil
 }
 
-func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) (*bridgev2.MatrixMessageResponse, bool, error) {
+func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.Portal, state *codexPortalState, body string) (*bridgev2.MatrixMessageResponse, bool, error) {
 	command, args, ok := parseCodexCommand(body)
 	if !ok {
 		return nil, false, nil
@@ -326,8 +298,8 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 	case "help":
 		cc.sendSystemNotice(ctx, portal, codexCommandHelpText())
 	case "new":
-		if _, err := cc.createWelcomeCodexChat(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to create a new welcome room.", "")
+		if _, err := cc.createWelcomeCodexChat(ctx, true); err != nil {
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to create a new welcome room.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		cc.sendSystemNotice(ctx, portal, "Created a new welcome room.")
 	case "dirs":
@@ -338,7 +310,7 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 		}
 		cc.sendSystemNotice(ctx, portal, "Tracked directories:\n"+strings.Join(paths, "\n"))
 	case "import":
-		path, err := cc.resolveManagedPathArgument(args, meta)
+		path, err := cc.resolveManagedPathArgument(args, state)
 		if err != nil {
 			cc.sendSystemNotice(ctx, portal, "Usage: `!codex import /abs/path`")
 			break
@@ -350,11 +322,11 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 		}
 		addManagedCodexPath(loginMeta, path)
 		if err := cc.UserLogin.Save(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to save tracked directories.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to save tracked directories.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		total, created, err := cc.syncStoredCodexThreadsForPath(cc.backgroundContext(ctx), path)
 		if err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to import stored Codex threads.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to import stored Codex threads.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		if total == 0 {
 			cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Tracked %s. No stored Codex threads matched yet.", path))
@@ -362,7 +334,7 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 		}
 		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Tracked %s. Found %d stored Codex thread(s); created %d new room(s).", path, total, created))
 	case "forget":
-		path, err := cc.resolveManagedPathArgument(args, meta)
+		path, err := cc.resolveManagedPathArgument(args, state)
 		if err != nil {
 			cc.sendSystemNotice(ctx, portal, "Usage: `!codex forget /abs/path`")
 			break
@@ -372,11 +344,11 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 			break
 		}
 		if err := cc.UserLogin.Save(ctx); err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to update tracked directories.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to update tracked directories.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		removed, err := cc.forgetManagedDirectory(ctx, path)
 		if err != nil {
-			return nil, true, messageSendStatusError(err, "Failed to forget Codex directory.", "")
+			return nil, true, sdk.MessageSendStatusError(err, "Failed to forget Codex directory.", "", messageStatusForError, messageStatusReasonForError)
 		}
 		cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Forgot %s and unbridged %d imported room(s).", path, removed))
 	default:
@@ -385,11 +357,11 @@ func (cc *CodexClient) handleCodexCommand(ctx context.Context, portal *bridgev2.
 	return &bridgev2.MatrixMessageResponse{Pending: false}, true, nil
 }
 
-func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata, body string) (*bridgev2.MatrixMessageResponse, error) {
-	if cc == nil || cc.UserLogin == nil || portal == nil || meta == nil {
+func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *bridgev2.Portal, state *codexPortalState, body string) (*bridgev2.MatrixMessageResponse, error) {
+	if cc == nil || cc.UserLogin == nil || portal == nil || state == nil {
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
 	}
-	path, err := resolveCodexWorkingDirectory(body)
+	path, err := sdk.NormalizeAbsolutePath(body)
 	if err != nil {
 		cc.sendSystemNotice(ctx, portal, "That path must be absolute. `~/...` is also accepted.")
 		return &bridgev2.MatrixMessageResponse{Pending: false}, nil
@@ -402,33 +374,23 @@ func (cc *CodexClient) handleWelcomeCodexMessage(ctx context.Context, portal *br
 
 	addManagedCodexPath(loginMetadata(cc.UserLogin), path)
 	if err := cc.UserLogin.Save(ctx); err != nil {
-		return nil, messageSendStatusError(err, "Failed to save Codex directory.", "")
+		return nil, sdk.MessageSendStatusError(err, "Failed to save Codex directory.", "", messageStatusForError, messageStatusReasonForError)
 	}
 
-	meta.CodexCwd = path
-	meta.CodexThreadID = ""
-	meta.AwaitingCwdSetup = false
-	meta.ManagedImport = false
-	meta.Title = codexTitleForPath(path)
-	meta.Slug = strings.ToLower(strings.ReplaceAll(meta.Title, " ", "-"))
-	portal.Name = meta.Title
-	portal.NameSet = true
-	if err := portal.Save(ctx); err != nil {
-		return nil, messageSendStatusError(err, "Failed to save Codex room.", "")
+	nextState := *state
+	nextState.CodexCwd = path
+	nextState.CodexThreadID = ""
+	nextState.AwaitingCwdSetup = false
+	nextState.ManagedImport = false
+	nextState.Title = codexTitleForPath(path)
+	nextState.Slug = strings.ToLower(strings.ReplaceAll(nextState.Title, " ", "-"))
+	if err := cc.ensureCodexThread(ctx, portal, &nextState); err != nil {
+		return nil, sdk.MessageSendStatusError(err, "Failed to start Codex thread.", "", messageStatusForError, messageStatusReasonForError)
 	}
-	if err := cc.setRoomName(ctx, portal, meta.Title); err != nil {
-		return nil, messageSendStatusError(err, "Failed to rename Codex room.", "")
-	}
-	if err := cc.ensureRPC(cc.backgroundContext(ctx)); err != nil {
-		return nil, messageSendStatusError(err, "Codex isn't available. Sign in again.", "")
-	}
-	if err := cc.ensureCodexThread(ctx, portal, meta); err != nil {
-		return nil, messageSendStatusError(err, "Failed to start Codex thread.", "")
-	}
-	cc.syncCodexRoomTopic(ctx, portal, meta)
+	*state = nextState
 	cc.sendSystemNotice(ctx, portal, fmt.Sprintf("Started a new Codex session in %s", path))
 	go func() {
-		if _, err := cc.createWelcomeCodexChat(cc.backgroundContext(ctx)); err != nil {
+		if _, err := cc.createWelcomeCodexChat(cc.backgroundContext(ctx), true); err != nil {
 			cc.log.Warn().Err(err).Msg("Failed to create follow-up welcome Codex chat")
 		}
 	}()

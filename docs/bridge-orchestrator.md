@@ -1,4 +1,4 @@
-# AgentRemote CLI
+# AgentRemote Manager
 
 `./tools/bridges` is the local entrypoint for `agentremote`.
 
@@ -24,14 +24,10 @@ Profiles default to `default`.
 
 - `./tools/bridges list`
 - `./tools/bridges run <bridge>`
-- `./tools/bridges up <bridge>`
 - `./tools/bridges start <bridge>`
 - `./tools/bridges stop <instance>`
-- `./tools/bridges down <instance>`
 - `./tools/bridges restart <bridge>`
 - `./tools/bridges delete [instance]`
-
-`up` is an alias of `start`. `down` is an alias of `stop`.
 
 ## Inspection
 
@@ -50,7 +46,7 @@ Profiles default to `default`.
 
 ```bash
 ./tools/bridges login --env prod
-./tools/bridges up codex --wait
+./tools/bridges start codex --wait
 ./tools/bridges status codex
 ./tools/bridges logs codex --follow
 ```

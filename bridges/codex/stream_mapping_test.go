@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func newHookableStreamingState(turnID string) *streamingState {
@@ -23,7 +23,7 @@ func attachTestTurn(state *streamingState, portal *bridgev2.Portal) {
 	if state == nil {
 		return
 	}
-	conv := bridgesdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &bridgesdk.Config[*CodexClient, *struct{}]{}, nil)
+	conv := sdk.NewConversation(context.Background(), nil, portal, bridgev2.EventSender{}, &sdk.Config[*CodexClient, *struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(state.turnID)
 	state.turn = turn
@@ -184,11 +184,11 @@ func TestCodex_Mapping_ModelRerouted_UpdatesCurrentModel(t *testing.T) {
 	threadID := "thr_1"
 	turnID := "turn_1_server"
 	cc.activeTurns[codexTurnKey(threadID, turnID)] = &codexActiveTurn{
-		portal:   portal,
-		state:    state,
-		threadID: threadID,
-		turnID:   turnID,
-		model:    state.currentModel,
+		portal:      portal,
+		streamState: state,
+		threadID:    threadID,
+		turnID:      turnID,
+		model:       state.currentModel,
 	}
 
 	raw, _ := json.Marshal(map[string]any{

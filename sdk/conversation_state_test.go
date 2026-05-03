@@ -1,41 +1,44 @@
 package sdk
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-type testConversationCarrier struct {
-	SDK *SDKPortalMetadata
+	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/id"
+)
+
+func setupConversationStateTestPortal(t *testing.T, receiver networkid.UserLoginID, portalID networkid.PortalID) *bridgev2.Portal {
+	t.Helper()
+	bridgeDB := newTestBridgeDB(t)
+	if _, err := bridgeDB.Database.Exec(context.Background(), `
+		CREATE TABLE sdk_conversation_state (
+			bridge_id TEXT NOT NULL,
+			login_id TEXT NOT NULL,
+			portal_id TEXT NOT NULL,
+			state_json TEXT NOT NULL DEFAULT '',
+			updated_at_ms INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (bridge_id, login_id, portal_id)
+		)
+	`); err != nil {
+		t.Fatalf("create sdk conversation state table: %v", err)
+	}
+	return &bridgev2.Portal{
+		Portal: &database.Portal{
+			PortalKey: networkid.PortalKey{
+				ID:       portalID,
+				Receiver: receiver,
+			},
+			MXID: id.RoomID("!room:test"),
+		},
+		Bridge: &bridgev2.Bridge{DB: bridgeDB},
+	}
 }
 
-func (c *testConversationCarrier) GetSDKPortalMetadata() *SDKPortalMetadata {
-	if c == nil {
-		return nil
-	}
-	return c.SDK
-}
-
-func (c *testConversationCarrier) SetSDKPortalMetadata(meta *SDKPortalMetadata) {
-	if c == nil {
-		return
-	}
-	c.SDK = meta
-}
-
-func TestNormalizeConversationSpecDelegatedDefaults(t *testing.T) {
-	spec := normalizeConversationSpec(ConversationSpec{
-		Kind:     ConversationKindDelegated,
-		PortalID: "child-1",
-	})
-	if spec.Visibility != ConversationVisibilityHidden {
-		t.Fatalf("expected delegated visibility to default hidden, got %q", spec.Visibility)
-	}
-	if !spec.ArchiveOnCompletion {
-		t.Fatalf("expected delegated conversations to default archive-on-completion")
-	}
-}
-
-func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
-	meta := map[string]any{}
-	holder := any(&meta)
+func TestConversationStateSaveAndLoadUsesBridgeDB(t *testing.T) {
+	portal := setupConversationStateTestPortal(t, "login-a", "room-a")
 	state := &sdkConversationState{
 		Kind:                 ConversationKindDelegated,
 		Visibility:           ConversationVisibilityHidden,
@@ -47,12 +50,21 @@ func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
 			AgentIDs: []string{"agent-a", "agent-a", "agent-b"},
 		},
 	}
-	if ok := saveConversationStateToGenericMetadata(&holder, state); !ok {
-		t.Fatalf("expected generic metadata save to succeed")
+
+	store := newConversationStateStore()
+	if err := saveConversationState(context.Background(), portal, store, state); err != nil {
+		t.Fatalf("saveConversationState failed: %v", err)
 	}
-	loaded, ok := loadConversationStateFromGenericMetadata(holder)
-	if !ok || loaded == nil {
-		t.Fatalf("expected generic metadata load to succeed")
+	if portal.Metadata != nil {
+		t.Fatalf("expected portal metadata to remain untouched, got %#v", portal.Metadata)
+	}
+
+	loaded, err := loadConversationStateFromDB(context.Background(), portal)
+	if err != nil {
+		t.Fatalf("loadConversationStateFromDB failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("expected DB-backed state to load")
 	}
 	loaded.ensureDefaults()
 	if loaded.Kind != ConversationKindDelegated {
@@ -67,32 +79,33 @@ func TestConversationStateRoundTripGenericMetadata(t *testing.T) {
 	if len(loaded.RoomAgents.AgentIDs) != 2 {
 		t.Fatalf("expected deduped agent ids, got %v", loaded.RoomAgents.AgentIDs)
 	}
+	if loaded.RoomAgents.AgentIDs[0] != "agent-a" || loaded.RoomAgents.AgentIDs[1] != "agent-b" {
+		t.Fatalf("unexpected agent order after normalization: %v", loaded.RoomAgents.AgentIDs)
+	}
 }
 
-func TestConversationStateRoundTripCarrierMetadata(t *testing.T) {
-	carrier := &testConversationCarrier{}
-	holder := any(carrier)
+func TestConversationStateLoadFallsBackToDBWhenCacheMisses(t *testing.T) {
+	portal := setupConversationStateTestPortal(t, "login-b", "room-b")
 	state := &sdkConversationState{
 		Kind:                ConversationKindNormal,
 		ArchiveOnCompletion: true,
 		RoomAgents: RoomAgentSet{
-			AgentIDs: []string{"agent-a"},
+			AgentIDs: []string{"agent-c"},
 		},
 	}
-	// saveConversationStateToGenericMetadata intentionally returns false here
-	// because generic metadata doesn't support the carrier path.
-	if ok := saveConversationStateToGenericMetadata(&holder, state); ok {
-		t.Fatalf("expected generic metadata save to report unsupported carrier path")
+
+	if err := saveConversationState(context.Background(), portal, newConversationStateStore(), state); err != nil {
+		t.Fatalf("saveConversationState failed: %v", err)
 	}
-	carrier.SetSDKPortalMetadata(&SDKPortalMetadata{Conversation: *state})
-	loaded, ok := carrier.GetSDKPortalMetadata(), carrier.GetSDKPortalMetadata() != nil
-	if !ok || loaded == nil {
-		t.Fatalf("expected carrier metadata to be set")
+
+	loaded := loadConversationState(portal, newConversationStateStore())
+	if loaded == nil {
+		t.Fatal("expected loaded state")
 	}
-	if loaded.Conversation.ArchiveOnCompletion != state.ArchiveOnCompletion {
-		t.Fatalf("expected carrier archive flag to round-trip")
+	if !loaded.ArchiveOnCompletion {
+		t.Fatal("expected archive-on-completion to round-trip")
 	}
-	if len(loaded.Conversation.RoomAgents.AgentIDs) != 1 || loaded.Conversation.RoomAgents.AgentIDs[0] != "agent-a" {
-		t.Fatalf("unexpected carrier agent ids: %v", loaded.Conversation.RoomAgents.AgentIDs)
+	if len(loaded.RoomAgents.AgentIDs) != 1 || loaded.RoomAgents.AgentIDs[0] != "agent-c" {
+		t.Fatalf("unexpected agent ids: %v", loaded.RoomAgents.AgentIDs)
 	}
 }

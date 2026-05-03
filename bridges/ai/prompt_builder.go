@@ -11,6 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/beeper/agentremote/sdk"
 )
 
 type historyReplayMode string
@@ -58,34 +60,6 @@ func joinPromptFragments(parts ...string) string {
 	return strings.TrimSpace(strings.Join(filtered, "\n\n"))
 }
 
-func (oc *AIClient) fetchHistoryRowsWithExtra(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	extra int,
-) (*historyLoadResult, error) {
-	historyLimit := oc.historyLimit(ctx, portal, meta)
-	if historyLimit <= 0 {
-		return nil, nil
-	}
-	if extra > 0 {
-		historyLimit += extra
-	}
-	resetAt := int64(0)
-	if meta != nil {
-		resetAt = meta.SessionResetAt
-	}
-	history, err := oc.UserLogin.Bridge.DB.Message.GetLastNInPortal(ctx, portal.PortalKey, historyLimit)
-	if err != nil {
-		return nil, err
-	}
-	return &historyLoadResult{
-		rows:      history,
-		hasVision: oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision,
-		resetAt:   resetAt,
-	}, nil
-}
-
 func (oc *AIClient) replayHistoryMessages(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -96,21 +70,25 @@ func (oc *AIClient) replayHistoryMessages(
 	if opts.mode == historyReplayRegen {
 		extra = 2
 	}
-	hr, err := oc.fetchHistoryRowsWithExtra(ctx, portal, meta, extra)
+	historyLimit := oc.historyLimit(ctx, portal, meta)
+	if historyLimit <= 0 {
+		return nil, nil
+	}
+	if extra > 0 {
+		historyLimit += extra
+	}
+	history, err := oc.loadAIHistoryMessagesFromTurns(ctx, portal, historyLimit)
 	if err != nil {
 		return nil, err
 	}
-	if hr == nil {
-		return nil, nil
-	}
-
+	hasVision := oc.getModelCapabilitiesForMeta(ctx, meta).SupportsVision
 	type replayCandidate struct {
 		row  *database.Message
 		meta *MessageMetadata
 	}
 
-	candidates := make([]replayCandidate, 0, len(hr.rows))
-	for _, row := range hr.rows {
+	candidates := make([]replayCandidate, 0, len(history))
+	for _, row := range history {
 		if opts.excludeMessageID != "" && row.ID == opts.excludeMessageID {
 			continue
 		}
@@ -120,9 +98,6 @@ func (oc *AIClient) replayHistoryMessages(
 			continue
 		}
 		if !shouldIncludeInHistory(msgMeta) {
-			continue
-		}
-		if hr.resetAt > 0 && row.Timestamp.UnixMilli() < hr.resetAt {
 			continue
 		}
 		candidates = append(candidates, replayCandidate{row: row, meta: msgMeta})
@@ -146,6 +121,7 @@ func (oc *AIClient) replayHistoryMessages(
 	}
 
 	var messages []PromptMessage
+	chatIndex := 0
 	for i := len(candidates) - 1; i >= 0; i-- {
 		candidate := candidates[i]
 		if opts.mode == historyReplayRewrite && candidate.row.ID == opts.targetMessageID {
@@ -154,47 +130,49 @@ func (oc *AIClient) replayHistoryMessages(
 		if candidate.row.ID == skipUserID || candidate.row.ID == skipAssistantID {
 			continue
 		}
-		injectImages := hr.hasVision && i < maxHistoryImageMessages
-		messages = append(messages, oc.historyMessageBundle(ctx, candidate.meta, injectImages)...)
-	}
-	return messages, nil
-}
-
-func (oc *AIClient) buildCurrentTurnText(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userText string,
-	eventID id.EventID,
-	opts currentTurnTextOptions,
-) (PromptContext, string, error) {
-	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, userText, eventID)
-	if err != nil {
-		return PromptContext{}, "", err
-	}
-
-	prepend := slices.Clone(opts.prepend)
-	if portal != nil && portal.MXID != "" {
-		reactionFeedback := DrainReactionFeedback(portal.MXID)
-		if len(reactionFeedback) > 0 {
-			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
-				prepend = append(prepend, feedbackText)
+		injectImages := hasVision && chatIndex < maxHistoryImageMessages
+		turnData, ok := canonicalTurnData(candidate.meta)
+		if !ok {
+			continue
+		}
+		bundle := filterPromptMessagesForHistory(promptMessagesFromTurnData(turnData), injectImages)
+		if injectImages && len(bundle) > 0 && len(candidate.meta.GeneratedFiles) > 0 {
+			blocks := make([]PromptBlock, 0, 1+len(candidate.meta.GeneratedFiles))
+			var sb strings.Builder
+			sb.WriteString("[Previously generated image(s) for reference]")
+			for _, f := range candidate.meta.GeneratedFiles {
+				if !strings.HasPrefix(strings.TrimSpace(f.MimeType), "image/") || strings.TrimSpace(f.URL) == "" {
+					continue
+				}
+				fmt.Fprintf(&sb, "\n[media_url: %s]", f.URL)
+				b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, f.URL, nil, 25, f.MimeType)
+				if err != nil {
+					oc.log.Debug().Err(err).Str("url", f.URL).Msg("Failed to download history image, skipping")
+					continue
+				}
+				blocks = append(blocks, PromptBlock{
+					Type:     PromptBlockImage,
+					ImageB64: b64Data,
+					MimeType: actualMimeType,
+				})
+			}
+			if len(blocks) > 0 {
+				bundle = append(bundle, PromptMessage{
+					Role: PromptRoleUser,
+					Blocks: append([]PromptBlock{{
+						Type: PromptBlockText,
+						Text: sb.String(),
+					}}, blocks...),
+				})
 			}
 		}
-	}
-	if result.UntrustedPrefix != "" {
-		prepend = append(prepend, result.UntrustedPrefix)
-	}
-
-	appendParts := slices.Clone(opts.append)
-	if opts.includeLinkScope {
-		if linkContext := oc.buildLinkContext(ctx, userText, opts.rawEventContent); linkContext != "" {
-			appendParts = append(appendParts, linkContext)
+		if len(bundle) == 0 {
+			continue
 		}
+		messages = append(messages, bundle...)
+		chatIndex++
 	}
-
-	body := joinPromptFragments(append(append(prepend, result.ResolvedBody), appendParts...)...)
-	return result.PromptContext, body, nil
+	return messages, nil
 }
 
 func (oc *AIClient) buildPromptContextForTurn(
@@ -209,82 +187,88 @@ func (oc *AIClient) buildPromptContextForTurn(
 	leadingBlocks := slices.Clone(opts.leadingBlocks)
 
 	if opts.attachment != nil {
-		attachmentBlocks, attachmentAppend, err := oc.normalizeTurnAttachment(ctx, *opts.attachment)
-		if err != nil {
-			return PromptContext{}, err
+		switch opts.attachment.mediaType {
+		case pendingTypeImage:
+			b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, opts.attachment.mediaURL, opts.attachment.encryptedFile, 20, opts.attachment.mimeType)
+			if err != nil {
+				return PromptContext{}, fmt.Errorf("failed to download image: %w", err)
+			}
+			leadingBlocks = append(leadingBlocks, PromptBlock{
+				Type:     PromptBlockImage,
+				ImageB64: b64Data,
+				MimeType: actualMimeType,
+			})
+		case pendingTypePDF:
+			return PromptContext{}, fmt.Errorf("PDF attachments are not supported")
+		case pendingTypeAudio:
+			return PromptContext{}, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
+		case pendingTypeVideo:
+			return PromptContext{}, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
+		default:
+			return PromptContext{}, fmt.Errorf("unsupported media type: %s", opts.attachment.mediaType)
 		}
-		leadingBlocks = append(leadingBlocks, attachmentBlocks...)
-		appendFragments = append(appendFragments, attachmentAppend...)
 	}
 
 	textOpts := opts.currentTurnTextOptions
 	textOpts.append = appendFragments
-	base, text, err := oc.buildCurrentTurnText(ctx, portal, meta, userText, eventID, textOpts)
+
+	result, err := oc.prepareInboundPromptContext(ctx, portal, meta, userText, eventID)
 	if err != nil {
 		return PromptContext{}, err
 	}
+	prepend := slices.Clone(textOpts.prepend)
+	if result.UntrustedPrefix != "" {
+		prepend = append(prepend, result.UntrustedPrefix)
+	}
+	appendParts := slices.Clone(textOpts.append)
+	if textOpts.includeLinkScope {
+		if linkContext := oc.buildLinkContext(ctx, userText, textOpts.rawEventContent); linkContext != "" {
+			appendParts = append(appendParts, linkContext)
+		}
+	}
+	text := joinPromptFragments(append(append(prepend, result.ResolvedBody), appendParts...)...)
 
+	base := result.PromptContext
 	blocks := make([]PromptBlock, 0, len(leadingBlocks)+1)
 	blocks = append(blocks, leadingBlocks...)
 	if strings.TrimSpace(text) != "" {
 		blocks = append(blocks, PromptBlock{Type: PromptBlockText, Text: text})
 	}
-	base.Messages = append(base.Messages, PromptMessage{
-		Role:   PromptRoleUser,
-		Blocks: blocks,
-	})
+	if userMessage, currentTurnData, ok := buildUserPromptTurn(blocks); ok {
+		base.Messages = append(base.Messages, userMessage)
+		base.CurrentTurnData = currentTurnData
+	}
 	return base, nil
 }
 
-func (oc *AIClient) normalizeTurnAttachment(ctx context.Context, opts turnAttachmentOptions) ([]PromptBlock, []string, error) {
-	switch opts.mediaType {
-	case pendingTypeImage:
-		b64Data, actualMimeType, err := oc.downloadMediaBase64(ctx, opts.mediaURL, opts.encryptedFile, 20, opts.mimeType)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to download image: %w", err)
+func buildUserPromptTurn(blocks []PromptBlock) (PromptMessage, sdk.TurnData, bool) {
+	msg := PromptMessage{Role: PromptRoleUser}
+	td := sdk.TurnData{Role: "user"}
+	msg.Blocks = make([]PromptBlock, 0, len(blocks))
+	td.Parts = make([]sdk.TurnPart, 0, len(blocks))
+	for _, block := range blocks {
+		switch block.Type {
+		case PromptBlockText:
+			if strings.TrimSpace(block.Text) != "" {
+				msg.Blocks = append(msg.Blocks, PromptBlock{Type: PromptBlockText, Text: block.Text})
+				td.Parts = append(td.Parts, sdk.TurnPart{Type: "text", Text: block.Text})
+			}
+		case PromptBlockImage:
+			if strings.TrimSpace(block.ImageURL) == "" && strings.TrimSpace(block.ImageB64) == "" {
+				continue
+			}
+			msg.Blocks = append(msg.Blocks, PromptBlock{
+				Type:     PromptBlockImage,
+				ImageURL: block.ImageURL,
+				ImageB64: block.ImageB64,
+				MimeType: block.MimeType,
+			})
+			part := sdk.TurnPart{Type: "image", URL: block.ImageURL, MediaType: block.MimeType}
+			if strings.TrimSpace(block.ImageB64) != "" {
+				part.Extra = map[string]any{"imageB64": block.ImageB64}
+			}
+			td.Parts = append(td.Parts, part)
 		}
-		return []PromptBlock{{
-			Type:     PromptBlockImage,
-			ImageB64: b64Data,
-			MimeType: actualMimeType,
-		}}, nil, nil
-	case pendingTypePDF:
-		content, truncated, err := oc.downloadPDFFile(ctx, opts.mediaURL, opts.encryptedFile, opts.mimeType)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to download PDF: %w", err)
-		}
-		filename := resolveMediaFileName("document.pdf", "pdf", opts.mediaURL)
-		return nil, []string{buildTextFileMessage("", false, filename, "application/pdf", content, truncated)}, nil
-	case pendingTypeAudio:
-		return nil, nil, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
-	case pendingTypeVideo:
-		return nil, nil, fmt.Errorf("video attachments must be preprocessed into text before prompt assembly")
-	default:
-		return nil, nil, fmt.Errorf("unsupported media type: %s", opts.mediaType)
 	}
-}
-
-func (oc *AIClient) buildCurrentTurnWithLinks(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	userText string,
-	rawEventContent map[string]any,
-	eventID id.EventID,
-) (PromptContext, error) {
-	return oc.buildPromptContextForTurn(ctx, portal, meta, userText, eventID, currentTurnPromptOptions{
-		currentTurnTextOptions: currentTurnTextOptions{
-			rawEventContent:  rawEventContent,
-			includeLinkScope: true,
-		},
-	})
-}
-
-func (oc *AIClient) buildHeartbeatTurnContext(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	prompt string,
-) (PromptContext, error) {
-	return oc.buildPromptContextForTurn(ctx, portal, meta, prompt, "", currentTurnPromptOptions{})
+	return msg, td, len(td.Parts) > 0
 }

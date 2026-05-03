@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,101 +9,13 @@ import (
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
-
-// processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
-// and multi-image (IMAGES: prefix) tool results. Returns the display-friendly result string
-// and (possibly updated) result status.
-func (oc *AIClient) processToolMediaResult(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	argsJSON string,
-	result string,
-	resultStatus ResultStatus,
-	logSuffix string,
-) (string, ResultStatus) {
-	// TTS audio (AUDIO: prefix)
-	if audioB64, ok := strings.CutPrefix(result, TTSResultPrefix); ok {
-		audioData, err := base64.StdEncoding.DecodeString(audioB64)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode TTS audio" + logSuffix)
-			return "Error: failed to decode TTS audio", ResultStatusError
-		}
-		mimeType := detectAudioMime(audioData, "audio/mpeg")
-		if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turn.ID()); err != nil {
-			log.Warn().Err(err).Msg("Failed to send TTS audio" + logSuffix)
-			return "Error: failed to send TTS audio", ResultStatusError
-		} else {
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			return "Audio message sent successfully", resultStatus
-		}
-	}
-
-	// Extract image caption from tool args.
-	var imageCaption string
-	if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
-		imageCaption = prompt
-	}
-
-	// Multiple images (IMAGES: prefix)
-	if payload, ok := strings.CutPrefix(result, ImagesResultPrefix); ok {
-		var images []string
-		if err := json.Unmarshal([]byte(payload), &images); err != nil {
-			log.Warn().Err(err).Msg("Failed to parse generated images payload" + logSuffix)
-			return "Error: failed to parse generated images", ResultStatusError
-		}
-		success := 0
-		var sentURLs []string
-		for _, imageB64 := range images {
-			imageData, mimeType, err := decodeBase64Image(imageB64)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
-				continue
-			}
-			_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
-				continue
-			}
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			sentURLs = append(sentURLs, mediaURL)
-			success++
-		}
-		if success == len(images) && success > 0 {
-			return fmt.Sprintf("Images generated and sent to the user (%d). Media URLs: %s", success, strings.Join(sentURLs, ", ")), resultStatus
-		} else if success > 0 {
-			return fmt.Sprintf("Images generated with %d/%d sent successfully. Media URLs: %s", success, len(images), strings.Join(sentURLs, ", ")), ResultStatusError
-		}
-		return "Error: failed to send generated images", ResultStatusError
-	}
-
-	// Single image (IMAGE: prefix)
-	if imageB64, ok := strings.CutPrefix(result, ImageResultPrefix); ok {
-		imageData, mimeType, err := decodeBase64Image(imageB64)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
-			return "Error: failed to decode generated image", ResultStatusError
-		}
-		if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption); err != nil {
-			log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
-			return "Error: failed to send generated image", ResultStatusError
-		} else {
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			return fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL), resultStatus
-		}
-	}
-
-	return result, resultStatus
-}
 
 // ensureActiveToolCall returns the existing activeToolCall for itemID, or creates and
 // registers a new one with the given toolType. This is the shared constructor used by
-// both function-call and provider/MCP tool handlers.
+// function-call handlers.
 func (oc *AIClient) ensureActiveToolCall(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -113,7 +24,7 @@ func (oc *AIClient) ensureActiveToolCall(
 	activeTools *streamToolRegistry,
 	key string,
 	name string,
-	toolType ToolType,
+	toolType matrixevents.ToolType,
 	initialInput string,
 ) *activeToolCall {
 	tool, created := activeTools.Upsert(key, func(canonicalKey string) *activeToolCall {
@@ -151,14 +62,14 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	name string,
 	delta string,
 ) {
-	lifecycle := oc.toolLifecycle(portal, state)
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, "")
+	lifecycle := newToolLifecycle(state)
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, "")
 	if tool == nil {
 		return
 	}
 	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
-	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == ToolTypeProvider)
+	lifecycle.appendInputDelta(ctx, tool, name, delta, tool.toolType == matrixevents.ToolTypeProvider)
 }
 
 func (oc *AIClient) handleFunctionCallArgumentsDone(
@@ -171,16 +82,16 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	itemID string,
 	name string,
 	arguments string,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 	logSuffix string,
 ) {
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, ToolTypeFunction, arguments)
+	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, arguments)
 	if tool == nil {
 		return
 	}
 	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
-	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, approvalFallbackForNonObject, logSuffix)
+	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, checkApprovalWithoutObject, logSuffix)
 	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)
 
 	// Store result for API continuation.
@@ -213,10 +124,10 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	tool *activeToolCall,
 	fallbackName string,
 	fallbackArguments string,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 	logSuffix string,
 ) streamingBuiltinToolExecution {
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	toolName := strings.TrimSpace(tool.toolName)
 	if toolName == "" {
 		toolName = strings.TrimSpace(fallbackName)
@@ -231,9 +142,9 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	var inputMap any
 	if err := json.Unmarshal([]byte(argsJSON), &inputMap); err != nil {
 		inputMap = argsJSON
-		state.writer().Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == ToolTypeProvider)
+		state.writer().Tools().InputError(ctx, tool.callID, toolName, argsJSON, "Invalid JSON tool input", tool.toolType == matrixevents.ToolTypeProvider)
 	}
-	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == ToolTypeProvider)
+	lifecycle.emitInput(ctx, tool, toolName, inputMap, tool.toolType == matrixevents.ToolTypeProvider)
 
 	resultStatus := ResultStatusSuccess
 	result := ""
@@ -246,12 +157,12 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				resultStatus = ResultStatusDenied
 				result = "Denied by user"
 			}
-		} else if approvalFallbackForNonObject && oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
+		} else if checkApprovalWithoutObject && oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
 			resultStatus = ResultStatusDenied
 			result = "Denied by user"
 		}
 		if resultStatus != ResultStatusDenied {
-			touchAgentLoopActivity(ctx)
+			touchStreamingActivity(ctx)
 			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 				Client:        oc,
 				Portal:        portal,
@@ -266,18 +177,17 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				result = fmt.Sprintf("Error: %s", err)
 				resultStatus = ResultStatusError
 			}
-			touchAgentLoopActivity(ctx)
+			touchStreamingActivity(ctx)
 		}
 	}
 
-	result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, logSuffix)
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
 	}
 	lifecycle.completeResult(
 		ctx,
 		tool,
-		tool.toolType == ToolTypeProvider,
+		tool.toolType == matrixevents.ToolTypeProvider,
 		resultStatus,
 		result,
 		result,

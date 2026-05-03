@@ -3,7 +3,6 @@ package ai
 import (
 	"strings"
 
-	"github.com/beeper/agentremote"
 	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
 )
@@ -15,42 +14,27 @@ func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {
 	return sdk.DecodeTurnData(meta.CanonicalTurnData)
 }
 
-func turnDataFromStreamingState(state *streamingState, uiMessage map[string]any) sdk.TurnData {
-	turnID := ""
-	networkMessageID := ""
-	initialEventID := ""
-	if state != nil && state.turn != nil {
-		turnID = state.turn.ID()
-		networkMessageID = string(state.turn.NetworkMessageID())
-		initialEventID = state.turn.InitialEventID().String()
-	}
-	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
-		ID:        turnID,
-		Role:      "assistant",
-		Metadata:  buildAssistantTurnMetadata(state, turnID, networkMessageID, initialEventID),
-		Text:      displayStreamingText(state),
-		Reasoning: state.reasoning.String(),
-		ToolCalls: state.toolCalls,
-	})
-}
-
 func buildCanonicalTurnData(
 	state *streamingState,
-	meta *PortalMetadata,
 	linkPreviews []map[string]any,
 ) sdk.TurnData {
 	if state == nil {
 		return sdk.TurnData{}
 	}
-	uiMessage := streamui.SnapshotUIMessage(currentStreamingUIState(state))
-	td := turnDataFromStreamingState(state, uiMessage)
+	uiMessage := map[string]any(nil)
+	if state.turn != nil {
+		uiMessage = streamui.SnapshotUIMessage(state.turn.UIState())
+	}
 	artifactParts := buildSourceParts(state.sourceCitations, state.sourceDocuments, nil)
 	artifactParts = append(artifactParts, linkPreviews...)
-	return sdk.BuildTurnDataFromUIMessage(sdk.UIMessageFromTurnData(td), sdk.TurnDataBuildOptions{
-		ID:             td.ID,
-		Role:           td.Role,
-		Metadata:       buildTurnDataMetadata(state, meta),
-		GeneratedFiles: agentremote.GeneratedFileRefsFromParts(state.generatedFiles),
+	return sdk.BuildTurnDataFromUIMessage(uiMessage, sdk.TurnDataBuildOptions{
+		ID:             currentStreamingTurnID(state),
+		Role:           "assistant",
+		Metadata:       currentStreamingTurnMetadata(state),
+		Text:           displayStreamingText(state),
+		Reasoning:      state.reasoning.String(),
+		ToolCalls:      state.toolCalls,
+		GeneratedFiles: sdk.GeneratedFileRefsFromParts(state.generatedFiles),
 		ArtifactParts:  artifactParts,
 	})
 }
@@ -88,13 +72,22 @@ func canonicalResponseStatus(state *streamingState) string {
 	}
 }
 
-func buildTurnDataMetadata(state *streamingState, _ *PortalMetadata) map[string]any {
+func currentStreamingTurnID(state *streamingState) string {
+	if state == nil || state.turn == nil {
+		return ""
+	}
+	return state.turn.ID()
+}
+
+func currentStreamingTurnMetadata(state *streamingState) map[string]any {
 	if state == nil {
 		return nil
 	}
-	turnID := ""
+	networkMessageID := ""
+	initialEventID := ""
 	if state.turn != nil {
-		turnID = state.turn.ID()
+		networkMessageID = string(state.turn.NetworkMessageID())
+		initialEventID = state.turn.InitialEventID().String()
 	}
-	return buildAssistantTurnMetadata(state, turnID, "", "")
+	return buildAssistantTurnMetadata(state, currentStreamingTurnID(state), networkMessageID, initialEventID)
 }

@@ -11,10 +11,13 @@ func (oc *AIClient) startQueueTyping(ctx context.Context, portal *bridgev2.Porta
 	if oc == nil || portal == nil || portal.MXID == "" {
 		return
 	}
+	if portal.Bridge == nil {
+		return
+	}
 	if typingCtx == nil {
 		typingCtx = &TypingContext{IsGroup: oc.isGroupChat(ctx, portal)}
 	}
-	mode := oc.resolveTypingMode(meta, typingCtx, false)
+	mode := oc.resolveTypingMode(meta, typingCtx)
 	if mode != TypingModeInstant {
 		return
 	}

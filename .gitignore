@@ -22,5 +22,6 @@ logs/
 .cache
 .gocache
 .conductor
+.codex-tmp
 .tmp-go/
 .claude/worktrees/

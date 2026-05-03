@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,7 +104,7 @@ func resolveMediaEntries(cfg *MediaToolsConfig, capCfg *MediaUnderstandingConfig
 			if provider == "" {
 				continue
 			}
-			if caps, ok := mediaProviderCapabilities[provider]; ok && slices.Contains(caps, capability) {
+			if providerSupportsCapability(provider, capability) {
 				filtered = append(filtered, entry)
 			}
 			continue

@@ -1,0 +1,102 @@
+package retrieval
+
+import (
+	"github.com/beeper/agentremote/pkg/shared/exa"
+)
+
+const (
+	ProviderExa        = "exa"
+	ProviderDirect     = "direct"
+	DefaultSearchCount = 5
+	MaxSearchCount     = 10
+	DefaultTimeoutSecs = 30
+	DefaultMaxChars    = 50_000
+)
+
+// SearchConfig controls search provider selection and credentials.
+type SearchConfig struct {
+	Provider string    `yaml:"provider"`
+	Exa      ExaConfig `yaml:"exa"`
+}
+
+// FetchConfig controls fetch provider selection and credentials.
+type FetchConfig struct {
+	Provider string       `yaml:"provider"`
+	Exa      ExaConfig    `yaml:"exa"`
+	Direct   DirectConfig `yaml:"direct"`
+}
+
+// ExaConfig configures the Exa provider for both search and fetch.
+type ExaConfig struct {
+	Enabled           *bool  `yaml:"enabled"`
+	BaseURL           string `yaml:"base_url"`
+	APIKey            string `yaml:"api_key"`
+	Type              string `yaml:"type"`
+	Category          string `yaml:"category"`
+	NumResults        int    `yaml:"num_results"`
+	IncludeText       bool   `yaml:"include_text"`
+	TextMaxCharacters int    `yaml:"text_max_chars"`
+	Highlights        bool   `yaml:"highlights"`
+}
+
+// DirectConfig configures the direct fetch provider.
+type DirectConfig struct {
+	Enabled      *bool  `yaml:"enabled"`
+	TimeoutSecs  int    `yaml:"timeout_seconds"`
+	UserAgent    string `yaml:"user_agent"`
+	Readability  bool   `yaml:"readability"`
+	MaxChars     int    `yaml:"max_chars"`
+	MaxRedirects int    `yaml:"max_redirects"`
+	CacheTtlSecs int    `yaml:"cache_ttl_seconds"`
+}
+
+func (c *SearchConfig) WithDefaults() *SearchConfig {
+	if c == nil {
+		c = &SearchConfig{}
+	}
+	if c.Provider == "" {
+		c.Provider = ProviderExa
+	}
+	if c.Exa.BaseURL == "" {
+		c.Exa.BaseURL = exa.DefaultBaseURL
+	}
+	if c.Exa.TextMaxCharacters <= 0 {
+		c.Exa.TextMaxCharacters = 500
+	}
+	if c.Exa.Type == "" {
+		c.Exa.Type = "auto"
+	}
+	if c.Exa.NumResults <= 0 {
+		c.Exa.NumResults = DefaultSearchCount
+	}
+	c.Exa.Highlights = true
+	return c
+}
+
+func (c *FetchConfig) WithDefaults() *FetchConfig {
+	if c == nil {
+		c = &FetchConfig{}
+	}
+	if c.Provider == "" {
+		c.Provider = ProviderExa
+	}
+	if c.Exa.BaseURL == "" {
+		c.Exa.BaseURL = exa.DefaultBaseURL
+	}
+	if c.Exa.TextMaxCharacters <= 0 {
+		c.Exa.TextMaxCharacters = 5_000
+	}
+	if c.Direct.TimeoutSecs <= 0 {
+		c.Direct.TimeoutSecs = DefaultTimeoutSecs
+	}
+	if c.Direct.UserAgent == "" {
+		c.Direct.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+	}
+	if c.Direct.MaxChars <= 0 {
+		c.Direct.MaxChars = DefaultMaxChars
+	}
+	if c.Direct.MaxRedirects <= 0 {
+		c.Direct.MaxRedirects = 3
+	}
+	return c
+}

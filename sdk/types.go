@@ -10,8 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote"
 )
 
 // MessageType identifies the kind of message.
@@ -37,49 +35,13 @@ type Message struct {
 	ReplyTo   string // event ID being replied to
 	Timestamp time.Time
 	Metadata  map[string]any
-
-	// Escape hatches for power users.
-	RawEvent *event.Event
-	RawMsg   *bridgev2.MatrixMessage
-}
-
-// MessageEdit represents an edit to a previously sent message.
-type MessageEdit struct {
-	OriginalID string
-	NewText    string
-	NewHTML    string
-	RawEdit    *bridgev2.MatrixEdit
-}
-
-// Reaction represents a user reaction on a message.
-type Reaction struct {
-	MessageID string
-	Emoji     string
-	Sender    string
-	RawMsg    *bridgev2.MatrixReaction
 }
 
 // LoginInfo contains information about a bridge login.
 type LoginInfo struct {
 	UserID   string
 	Domain   string
-	Login    *bridgev2.UserLogin // escape hatch
-	Metadata map[string]any
-}
-
-// UserInfo describes a user/agent/model for search results.
-type UserInfo struct {
-	ID       string
-	Name     string
-	Avatar   string
-	Metadata map[string]any
-}
-
-// ChatInfo describes a chat/portal.
-type ChatInfo struct {
-	ID       string
-	Name     string
-	Topic    string
+	Login    *bridgev2.UserLogin
 	Metadata map[string]any
 }
 
@@ -103,7 +65,7 @@ type ApprovalRequest struct {
 	ToolCallID   string
 	ToolName     string
 	TTL          time.Duration
-	Presentation *agentremote.ApprovalPromptPresentation
+	Presentation *ApprovalPromptPresentation
 	Metadata     map[string]any
 }
 
@@ -136,8 +98,7 @@ type RoomFeatures struct {
 	SupportsTyping       bool
 	SupportsReadReceipts bool
 	SupportsDeleteChat   bool
-	CustomCapabilityID   string              // for dynamic capability IDs
-	Custom               *event.RoomFeatures // escape hatch: override everything
+	CustomCapabilityID   string // for dynamic capability IDs
 }
 
 // RoomAgentSet tracks the agents available in a conversation.
@@ -200,14 +161,6 @@ func UserMessageSource(eventID string) *SourceRef {
 	return &SourceRef{Kind: SourceKindUserMessage, EventID: eventID}
 }
 
-// ModelInfo describes an AI model.
-type ModelInfo struct {
-	ID           string
-	Name         string
-	Provider     string
-	Capabilities []string
-}
-
 // ProviderIdentity controls provider-specific IDs and status naming used by the SDK runtime.
 type ProviderIdentity struct {
 	IDPrefix      string
@@ -235,15 +188,9 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	// msg is the incoming message; turn is the pre-created Turn for streaming responses.
 	OnMessage func(session SessionT, conv *Conversation, msg *Message, turn *Turn) error
 
-	// Event hooks (optional)
+	// Session hooks (optional)
 	OnConnect    func(ctx context.Context, login *LoginInfo) (SessionT, error) // returns session state
 	OnDisconnect func(session SessionT)
-	OnReaction   func(session SessionT, conv *Conversation, reaction *Reaction) error
-	OnTyping     func(session SessionT, conv *Conversation, typing bool)
-	OnEdit       func(session SessionT, conv *Conversation, edit *MessageEdit) error
-	OnDelete     func(session SessionT, conv *Conversation, msgID string) error
-	OnRoomName   func(session SessionT, conv *Conversation, name string) (bool, error)
-	OnRoomTopic  func(session SessionT, conv *Conversation, topic string) (bool, error)
 
 	// Turn management (optional)
 	TurnManagement *TurnConfig
@@ -268,9 +215,9 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	RoomFeatures *RoomFeatures // nil = AI agent defaults
 
 	// Login — use bridgev2 types directly.
-	LoginFlows    []bridgev2.LoginFlow // nil = single auto-login
+	LoginFlows    []bridgev2.LoginFlow
 	GetLoginFlows func() []bridgev2.LoginFlow
-	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error) // nil = auto-login
+	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error)
 	AcceptLogin   func(login *bridgev2.UserLogin) (bool, string)
 
 	// Connector lifecycle and overrides.
@@ -281,7 +228,7 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	NetworkCapabilities func() *bridgev2.NetworkGeneralCapabilities
 	BridgeInfoVersion   func() (info, capabilities int)
 	FillBridgeInfo      func(portal *bridgev2.Portal, content *event.BridgeEventContent)
-	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *agentremote.BrokenLoginClient
+	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient
 	LoadLogin           func(ctx context.Context, login *bridgev2.UserLogin) error
 	CreateClient        func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
 	UpdateClient        func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)
@@ -294,12 +241,12 @@ type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
 	FetchMessages func(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) // nil = no backfill
 
 	// Advanced
-	ProtocolID     string                    // default: "sdk-<Name>"
-	Port           int                       // default: 29400
-	DBName         string                    // default: "<Name>.db"
-	ConfigPath     string                    // default: auto-discover
-	DBMeta         func() database.MetaTypes // nil = default
-	ExampleConfig  string                    // YAML
-	ConfigData     ConfigDataT               // config struct pointer
+	ProtocolID     string // default: "sdk-<Name>"
+	Port           int    // default: 29400
+	DBName         string // default: "<Name>.db"
+	ConfigPath     string // default: auto-discover
+	DBMeta         func() database.MetaTypes
+	ExampleConfig  string      // YAML
+	ConfigData     ConfigDataT // config struct pointer
 	ConfigUpgrader configupgrade.Upgrader
 }

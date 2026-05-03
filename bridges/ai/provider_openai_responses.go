@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -54,96 +53,6 @@ func (o *OpenAIProvider) buildResponsesParams(params GenerateParams) responses.R
 	}
 	responsesParams.Tools = dedupeToolParams(responsesParams.Tools)
 	return responsesParams
-}
-
-// GenerateStream generates a streaming response from OpenAI using the Responses API.
-func (o *OpenAIProvider) GenerateStream(ctx context.Context, params GenerateParams) (<-chan StreamEvent, error) {
-	if hasUnsupportedResponsesPromptContext(params.Context) {
-		return nil, fmt.Errorf("responses API does not support prompt context block types required by this request")
-	}
-
-	events := make(chan StreamEvent, 100)
-
-	go func() {
-		defer close(events)
-
-		responsesParams := o.buildResponsesParams(params)
-		stream := o.client.Responses.NewStreaming(ctx, responsesParams)
-		if stream == nil {
-			events <- StreamEvent{
-				Type:  StreamEventError,
-				Error: errors.New("failed to create streaming request"),
-			}
-			return
-		}
-
-		var responseID string
-		for stream.Next() {
-			streamEvent := stream.Current()
-
-			switch streamEvent.Type {
-			case "response.output_text.delta":
-				events <- StreamEvent{
-					Type:  StreamEventDelta,
-					Delta: streamEvent.Delta,
-				}
-			case "response.reasoning_text.delta":
-				events <- StreamEvent{
-					Type:           StreamEventReasoning,
-					ReasoningDelta: streamEvent.Delta,
-				}
-			case "response.function_call_arguments.done":
-				events <- StreamEvent{
-					Type: StreamEventToolCall,
-					ToolCall: &ToolCallResult{
-						ID:        streamEvent.ItemID,
-						Name:      streamEvent.Name,
-						Arguments: streamEvent.Arguments,
-					},
-				}
-			case "response.completed":
-				responseID = streamEvent.Response.ID
-				finishReason := "stop"
-				if streamEvent.Response.Status != "completed" {
-					finishReason = string(streamEvent.Response.Status)
-				}
-
-				var usage *UsageInfo
-				if streamEvent.Response.Usage.InputTokens > 0 || streamEvent.Response.Usage.OutputTokens > 0 {
-					usage = &UsageInfo{
-						PromptTokens:     int(streamEvent.Response.Usage.InputTokens),
-						CompletionTokens: int(streamEvent.Response.Usage.OutputTokens),
-						TotalTokens:      int(streamEvent.Response.Usage.TotalTokens),
-					}
-					if streamEvent.Response.Usage.OutputTokensDetails.ReasoningTokens > 0 {
-						usage.ReasoningTokens = int(streamEvent.Response.Usage.OutputTokensDetails.ReasoningTokens)
-					}
-				}
-
-				events <- StreamEvent{
-					Type:         StreamEventComplete,
-					FinishReason: finishReason,
-					ResponseID:   responseID,
-					Usage:        usage,
-				}
-			case "error":
-				events <- StreamEvent{
-					Type:  StreamEventError,
-					Error: fmt.Errorf("API error: %s", streamEvent.Message),
-				}
-				return
-			}
-		}
-
-		if err := stream.Err(); err != nil {
-			events <- StreamEvent{
-				Type:  StreamEventError,
-				Error: err,
-			}
-		}
-	}()
-
-	return events, nil
 }
 
 // Generate performs a non-streaming generation using the Responses API.

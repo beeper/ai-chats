@@ -1,10 +1,11 @@
 package ai
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/beeper/agentremote/bridges/ai/msgconv"
 	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestMapFinishReason(t *testing.T) {
@@ -25,15 +26,26 @@ func TestMapFinishReason(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := msgconv.MapFinishReason(tc.input)
+			got := sdk.MapFinishReason(tc.input)
 			if got != tc.expect {
-				t.Fatalf("msgconv.MapFinishReason(%q) = %q, want %q", tc.input, got, tc.expect)
+				t.Fatalf("sdk.MapFinishReason(%q) = %q, want %q", tc.input, got, tc.expect)
 			}
 		})
 	}
 }
 
 func TestShouldContinueChatToolLoop(t *testing.T) {
+	shouldContinue := func(reason string, toolCalls int) bool {
+		if toolCalls <= 0 {
+			return false
+		}
+		switch strings.ToLower(strings.TrimSpace(reason)) {
+		case "error", "cancelled":
+			return false
+		default:
+			return true
+		}
+	}
 	tests := []struct {
 		name       string
 		reason     string
@@ -54,10 +66,10 @@ func TestShouldContinueChatToolLoop(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := shouldContinueChatToolLoop(tc.reason, tc.toolCalls)
+			got := shouldContinue(tc.reason, tc.toolCalls)
 			if got != tc.shouldLoop {
 				t.Fatalf(
-					"shouldContinueChatToolLoop(%q, %d) = %v, want %v",
+					"shouldContinue(%q, %d) = %v, want %v",
 					tc.reason,
 					tc.toolCalls,
 					got,

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/fetch"
-	"github.com/beeper/agentremote/pkg/search"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/agentremote/pkg/retrieval"
 	"github.com/beeper/agentremote/pkg/shared/websearch"
 )
 
@@ -20,11 +18,11 @@ func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (st
 	}
 
 	btc := GetBridgeToolContext(ctx)
-	var cfg *search.Config
-	if btc != nil && btc.Client != nil {
-		cfg = btc.Client.effectiveSearchConfig(ctx)
+	var cfg *retrieval.SearchConfig
+	if btc != nil && btc.Client != nil && btc.Client.connector != nil && btc.Client.connector.Config.Tools.Web != nil {
+		cfg = mapSearchConfig(btc.Client.connector.Config.Tools.Web.Search)
 	}
-	resp, err := search.Search(ctx, req, cfg)
+	resp, err := retrieval.Search(ctx, req, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -46,6 +44,9 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 	if urlStr == "" {
 		return "", errors.New("missing or invalid 'url' argument")
 	}
+	if gravatarURL, ok := gravatarProfileURLFromInput(urlStr); ok {
+		urlStr = gravatarURL
+	}
 
 	extractMode := "markdown"
 	if mode, ok := args["extractMode"].(string); ok && strings.EqualFold(strings.TrimSpace(mode), "text") {
@@ -57,18 +58,18 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 		maxChars = int(mc)
 	}
 
-	req := fetch.Request{
+	req := retrieval.FetchRequest{
 		URL:         urlStr,
 		ExtractMode: extractMode,
 		MaxChars:    maxChars,
 	}
 
 	btc := GetBridgeToolContext(ctx)
-	var cfg *fetch.Config
-	if btc != nil && btc.Client != nil {
-		cfg = btc.Client.effectiveFetchConfig(ctx)
+	var cfg *retrieval.FetchConfig
+	if btc != nil && btc.Client != nil && btc.Client.connector != nil && btc.Client.connector.Config.Tools.Web != nil {
+		cfg = mapFetchConfig(btc.Client.connector.Config.Tools.Web.Fetch)
 	}
-	resp, err := fetch.Fetch(ctx, req, cfg)
+	resp, err := retrieval.Fetch(ctx, req, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -103,158 +104,25 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 	return string(raw), nil
 }
 
-func applyLoginTokensToSearchConfig(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *search.Config {
-	if cfg == nil {
-		cfg = &search.Config{}
+func gravatarProfileURLFromInput(input string) (string, bool) {
+	input = strings.TrimSpace(input)
+	if input == "" || strings.Contains(input, "://") || !strings.Contains(input, "@") {
+		return "", false
 	}
-	if meta == nil || connector == nil {
-		return cfg
+	email, err := normalizeGravatarEmail(input)
+	if err != nil {
+		return "", false
 	}
-
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-	if shouldApplyExaProxyDefaults(meta) {
-		applyExaProxyDefaults(cfg, meta, connector)
-	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, meta) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, search.ProviderExa)
-	}
-
-	return cfg
+	return fmt.Sprintf("%s/profiles/%s", gravatarAPIBaseURL, gravatarHash(email)), true
 }
 
-func applyLoginTokensToFetchConfig(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) *fetch.Config {
-	if cfg == nil {
-		cfg = &fetch.Config{}
-	}
-	if meta == nil || connector == nil {
-		return cfg
-	}
-
-	applyResolvedExaConfig(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-	if shouldApplyExaProxyDefaults(meta) {
-		applyFetchExaProxyDefaults(cfg, meta, connector)
-	}
-	if shouldForceExaProvider(cfg.Exa.APIKey, cfg.Exa.BaseURL, meta) {
-		applyProviderOverride(&cfg.Provider, &cfg.Fallbacks, fetch.ProviderExa)
-	}
-
-	return cfg
-}
-
-func applyResolvedExaConfig(baseURL *string, apiKey *string, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if meta == nil || connector == nil {
-		return
-	}
-	services := connector.resolveServiceConfig(meta)
-	if apiKey != nil && *apiKey == "" {
-		*apiKey = services[serviceExa].APIKey
-	}
-	if baseURL != nil && *baseURL == "" {
-		*baseURL = services[serviceExa].BaseURL
-	}
-}
-
-func shouldApplyExaProxyDefaults(meta *UserLoginMetadata) bool {
-	if meta == nil {
-		return false
-	}
-	return meta.Provider == ProviderMagicProxy
-}
-
-func shouldForceExaProvider(apiKey, baseURL string, meta *UserLoginMetadata) bool {
-	if isMagicProxyLogin(meta) {
-		return true
-	}
-	return hasExaTokenAndCustomEndpoint(apiKey, baseURL)
-}
-
-func isMagicProxyLogin(meta *UserLoginMetadata) bool {
-	return meta != nil && meta.Provider == ProviderMagicProxy
-}
-
-func hasExaTokenAndCustomEndpoint(apiKey, baseURL string) bool {
-	if strings.TrimSpace(apiKey) == "" {
-		return false
-	}
-	return isCustomExaEndpoint(baseURL)
-}
-
-func isCustomExaEndpoint(baseURL string) bool {
-	trimmed := stringutil.NormalizeBaseURL(baseURL)
-	if trimmed == "" {
-		return false
-	}
-	return !strings.EqualFold(trimmed, "https://api.exa.ai")
-}
-
-func applyProviderOverride(provider *string, fallbacks *[]string, providerName string) {
-	if provider != nil {
-		*provider = providerName
-	}
-	if fallbacks != nil {
-		*fallbacks = []string{providerName}
-	}
-}
-
-func applyExaProxyDefaultsTo(baseURL *string, apiKey *string, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if connector == nil {
-		return
-	}
-	proxyRoot := connector.resolveProxyRoot(meta)
-	if proxyRoot == "" {
-		return
-	}
-	if isRelativePath(*baseURL) {
-		*baseURL = joinProxyPath(proxyRoot, *baseURL)
-	} else if shouldUseExaProxyBase(*baseURL) {
-		if proxyBase := connector.resolveExaProxyBaseURL(meta); proxyBase != "" {
-			*baseURL = proxyBase
-		}
-	}
-	if *apiKey == "" {
-		if meta != nil && meta.Provider == ProviderMagicProxy {
-			if token := loginCredentialAPIKey(meta); token != "" {
-				*apiKey = token
-			}
-		}
-	}
-}
-
-func applyExaProxyDefaults(cfg *search.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if cfg == nil {
-		return
-	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-}
-
-func applyFetchExaProxyDefaults(cfg *fetch.Config, meta *UserLoginMetadata, connector *OpenAIConnector) {
-	if cfg == nil {
-		return
-	}
-	applyExaProxyDefaultsTo(&cfg.Exa.BaseURL, &cfg.Exa.APIKey, meta, connector)
-}
-
-func shouldUseExaProxyBase(baseURL string) bool {
-	trimmed := stringutil.NormalizeBaseURL(baseURL)
-	if trimmed == "" {
-		return true
-	}
-	return strings.EqualFold(trimmed, "https://api.exa.ai")
-}
-
-func isRelativePath(value string) bool {
-	trimmed := strings.TrimSpace(value)
-	return strings.HasPrefix(trimmed, "/")
-}
-
-func mapSearchConfig(src *SearchConfig) *search.Config {
+func mapSearchConfig(src *SearchConfig) *retrieval.SearchConfig {
 	if src == nil {
 		return nil
 	}
-	return &search.Config{
-		Provider:  src.Provider,
-		Fallbacks: src.Fallbacks,
-		Exa: search.ExaConfig{
+	return &retrieval.SearchConfig{
+		Provider: src.Provider,
+		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
 			APIKey:            src.Exa.APIKey,
@@ -268,21 +136,20 @@ func mapSearchConfig(src *SearchConfig) *search.Config {
 	}
 }
 
-func mapFetchConfig(src *FetchConfig) *fetch.Config {
+func mapFetchConfig(src *FetchConfig) *retrieval.FetchConfig {
 	if src == nil {
 		return nil
 	}
-	return &fetch.Config{
-		Provider:  src.Provider,
-		Fallbacks: src.Fallbacks,
-		Exa: fetch.ExaConfig{
+	return &retrieval.FetchConfig{
+		Provider: src.Provider,
+		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
 			APIKey:            src.Exa.APIKey,
 			IncludeText:       src.Exa.IncludeText,
 			TextMaxCharacters: src.Exa.TextMaxCharacters,
 		},
-		Direct: fetch.DirectConfig{
+		Direct: retrieval.DirectConfig{
 			Enabled:      src.Direct.Enabled,
 			TimeoutSecs:  src.Direct.TimeoutSecs,
 			UserAgent:    src.Direct.UserAgent,

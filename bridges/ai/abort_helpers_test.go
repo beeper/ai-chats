@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	bridgesdk "github.com/beeper/agentremote/sdk"
+	"github.com/beeper/agentremote/sdk"
 )
 
 func TestResolveUserStopPlanRoomWideWithoutReply(t *testing.T) {
@@ -151,8 +151,8 @@ func TestExecuteUserStopPlanActiveNoOpFallsBackToNoMatch(t *testing.T) {
 
 func TestBuildStreamUIMessageIncludesStopMetadata(t *testing.T) {
 	oc := &AIClient{}
-	conv := bridgesdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
-	turn := conv.StartTurn(context.Background(), nil, &bridgesdk.SourceRef{EventID: "$user", SenderID: "@user:test"})
+	conv := sdk.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	turn := conv.StartTurn(context.Background(), nil, &sdk.SourceRef{EventID: "$user", SenderID: "@user:test"})
 	turn.SetID("turn-stop")
 	state := &streamingState{
 		turn:          turn,

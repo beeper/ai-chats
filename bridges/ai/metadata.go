@@ -2,7 +2,6 @@ package ai
 
 import (
 	"encoding/json"
-	"maps"
 	"slices"
 	"strings"
 
@@ -10,11 +9,10 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote"
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/agentremote/sdk"
 )
 
-// ModelCache stores available models (cached in UserLoginMetadata)
+// ModelCache stores available models cached in AI-owned login runtime state.
 // Uses provider-agnostic ModelInfo instead of openai.Model
 type ModelCache struct {
 	Models        []ModelInfo `json:"models,omitempty"`
@@ -63,126 +61,44 @@ type LoginCredentials struct {
 
 // ServiceTokens stores optional per-login credentials for external services.
 type ServiceTokens struct {
-	OpenAI              string                        `json:"openai,omitempty"`
-	OpenRouter          string                        `json:"openrouter,omitempty"`
-	Exa                 string                        `json:"exa,omitempty"`
-	Brave               string                        `json:"brave,omitempty"`
-	Perplexity          string                        `json:"perplexity,omitempty"`
-	DesktopAPI          string                        `json:"desktop_api,omitempty"`
-	DesktopAPIInstances map[string]DesktopAPIInstance `json:"desktop_api_instances,omitempty"`
-	MCPServers          map[string]MCPServerConfig    `json:"mcp_servers,omitempty"`
+	OpenAI     string `json:"openai,omitempty"`
+	OpenRouter string `json:"openrouter,omitempty"`
+	Exa        string `json:"exa,omitempty"`
 }
 
-type DesktopAPIInstance struct {
-	Token   string `json:"token,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-}
-
-// MCPServerConfig stores one MCP server connection for a login.
-// The map key in ServiceTokens.MCPServers is the server name.
-type MCPServerConfig struct {
-	Transport string   `json:"transport,omitempty"` // streamable_http|stdio
-	Endpoint  string   `json:"endpoint,omitempty"`  // streamable HTTP endpoint
-	Command   string   `json:"command,omitempty"`   // stdio command path/binary
-	Args      []string `json:"args,omitempty"`      // stdio command args
-	AuthType  string   `json:"auth_type,omitempty"` // bearer|apikey|none
-	Token     string   `json:"token,omitempty"`
-	AuthURL   string   `json:"auth_url,omitempty"` // Optional browser auth URL for manual token retrieval.
-	Connected bool     `json:"connected,omitempty"`
-	Kind      string   `json:"kind,omitempty"` // generic
-}
-
-// ToolApprovalsConfig stores per-login persisted tool approval rules.
-// This is used by the tool approval system to support "always allow" decisions.
-type ToolApprovalsConfig struct {
-	// MCPAlwaysAllow contains exact-match allow rules for MCP approvals.
-	// Matching is done on normalized (trim + lowercase) server label + tool name.
-	MCPAlwaysAllow []MCPAlwaysAllowRule `json:"mcp_always_allow,omitempty"`
-
-	// BuiltinAlwaysAllow contains exact-match allow rules for builtin tool approvals.
-	// Matching is done on normalized (trim + lowercase) tool name + action.
-	// Action "" means "any action".
-	BuiltinAlwaysAllow []BuiltinAlwaysAllowRule `json:"builtin_always_allow,omitempty"`
-}
-
-type MCPAlwaysAllowRule struct {
-	ServerLabel string `json:"server_label,omitempty"`
-	ToolName    string `json:"tool_name,omitempty"`
-}
-
-type BuiltinAlwaysAllowRule struct {
-	ToolName string `json:"tool_name,omitempty"`
-	Action   string `json:"action,omitempty"`
-}
-
-// UserLoginMetadata is stored on each login row to keep per-user settings.
+// UserLoginMetadata is the durable bridgev2-owned login metadata surface.
 type UserLoginMetadata struct {
-	Provider             string            `json:"provider,omitempty"` // Selected provider (beeper, openai, openrouter)
+	Provider             string            `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
 	Credentials          *LoginCredentials `json:"credentials,omitempty"`
-	TitleGenerationModel string            `json:"title_generation_model,omitempty"` // Model to use for generating chat titles
-	Agents               *bool             `json:"agents,omitempty"`                 // Nil/true enables agents, false limits login to model rooms
-	NextChatIndex        int               `json:"next_chat_index,omitempty"`
-	DefaultChatPortalID  string            `json:"default_chat_portal_id,omitempty"`
-	ModelCache           *ModelCache       `json:"model_cache,omitempty"`
-	ChatsSynced          bool              `json:"chats_synced,omitempty"` // True after initial bootstrap completed successfully
-	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
+	TitleGenerationModel string            `json:"title_generation_model,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
-
-	// FileAnnotationCache stores parsed PDF content from OpenRouter's file-parser plugin
-	// Key is the file hash (SHA256), pruned after 7 days
-	FileAnnotationCache map[string]FileAnnotation `json:"file_annotation_cache,omitempty"`
-
-	// Tool approval rules (e.g. "always allow" decisions for MCP approvals or dangerous builtin tools).
-	ToolApprovals *ToolApprovalsConfig `json:"tool_approvals,omitempty"`
-
-	// Custom agents store (source of truth for user-created agents).
-	CustomAgents map[string]*AgentDefinitionContent `json:"custom_agents,omitempty"`
-	// Last active room per agent (used for heartbeat delivery).
-	LastActiveRoomByAgent map[string]string `json:"last_active_room_by_agent,omitempty"`
-	// Heartbeat dedupe state per agent.
-	HeartbeatState map[string]HeartbeatState `json:"heartbeat_state,omitempty"`
-	// LastHeartbeatEvent is the last emitted heartbeat event for this login (command-only debug surface).
-	LastHeartbeatEvent *HeartbeatEventPayload `json:"last_heartbeat_event,omitempty"`
-
-	// Provider health tracking
-	ConsecutiveErrors int   `json:"consecutive_errors,omitempty"`
-	LastErrorAt       int64 `json:"last_error_at,omitempty"` // Unix timestamp
+	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
 }
 
-func loginCredentials(meta *UserLoginMetadata) *LoginCredentials {
-	if meta == nil {
+func loginCredentials(cfg *aiLoginConfig) *LoginCredentials {
+	if cfg == nil {
 		return nil
 	}
-	return meta.Credentials
+	return cfg.Credentials
 }
 
-func ensureLoginCredentials(meta *UserLoginMetadata) *LoginCredentials {
-	if meta == nil {
-		return nil
-	}
-	if meta.Credentials == nil {
-		meta.Credentials = &LoginCredentials{}
-	}
-	return meta.Credentials
-}
-
-func loginCredentialAPIKey(meta *UserLoginMetadata) string {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialAPIKey(cfg *aiLoginConfig) string {
+	if creds := loginCredentials(cfg); creds != nil {
 		return strings.TrimSpace(creds.APIKey)
 	}
 	return ""
 }
 
-func loginCredentialBaseURL(meta *UserLoginMetadata) string {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialBaseURL(cfg *aiLoginConfig) string {
+	if creds := loginCredentials(cfg); creds != nil {
 		return strings.TrimSpace(creds.BaseURL)
 	}
 	return ""
 }
 
-func loginCredentialServiceTokens(meta *UserLoginMetadata) *ServiceTokens {
-	if creds := loginCredentials(meta); creds != nil {
+func loginCredentialServiceTokens(cfg *aiLoginConfig) *ServiceTokens {
+	if creds := loginCredentials(cfg); creds != nil {
 		return creds.ServiceTokens
 	}
 	return nil
@@ -202,12 +118,6 @@ func cloneServiceTokens(src *ServiceTokens) *ServiceTokens {
 		return nil
 	}
 	clone := *src
-	if src.DesktopAPIInstances != nil {
-		clone.DesktopAPIInstances = maps.Clone(src.DesktopAPIInstances)
-	}
-	if src.MCPServers != nil {
-		clone.MCPServers = maps.Clone(src.MCPServers)
-	}
 	return &clone
 }
 
@@ -215,40 +125,9 @@ func serviceTokensEmpty(tokens *ServiceTokens) bool {
 	if tokens == nil {
 		return true
 	}
-	if len(tokens.DesktopAPIInstances) > 0 {
-		for _, instance := range tokens.DesktopAPIInstances {
-			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
-				return false
-			}
-		}
-	}
-	if len(tokens.MCPServers) > 0 {
-		for _, server := range tokens.MCPServers {
-			if strings.TrimSpace(server.Transport) != "" ||
-				strings.TrimSpace(server.Endpoint) != "" ||
-				strings.TrimSpace(server.Command) != "" ||
-				len(server.Args) > 0 ||
-				strings.TrimSpace(server.Token) != "" ||
-				strings.TrimSpace(server.AuthURL) != "" ||
-				strings.TrimSpace(server.AuthType) != "" ||
-				strings.TrimSpace(server.Kind) != "" ||
-				server.Connected {
-				return false
-			}
-		}
-	}
 	return strings.TrimSpace(tokens.OpenAI) == "" &&
 		strings.TrimSpace(tokens.OpenRouter) == "" &&
-		strings.TrimSpace(tokens.Exa) == "" &&
-		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.DesktopAPI) == ""
-}
-
-// HeartbeatState tracks last heartbeat delivery for dedupe.
-type HeartbeatState struct {
-	LastHeartbeatText   string `json:"last_heartbeat_text,omitempty"`
-	LastHeartbeatSentAt int64  `json:"last_heartbeat_sent_at,omitempty"`
+		strings.TrimSpace(tokens.Exa) == ""
 }
 
 // GravatarProfile stores the selected Gravatar profile for a login.
@@ -264,77 +143,35 @@ type GravatarState struct {
 	Primary *GravatarProfile `json:"primary,omitempty"`
 }
 
-// PortalMetadata stores non-derivable per-room runtime state.
+// PortalMetadata stores durable room configuration/state plus transient runtime overrides.
 type PortalMetadata struct {
-	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
-	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
+	PDFConfig *PDFConfig `json:"pdf_config,omitempty"`
+	EditMode  string     `json:"edit_mode,omitempty"`
 
 	Slug             string `json:"slug,omitempty"`
-	Title            string `json:"title,omitempty"`
-	TitleGenerated   bool   `json:"title_generated,omitempty"` // True if title was auto-generated
-	WelcomeSent      bool   `json:"welcome_sent,omitempty"`
+	TitleGenerated   bool   `json:"title_generated,omitempty"`
+	DisclaimerSent   bool   `json:"disclaimer_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	SessionResetAt          int64            `json:"session_reset_at,omitempty"`
-	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
-	CompactionCount         int              `json:"compaction_count,omitempty"`
-	SessionBootstrappedAt   int64            `json:"session_bootstrapped_at,omitempty"`
-	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
-
-	ModuleMeta           map[string]any `json:"module_meta,omitempty"`             // Generic per-module metadata (e.g., cron room markers, memory flush state)
-	SubagentParentRoomID string         `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
+	AbortedLastRun   bool   `json:"aborted_last_run,omitempty"`
+	InternalRoomKind string `json:"internal_room_kind,omitempty"`
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
 	ResolvedTarget       *ResolvedTarget `json:"-"`
 	RuntimeModelOverride string          `json:"-"`
-	RuntimeReasoning     string          `json:"-"`
+	Thinking             string          `json:"thinking,omitempty"`
 
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
 
-	// Per-session typing overrides (OpenClaw-style).
-	TypingMode            string `json:"typing_mode,omitempty"`             // never|instant|thinking|message
-	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"` // Optional per-session override
-
-}
-
-// SetModuleMeta sets a key in the ModuleMeta map, initializing the map if necessary.
-func (m *PortalMetadata) SetModuleMeta(key string, value any) {
-	if m == nil {
-		return
-	}
-	if m.ModuleMeta == nil {
-		m.ModuleMeta = make(map[string]any)
-	}
-	m.ModuleMeta[key] = value
-}
-
-func (m *PortalMetadata) ModuleMetaValue(key string) any {
-	if m == nil || m.ModuleMeta == nil {
-		return nil
-	}
-	return m.ModuleMeta[key]
-}
-
-func (m *PortalMetadata) SetModuleMetaValue(key string, value any) {
-	m.SetModuleMeta(key, value)
-}
-
-func (m *PortalMetadata) AgentID() string {
-	return resolveAgentID(m)
-}
-
-func (m *PortalMetadata) CompactionCounter() int {
-	if m == nil {
-		return 0
-	}
-	return m.CompactionCount
+	// Per-room typing overrides.
+	TypingMode            string `json:"typing_mode,omitempty"` // never|instant|thinking|message
+	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"`
 }
 
 func (m *PortalMetadata) InternalRoom() bool {
-	return isModuleInternalRoom(m)
+	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
 }
 
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
@@ -352,13 +189,6 @@ func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) 
 	return &clone, nil
 }
 
-func agentsEnabled(meta *UserLoginMetadata) bool {
-	if meta == nil || meta.Agents == nil {
-		return false
-	}
-	return *meta.Agents
-}
-
 func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if src == nil {
 		return nil
@@ -370,20 +200,13 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 		pdf := *src.PDFConfig
 		clone.PDFConfig = &pdf
 	}
-
-	if src.SessionBootstrapByAgent != nil {
-		clone.SessionBootstrapByAgent = maps.Clone(src.SessionBootstrapByAgent)
+	if src.TypingIntervalSeconds != nil {
+		interval := *src.TypingIntervalSeconds
+		clone.TypingIntervalSeconds = &interval
 	}
 
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
-	}
-
-	if src.ModuleMeta != nil {
-		clone.ModuleMeta = make(map[string]any, len(src.ModuleMeta))
-		for k, v := range src.ModuleMeta {
-			clone.ModuleMeta[k] = jsonutil.DeepCloneAny(v)
-		}
 	}
 	if src.ResolvedTarget != nil {
 		target := *src.ResolvedTarget
@@ -396,10 +219,10 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 // MessageMetadata keeps a tiny summary of each exchange so we can rebuild
 // prompts using database history.
 type MessageMetadata struct {
-	agentremote.BaseMessageMetadata
-	agentremote.AssistantMessageMetadata
+	sdk.BaseMessageMetadata
+	sdk.AssistantMessageMetadata
 
-	// Media understanding (OpenClaw-style)
+	// Media understanding.
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
 	MediaUnderstandingDecisions []MediaUnderstandingDecision `json:"media_understanding_decisions,omitempty"`
 
@@ -408,9 +231,9 @@ type MessageMetadata struct {
 	MimeType string `json:"mime_type,omitempty"` // MIME type of user-sent media
 }
 
-type GeneratedFileRef = agentremote.GeneratedFileRef
+type GeneratedFileRef = sdk.GeneratedFileRef
 
-type ToolCallMetadata = agentremote.ToolCallMetadata
+type ToolCallMetadata = sdk.ToolCallMetadata
 
 // GhostMetadata stores metadata for AI model ghosts
 type GhostMetadata struct {
@@ -423,8 +246,7 @@ func (mm *MessageMetadata) CopyFrom(other any) {
 	if !ok || src == nil {
 		return
 	}
-	mm.CopyFromBase(&src.BaseMessageMetadata)
-	mm.CopyFromAssistant(&src.AssistantMessageMetadata)
+	sdk.CopyFromBaseAndAssistant(&mm.BaseMessageMetadata, &src.BaseMessageMetadata, &mm.AssistantMessageMetadata, &src.AssistantMessageMetadata)
 }
 
 var _ database.MetaMerger = (*MessageMetadata)(nil)
@@ -432,22 +254,4 @@ var _ database.MetaMerger = (*MessageMetadata)(nil)
 // NewCallID generates a new unique call ID for tool calls
 func NewCallID() string {
 	return "call_" + random.String(12)
-}
-
-func isModuleInternalRoom(meta *PortalMetadata) bool {
-	return moduleRoomKind(meta) != ""
-}
-
-func moduleRoomKind(meta *PortalMetadata) string {
-	if meta == nil || meta.ModuleMeta == nil {
-		return ""
-	}
-	for name, v := range meta.ModuleMeta {
-		if m, ok := v.(map[string]any); ok {
-			if internal, _ := m["is_internal_room"].(bool); internal {
-				return name
-			}
-		}
-	}
-	return ""
 }

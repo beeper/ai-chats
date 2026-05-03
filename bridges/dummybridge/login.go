@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote"
+	"github.com/beeper/agentremote/sdk"
 )
 
 const dummyBridgeLoginStepInput = "com.beeper.agentremote.dummybridge.enter_value"
@@ -19,7 +20,7 @@ var (
 )
 
 type DummyBridgeLogin struct {
-	agentremote.BaseLoginProcess
+	sdk.BaseLoginProcess
 	User      *bridgev2.User
 	Connector *DummyBridgeConnector
 }
@@ -29,7 +30,7 @@ func (dl *DummyBridgeLogin) validate() error {
 	if dl.Connector != nil {
 		br = dl.Connector.br
 	}
-	return agentremote.ValidateLoginState(dl.User, br)
+	return sdk.ValidateLoginState(dl.User, br)
 }
 
 func (dl *DummyBridgeLogin) Start(_ context.Context) (*bridgev2.LoginStep, error) {
@@ -63,21 +64,25 @@ func (dl *DummyBridgeLogin) SubmitUserInput(ctx context.Context, input map[strin
 		}
 		remoteName = fmt.Sprintf("%s (%s)", dummyAgentName, trimmed)
 	}
-	_, step, err := agentremote.CreateAndCompleteLogin(
+	_, step, err := sdk.PersistAndCompleteLoginWithOptions(
 		ctx,
 		dl.BackgroundProcessContext(),
 		dl.User,
-		ProviderDummyBridge,
-		remoteName,
-		&UserLoginMetadata{
-			Provider:       ProviderDummyBridge,
-			AcceptedString: value,
+		&database.UserLogin{
+			ID:         sdk.NextUserLoginID(dl.User, ProviderDummyBridge),
+			RemoteName: remoteName,
+			Metadata: &UserLoginMetadata{
+				Provider:       ProviderDummyBridge,
+				AcceptedString: value,
+			},
 		},
 		"com.beeper.agentremote.dummybridge.complete",
-		dl.Connector.LoadUserLogin,
+		sdk.PersistLoginCompletionOptions{
+			Load: dl.Connector.LoadUserLogin,
+		},
 	)
 	if err != nil {
-		return nil, agentremote.WrapLoginRespError(fmt.Errorf("failed to create dummybridge login: %w", err), http.StatusInternalServerError, "DUMMYBRIDGE", "CREATE_LOGIN_FAILED")
+		return nil, sdk.WrapLoginRespError(fmt.Errorf("failed to create dummybridge login: %w", err), http.StatusInternalServerError, "DUMMYBRIDGE", "CREATE_LOGIN_FAILED")
 	}
 	return step, nil
 }

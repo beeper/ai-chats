@@ -31,7 +31,7 @@ func TestMainConfigExampleNetworkBlockMatchesEmbeddedExample(t *testing.T) {
 		t.Fatalf("%s network block has unexpected type %T", mainConfigPath, networkRaw)
 	}
 
-	embeddedPath := "integrations_example-config.yaml"
+	embeddedPath := "example-config.yaml"
 	embeddedData, err := os.ReadFile(embeddedPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", embeddedPath, err)
