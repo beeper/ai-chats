@@ -61,28 +61,13 @@ func (oc *AIClient) buildStatusText(
 	}
 	if estimate := oc.estimatePromptTokens(ctx, portal, meta); estimate > 0 {
 		sb.WriteString(fmt.Sprintf(
-			"Context: %s/%s (%s) compactions=%d\n",
+			"Context: %s/%s (%s)\n",
 			formatCompactTokens(int64(estimate)),
 			formatCompactTokens(int64(contextWindow)),
 			formatPercent(estimate, contextWindow),
-			0,
 		))
 	} else {
 		sb.WriteString(fmt.Sprintf("Context: %s tokens\n", formatCompactTokens(int64(contextWindow))))
-	}
-
-	sessionKey := portal.MXID.String()
-	agentID := resolveAgentID(meta)
-	updatedAt := int64(0)
-	if sessionKey != "" {
-		if value, ok := oc.storedSessionUpdatedAt(ctx, oc.sessionStoreAgentID(agentID), sessionKey); ok {
-			updatedAt = value
-		}
-	}
-	if updatedAt > 0 {
-		sb.WriteString(fmt.Sprintf("Session: %s (updated %s)\n", sessionKey, formatAge(time.Now().UnixMilli()-updatedAt)))
-	} else if sessionKey != "" {
-		sb.WriteString(fmt.Sprintf("Session: %s\n", sessionKey))
 	}
 
 	if isGroup {
@@ -184,15 +169,7 @@ func (oc *AIClient) lastAssistantUsage(ctx context.Context, portal *bridgev2.Por
 }
 
 func (oc *AIClient) estimatePromptTokens(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) int {
-	if oc == nil || portal == nil {
-		return 0
-	}
-	promptContext, err := oc.buildBaseContext(ctx, portal, meta)
-	if err != nil {
-		return 0
-	}
-	modelID := oc.effectiveModel(meta)
-	return estimatePromptContextTokensForModel(promptContext, modelID)
+	return 0
 }
 
 func formatCompactTokens(value int64) string {
@@ -215,25 +192,4 @@ func formatPercent(numerator, denominator int) string {
 	}
 	percent := (float64(numerator) / float64(denominator)) * 100
 	return fmt.Sprintf("%.0f%%", percent)
-}
-
-func formatAge(deltaMs int64) string {
-	if deltaMs < 0 {
-		deltaMs = -deltaMs
-	}
-	d := time.Duration(deltaMs) * time.Millisecond
-	if d < time.Minute {
-		secs := int(d.Seconds())
-		if secs <= 0 {
-			secs = 1
-		}
-		return fmt.Sprintf("%ds ago", secs)
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	}
-	if d < 24*time.Hour {
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
-	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }

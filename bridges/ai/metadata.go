@@ -187,10 +187,6 @@ func (m *PortalMetadata) AgentID() string {
 	return resolveAgentID(m)
 }
 
-func (m *PortalMetadata) CompactionCounter() int {
-	return 0
-}
-
 func (m *PortalMetadata) InternalRoom() bool {
 	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
 }

@@ -78,6 +78,5 @@ func (oc *AIClient) dispatchInternalMessage(
 	}
 	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
 	err = oc.dispatchOrQueueCore(promptCtx, nil, portal, meta, queueItem, queueSettings, promptContext)
-	oc.notifySessionMutation(ctx, portal, meta, false)
 	return eventID, false, err
 }

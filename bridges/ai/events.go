@@ -15,22 +15,18 @@ func init() {
 // StreamEventMessageType is the unified event type for AI streaming updates (ephemeral).
 var StreamEventMessageType = matrixevents.StreamEventMessageType
 
-// CompactionStatusEventType notifies clients about context compaction
-var CompactionStatusEventType = matrixevents.CompactionStatusEventType
-
 // AIRoomInfoEventType stores lightweight room metadata for AI rooms.
 var AIRoomInfoEventType = matrixevents.AIRoomInfoEventType
 
 type ToolStatus = matrixevents.ToolStatus
 
 const (
-	ToolStatusPending          = matrixevents.ToolStatusPending
-	ToolStatusRunning          = matrixevents.ToolStatusRunning
-	ToolStatusCompleted        = matrixevents.ToolStatusCompleted
-	ToolStatusFailed           = matrixevents.ToolStatusFailed
-	ToolStatusTimeout          = matrixevents.ToolStatusTimeout
-	ToolStatusCancelled        = matrixevents.ToolStatusCancelled
-	ToolStatusApprovalRequired = matrixevents.ToolStatusApprovalRequired
+	ToolStatusPending   = matrixevents.ToolStatusPending
+	ToolStatusRunning   = matrixevents.ToolStatusRunning
+	ToolStatusCompleted = matrixevents.ToolStatusCompleted
+	ToolStatusFailed    = matrixevents.ToolStatusFailed
+	ToolStatusTimeout   = matrixevents.ToolStatusTimeout
+	ToolStatusCancelled = matrixevents.ToolStatusCancelled
 )
 
 type ResultStatus = matrixevents.ResultStatus

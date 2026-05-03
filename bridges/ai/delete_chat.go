@@ -19,7 +19,6 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 	}
 
 	portal := msg.Portal
-	meta := portalMeta(portal)
 	roomID := portal.MXID
 	sessionKey := strings.TrimSpace(roomID.String())
 
@@ -33,9 +32,6 @@ func (oc *AIClient) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Ma
 		oc.log.Warn().Err(err).Str("portal_id", string(portal.PortalKey.ID)).Msg("failed to delete SDK conversation state")
 	}
 
-	if meta != nil {
-		oc.notifySessionMutation(ctx, portal, meta, false)
-	}
 	return nil
 }
 
@@ -47,7 +43,6 @@ func (oc *AIClient) cleanupDeletedRoomRuntime(ctx context.Context, roomID id.Roo
 	// Room deletion should be silent; drop queued work instead of sending stop
 	// notices/status events into a room that's being removed.
 	_ = oc.drainPendingQueue(roomID)
-	oc.stopSubagentRuns(ctx, roomID)
 	oc.stopQueueTyping(roomID)
 	oc.releaseRoom(roomID)
 
@@ -71,10 +66,6 @@ func (oc *AIClient) deletePersistedSessionArtifacts(ctx context.Context, portal 
 
 	scope := loginScopeForClient(oc)
 	if scope != nil && scope.loginID != "" {
-		execDelete(ctx, scope.db, &oc.log,
-			`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2 AND session_key=$3`,
-			scope.bridgeID, scope.loginID, sessionKey,
-		)
 		execDelete(ctx, scope.db, &oc.log,
 			`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_id=$2 AND portal_receiver=$3`,
 			scope.bridgeID, strings.TrimSpace(string(portal.PortalKey.ID)), strings.TrimSpace(string(portal.PortalKey.Receiver)),

@@ -4,17 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
-	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/packages/ssestream"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
-
-	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
@@ -62,24 +58,8 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 		}
 		return nil, responses.ResponseNewParams{}, ctx.Err()
 	}
-	pendingOutputs := slices.Clone(state.pendingFunctionOutputs)
-	pendingApprovals := slices.Clone(state.pendingMcpApprovals)
-
-	approvalInputs := make([]responses.ResponseInputItemUnionParam, 0, len(pendingApprovals))
-	for _, approval := range pendingApprovals {
-		handle := approval.handle
-		if handle == nil {
-			return nil, responses.ResponseNewParams{}, fmt.Errorf("missing MCP approval handle for %s", approval.approvalID)
-		}
-		resp := a.oc.waitForToolApprovalResponse(ctx, handle)
-		item := responses.ResponseInputItemParamOfMcpApprovalResponse(approval.approvalID, resp.Approved)
-		if resp.Reason != "" && item.OfMcpApprovalResponse != nil {
-			item.OfMcpApprovalResponse.Reason = param.NewOpt(resp.Reason)
-		}
-		approvalInputs = append(approvalInputs, item)
-	}
-
-	continuationParams := a.oc.buildContinuationParams(ctx, &a.prompt, state, a.meta, pendingOutputs, approvalInputs)
+	pendingOutputs := append([]functionCallOutput(nil), state.pendingFunctionOutputs...)
+	continuationParams := a.oc.buildContinuationParams(ctx, &a.prompt, state, a.meta, pendingOutputs)
 
 	state.needsTextSeparator = true
 	stream := a.oc.api.Responses.NewStreaming(ctx, continuationParams)
@@ -110,7 +90,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 			return false, nil, &PreDeltaError{Err: err}
 		}
 	} else {
-		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingMcpApprovals) == 0 && len(state.pendingSteeringPrompts) == 0 {
+		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingSteeringPrompts) == 0 {
 			return false, nil, nil
 		}
 		if round > maxAgentLoopToolTurns {
@@ -123,18 +103,11 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		}
 		a.log.Debug().
 			Int("pending_outputs", len(state.pendingFunctionOutputs)).
-			Int("pending_approvals", len(state.pendingMcpApprovals)).
 			Int("prompt_messages", len(a.prompt.Messages)).
 			Msg("Continuing stateless response with pending tool actions")
 		stream, params, err = a.startContinuationRound(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-					return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
-						reason: "timeout",
-						err:    timeoutErr,
-					})
-				}
 				return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
 					reason: "cancelled",
 					err:    err,
@@ -181,30 +154,15 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		return false, cle, err
 	}
 	if done {
-		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
+		return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 	}
 
-	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingMcpApprovals) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
+	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 }
 
 func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 	if a.state == nil || a.state.isFinalized() {
 		return
-	}
-	for _, img := range a.state.pendingImages {
-		imageData, mimeType, err := decodeBase64Image(img.imageB64)
-		if err != nil {
-			a.log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to decode generated image")
-			continue
-		}
-		eventID, mediaURL, err := a.oc.sendGeneratedImage(ctx, a.portal, imageData, mimeType, img.turnID, "")
-		if err != nil {
-			a.log.Warn().Err(err).Str("item_id", img.itemID).Msg("Failed to send generated image to Matrix")
-			continue
-		}
-		recordGeneratedFile(a.state, mediaURL, mimeType)
-		a.state.writer().File(ctx, mediaURL, mimeType)
-		a.log.Info().Str("event_id", string(eventID)).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
 	_ = a.oc.finalizeStreamingTurn(ctx, a.portal, a.state, a.meta, streamingFinalizeParams{
 		success:               true,
@@ -220,7 +178,6 @@ func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 		Int("reasoning_length", a.state.reasoning.Len()).
 		Int("tool_calls", len(a.state.toolCalls)).
 		Str("response_id", a.state.responseID).
-		Int("images_sent", len(a.state.pendingImages)).
 		Msg("Responses API streaming finished")
 }
 
@@ -307,27 +264,6 @@ func (oc *AIClient) processResponseStreamEvent(
 	case "response.output_item.done":
 		actions.outputItemDone(streamEvent.Item)
 
-	case "response.custom_tool_call_input.delta":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
-
-	case "response.custom_tool_call_input.done":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Input)
-
-	case "response.code_interpreter_call_code.delta":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
-
-	case "response.code_interpreter_call_code.done":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Code)
-
-	case "response.mcp_call_arguments.delta":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, true, streamEvent.Delta)
-
-	case "response.mcp_call_arguments.done":
-		actions.emitCustomToolInput(streamEvent.ItemID, streamEvent.Item, false, streamEvent.Arguments)
-
-	case "response.mcp_call.failed":
-		actions.mcpCallFailed(streamEvent.ItemID, streamEvent.Item)
-
 	case "response.output_text.delta":
 		if _, err := actions.textDelta(streamEvent.Delta); err != nil {
 			return true, nil, &PreDeltaError{Err: err}
@@ -363,55 +299,6 @@ func (oc *AIClient) processResponseStreamEvent(
 			return true, nil, nil
 		}
 
-	case "response.file_search_call.searching", "response.file_search_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", matrixevents.ToolTypeProvider, true, "")
-
-	case "response.file_search_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "file_search", matrixevents.ToolTypeProvider, false, "")
-
-	case "response.code_interpreter_call.in_progress", "response.code_interpreter_call.interpreting":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", matrixevents.ToolTypeProvider, true, "")
-
-	case "response.code_interpreter_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "code_interpreter", matrixevents.ToolTypeProvider, false, "")
-
-	case "response.mcp_list_tools.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, true, "")
-
-	case "response.mcp_list_tools.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, false, "")
-
-	case "response.mcp_list_tools.failed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.list_tools", matrixevents.ToolTypeMCP, false, "MCP list tools failed")
-
-	case "response.mcp_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", matrixevents.ToolTypeMCP, true, "")
-
-	case "response.mcp_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "mcp.call", matrixevents.ToolTypeMCP, false, "")
-
-	case "response.web_search_call.searching", "response.web_search_call.in_progress":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", matrixevents.ToolTypeProvider, true, "")
-
-	case "response.web_search_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "web_search", matrixevents.ToolTypeProvider, false, "")
-
-	case "response.image_generation_call.in_progress", "response.image_generation_call.generating":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", matrixevents.ToolTypeProvider, true, "")
-		log.Debug().Str("item_id", streamEvent.ItemID).Msg("Image generation in progress")
-
-	case "response.image_generation_call.completed":
-		actions.emitProviderToolLifecycle(streamEvent.ItemID, "image_generation", matrixevents.ToolTypeProvider, false, "")
-		log.Info().Str("item_id", streamEvent.ItemID).Msg("Image generation completed")
-
-	case "response.image_generation_call.partial_image":
-		actions.touchTool()
-		state.writer().Data(ctx, "image_generation_partial", map[string]any{
-			"item_id":   streamEvent.ItemID,
-			"index":     streamEvent.PartialImageIndex,
-			"image_b64": streamEvent.PartialImageB64,
-		}, true)
-
 	case "response.output_text.annotation.added":
 		actions.annotationAdded(streamEvent.Annotation, streamEvent.AnnotationIndex)
 
@@ -427,27 +314,7 @@ func (oc *AIClient) processResponseStreamEvent(
 		}
 		actions.finalizeMetadata()
 
-		if !isContinuation {
-			// Extract any generated images from response output
-			turnID := ""
-			if state.turn != nil {
-				turnID = state.turn.ID()
-			}
-			for _, output := range streamEvent.Response.Output {
-				if output.Type == "image_generation_call" {
-					imgOutput := output.AsImageGenerationCall()
-					if imgOutput.Status == "completed" && imgOutput.Result != "" {
-						state.pendingImages = append(state.pendingImages, generatedImage{
-							itemID:   imgOutput.ID,
-							imageB64: imgOutput.Result,
-							turnID:   turnID,
-						})
-						log.Debug().Str("item_id", imgOutput.ID).Msg("Captured generated image from response")
-					}
-				}
-			}
-		}
-		log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).Int("images", len(state.pendingImages)).
+		log.Debug().Str("reason", state.finishReason).Str("response_id", state.responseID).
 			Msg("Response stream completed" + contSuffix)
 		return true, nil, nil
 
@@ -471,62 +338,6 @@ func (oc *AIClient) processResponseStreamEvent(
 	}
 
 	return false, nil, nil
-}
-
-// handleProviderToolInProgress ensures a provider/MCP tool entry exists and emits input delta.
-func (oc *AIClient) handleProviderToolInProgress(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	meta *PortalMetadata,
-	activeTools *streamToolRegistry,
-	itemID string,
-	toolName string,
-	toolType matrixevents.ToolType,
-) {
-	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), toolName, toolType, "")
-	if tool == nil {
-		return
-	}
-	activeTools.BindAlias(streamToolItemKey(itemID), tool)
-	oc.toolLifecycle(portal, state).appendInputDelta(ctx, tool, tool.toolName, "", true)
-}
-
-// handleProviderToolCompleted finalizes a provider/MCP tool with a success or failure result.
-func (oc *AIClient) handleProviderToolCompleted(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools *streamToolRegistry,
-	itemID string,
-	toolName string,
-	toolType matrixevents.ToolType,
-	failureText string,
-) {
-	// Look up or lazily create the tool. We pass nil meta because
-	// ensureActiveToolCall only uses meta for ghost display-name, which
-	// handleProviderToolInProgress already handled on the in_progress event.
-	// When the in_progress event was missed the tool gets startedAtMs=now
-	// (acceptable approximation).
-	tool := oc.ensureActiveToolCall(ctx, portal, state, nil, activeTools, streamToolItemKey(itemID), toolName, toolType, "")
-	if tool == nil {
-		return
-	}
-	activeTools.BindAlias(streamToolItemKey(itemID), tool)
-	if state != nil && state.turn != nil {
-		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
-			return
-		}
-	}
-
-	lifecycle := oc.toolLifecycle(portal, state)
-	if failureText != "" {
-		lifecycle.fail(ctx, tool, true, ResultStatusError, failureText, nil)
-		return
-	}
-
-	output := map[string]any{"status": "completed"}
-	lifecycle.succeed(ctx, tool, true, output, output, nil)
 }
 
 // runResponsesAgentLoop handles the Responses API provider adapter under the canonical agent loop.

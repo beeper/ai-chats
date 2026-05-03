@@ -34,9 +34,6 @@ func resolveStreamingTerminalError(
 	err error,
 ) (finalizeCtx context.Context, reason string, cle *ContextLengthError, finalErr error) {
 	if errors.Is(err, context.Canceled) {
-		if timeoutErr := agentLoopInactivityCause(ctx); timeoutErr != nil {
-			return cancelFinalizeCtx, "timeout", nil, timeoutErr
-		}
 		return cancelFinalizeCtx, "cancelled", nil, err
 	}
 	if includeContextLength {

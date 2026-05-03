@@ -46,9 +46,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Logger()
 	ctx = logCtx.WithContext(ctx)
 
-	// Track last active room per agent for heartbeat routing
-	oc.recordAgentActivity(ctx, portal, meta)
-
 	// Check deduplication - skip if we've already processed this event
 	if oc.inboundDedupeCache != nil {
 		dedupeKey := oc.buildDedupeKey(portal.MXID, msg.Event.ID)
@@ -397,8 +394,6 @@ func (oc *AIClient) HandleMatrixEdit(ctx context.Context, edit *bridgev2.MatrixE
 	if edit.EditTarget != nil {
 		edit.EditTarget.Metadata = cloneMessageMetadata(transcriptMeta)
 	}
-	oc.notifySessionMutation(ctx, portal, meta, true)
-
 	// Only regenerate if this was a user message
 	if role != "user" {
 		// Just update the content, don't regenerate
@@ -484,7 +479,6 @@ func (oc *AIClient) regenerateFromEdit(
 		if assistantResponse.MXID != "" {
 			_ = oc.redactEventViaPortal(ctx, portal, assistantResponse.MXID)
 		}
-		oc.notifySessionMutation(ctx, portal, meta, true)
 	}
 
 	var cfg *Config
@@ -588,16 +582,8 @@ func (oc *AIClient) handleMediaMessage(
 			config = pdfConfig
 			isPDF = true
 			ok = true
-		case isTextFileMime(mimeType):
-			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, sdk.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
-			}
-			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
 		case mimeType == "" || mimeType == "application/octet-stream":
-			if !oc.canUseMediaUnderstanding(meta) {
-				return nil, sdk.UnsupportedMessageStatus(errors.New("text file understanding is only available when an agent is assigned"))
-			}
-			return oc.handleTextFileMessage(ctx, msg, portal, meta, string(mediaURL), mimeType, pendingSent)
+			return nil, sdk.UnsupportedMessageStatus(errors.New("text file understanding is not supported"))
 		}
 	}
 
@@ -850,111 +836,6 @@ func (oc *AIClient) dispatchMediaUnderstandingFallback(
 		return nil, sdk.MessageSendStatusError(errors.New(emptyResult), userError, "", messageStatusForError, messageStatusReasonForError)
 	}
 	return dispatchTextOnly(combined)
-}
-
-func (oc *AIClient) handleTextFileMessage(
-	ctx context.Context,
-	msg *bridgev2.MatrixMessage,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-	mediaURL string,
-	mimeType string,
-	pendingSent bool,
-) (*bridgev2.MatrixMessageResponse, error) {
-	if msg == nil {
-		return nil, errors.New("missing matrix event for text file message")
-	}
-	var cfg *Config
-	if oc != nil && oc.connector != nil {
-		cfg = &oc.connector.Config
-	}
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
-
-	rawCaption := strings.TrimSpace(msg.Content.Body)
-	fileName := strings.TrimSpace(msg.Content.FileName)
-	hasUserCaption := rawCaption != ""
-	if fileName == "" {
-		fileName = rawCaption
-		hasUserCaption = false
-	}
-	if rawCaption == fileName {
-		hasUserCaption = false
-	}
-	caption := rawCaption
-	if !hasUserCaption {
-		caption = "Please analyze this text file."
-	}
-
-	isGroup := oc.isGroupChat(ctx, portal)
-	roomName := ""
-	if isGroup {
-		roomName = oc.matrixRoomDisplayName(ctx, portal)
-	}
-	senderName := oc.matrixDisplayName(ctx, portal.MXID, msg.Event.Sender)
-	mc := oc.resolveMentionContext(ctx, portal, meta, msg.Event, msg.Content.Mentions, rawCaption)
-	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: mc.WasMentioned}
-
-	var encryptedFile *event.EncryptedFileInfo
-	if msg.Content.File != nil {
-		encryptedFile = msg.Content.File
-	}
-
-	content, truncated, err := oc.downloadTextFile(ctx, mediaURL, encryptedFile, mimeType)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Msg("Text file understanding failed")
-		return nil, sdk.MessageSendStatusError(err, "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "", messageStatusForError, messageStatusReasonForError)
-	}
-
-	combined := buildTextFileMessage(caption, hasUserCaption, fileName, mimeType, content, truncated)
-	if combined == "" {
-		return nil, sdk.MessageSendStatusError(errors.New("text file understanding produced empty result"), "Couldn't read the text file. Upload a UTF-8 text file under 5 MB.", "", messageStatusForError, messageStatusReasonForError)
-	}
-
-	eventID := id.EventID("")
-	if msg.Event != nil {
-		eventID = msg.Event.ID
-	}
-
-	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, combined, senderName, roomName, isGroup)
-	promptCtx := withInboundContext(ctx, inboundCtx)
-	pending := pendingMessage{
-		Event:          snapshotPendingEvent(msg.Event),
-		Portal:         portal,
-		Meta:           meta,
-		InboundContext: &inboundCtx,
-		Type:           pendingTypeText,
-		MessageBody:    combined,
-		PendingSent:    pendingSent,
-		Typing:         typingCtx,
-	}
-	promptContext, err := oc.buildPromptContextForPendingMessage(promptCtx, pending, combined)
-	if err != nil {
-		return nil, sdk.MessageSendStatusError(err, "Couldn't prepare the message. Try again.", "", messageStatusForError, messageStatusReasonForError)
-	}
-
-	userMessage := &database.Message{
-		ID:       sdk.MatrixMessageID(eventID),
-		MXID:     eventID,
-		Room:     portal.PortalKey,
-		SenderID: humanUserID(oc.UserLogin.ID),
-		Metadata: attachPromptTurnData(&MessageMetadata{
-			BaseMessageMetadata: sdk.BaseMessageMetadata{Role: "user", Body: combined},
-		}, promptContext),
-		Timestamp: sdk.MatrixEventTimestamp(msg.Event),
-	}
-	queueItem := pendingQueueItem{
-		pending: pending,
-		acceptedMessages: []*database.Message{
-			userMessage,
-		},
-		messageID:   string(eventID),
-		summaryLine: strings.TrimSpace(rawCaption),
-		enqueuedAt:  time.Now().UnixMilli(),
-	}
-	if err = oc.dispatchOrQueueCore(promptCtx, pending.Event, portal, meta, queueItem, queueSettings, promptContext); err != nil {
-		return nil, err
-	}
-	return &bridgev2.MatrixMessageResponse{DB: userMessage, Pending: true}, nil
 }
 
 func (oc *AIClient) savePortal(ctx context.Context, portal *bridgev2.Portal, action string) error {

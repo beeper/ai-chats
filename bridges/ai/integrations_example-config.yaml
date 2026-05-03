@@ -41,25 +41,14 @@ messages:
 commands:
   owner_allow_from: []
 
-tool_approvals:
-  enabled: true
-  ttl_seconds: 600
-  require_for_mcp: true
-  require_for_tools: ["message", "cron", "gravatar_set", "create_agent", "fork_agent", "edit_agent", "delete_agent", "modify_room", "sessions_send", "sessions_spawn", "run_internal_command"]
-
 channels:
   matrix:
     reply_to_mode: "first"
-
-session:
-  scope: "per-sender"
-  main_key: "main"
 
 tools:
   web:
     search:
       provider: "exa"
-      fallbacks: []
       exa:
         api_key: ""
         base_url: "https://api.exa.ai"
@@ -70,7 +59,6 @@ tools:
         highlights: true
     fetch:
       provider: "direct"
-      fallbacks: ["exa"]
       exa:
         api_key: ""
         base_url: "https://api.exa.ai"
@@ -90,12 +78,6 @@ tools:
     max_page_bytes: 10485760
     max_image_bytes: 5242880
     cache_ttl: 1h
-  mcp:
-    enable_stdio: false
-  vfs:
-    apply_patch:
-      enabled: false
-      allow_models: []
   media:
     concurrency: 2
     image:
@@ -124,47 +106,3 @@ tools:
       models:
         - provider: "openrouter"
           model: "google/gemini-3-flash-preview"
-
-agents:
-  defaults:
-    model:
-      primary: ""
-      fallbacks: []
-    image_model:
-      primary: ""
-      fallbacks: []
-    image_generation_model:
-      primary: ""
-      fallbacks: []
-    pdf_model:
-      primary: ""
-      fallbacks: []
-    pdf_engine: "mistral-ocr"
-    compaction:
-      mode: "cache-ttl"
-      ttl: "1h"
-      enabled: true
-      soft_trim_ratio: 0.3
-      hard_clear_ratio: 0.5
-      keep_last_assistants: 3
-      min_prunable_chars: 50000
-      soft_trim_max_chars: 4000
-      soft_trim_head_chars: 1500
-      soft_trim_tail_chars: 1500
-      hard_clear_enabled: true
-      hard_clear_placeholder: "[Old tool result content cleared]"
-      summarization_enabled: true
-      summarization_model: "openai/gpt-5.2"
-      max_summary_tokens: 500
-      compaction_mode: "safeguard"
-      keep_recent_tokens: 20000
-      max_history_share: 0.5
-      reserve_tokens: 20000
-      reserve_tokens_floor: 20000
-      identifier_policy: "strict"
-      post_compaction_refresh_prompt: "[Post-compaction context refresh]\nRe-anchor to the latest user intent and preserve unresolved tasks and identifiers."
-      overflow_flush:
-        enabled: true
-        soft_threshold_tokens: 4000
-        prompt: "Pre-compaction overflow flush. Persist any durable notes now if your tools support it. If nothing to store, reply with NO_REPLY."
-        system_prompt: "Pre-compaction overflow flush turn. The session is near auto-compaction; persist durable notes if possible. You may reply, but usually NO_REPLY is correct."

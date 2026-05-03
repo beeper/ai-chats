@@ -795,9 +795,6 @@ func (oc *AIClient) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2
 	if err := oc.deleteAITurnByExternalRef(ctx, msg.Portal, msg.TargetMessage.ID, msg.TargetMessage.MXID); err != nil {
 		errs = append(errs, err)
 	}
-	if meta := portalMeta(msg.Portal); meta != nil {
-		oc.notifySessionMutation(ctx, msg.Portal, meta, true)
-	}
 	return errors.Join(errs...)
 }
 

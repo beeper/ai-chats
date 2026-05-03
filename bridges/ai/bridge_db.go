@@ -15,18 +15,10 @@ import (
 )
 
 const (
-	aiSessionsTable          = "aichats_sessions"
-	aiSystemEventsTable      = "aichats_system_events"
-	aiLoginStateTable        = "aichats_login_state"
-	aiCustomAgentsTable      = "aichats_custom_agents"
-	aiPortalStateTable       = "aichats_portal_state"
-	aiToolApprovalRulesTable = "aichats_tool_approval_rules"
-	aiTurnsTable             = "aichats_turns"
-	aiTurnRefsTable          = "aichats_turn_refs"
-	aiCronJobsTable          = "aichats_cron_jobs"
-	aiManagedHeartbeatsTable = "aichats_managed_heartbeats"
-	aiCronJobRunKeysTable    = "aichats_cron_job_run_keys"
-	aiHeartbeatRunKeysTable  = "aichats_managed_heartbeat_run_keys"
+	aiLoginStateTable  = "aichats_login_state"
+	aiPortalStateTable = "aichats_portal_state"
+	aiTurnsTable       = "aichats_turns"
+	aiTurnRefsTable    = "aichats_turn_refs"
 )
 
 func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Database {

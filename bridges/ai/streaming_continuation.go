@@ -15,13 +15,11 @@ func (oc *AIClient) buildContinuationParams(
 	state *streamingState,
 	meta *PortalMetadata,
 	pendingOutputs []functionCallOutput,
-	approvalInputs []responses.ResponseInputItemUnionParam,
 ) responses.ResponseNewParams {
 	var input responses.ResponseInputParam
 	if prompt != nil {
 		input = append(input, promptContextToResponsesInput(*prompt)...)
 	}
-	input = append(input, approvalInputs...)
 	for _, output := range pendingOutputs {
 		if output.name != "" {
 			args := output.arguments

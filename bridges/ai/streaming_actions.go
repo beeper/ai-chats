@@ -163,16 +163,6 @@ func (a streamTurnActions) functionToolInputDone(itemID, name, arguments string)
 	)
 }
 
-func (a streamTurnActions) providerToolInProgress(itemID, toolName string, toolType matrixevents.ToolType) {
-	a.touchTool()
-	a.oc.handleProviderToolInProgress(a.ctx, a.portal, a.state, a.meta, a.activeTools, itemID, toolName, toolType)
-}
-
-func (a streamTurnActions) providerToolCompleted(itemID, toolName string, toolType matrixevents.ToolType, failureText string) {
-	a.touch()
-	a.oc.handleProviderToolCompleted(a.ctx, a.portal, a.state, a.activeTools, itemID, toolName, toolType, failureText)
-}
-
 func (a streamTurnActions) outputItemAdded(item responses.ResponseOutputItemUnion) {
 	a.oc.handleResponseOutputItemAdded(a.ctx, a.portal, a.state, a.activeTools, item)
 }
@@ -189,29 +179,8 @@ func (a streamTurnActions) customToolInputDone(itemID string, item responses.Res
 	a.oc.handleCustomToolInputDoneFromOutputItem(a.ctx, a.portal, a.state, a.activeTools, itemID, item, inputText)
 }
 
-func (a streamTurnActions) mcpCallFailed(itemID string, item responses.ResponseOutputItemUnion) {
-	a.oc.handleMCPCallFailedFromOutputItem(a.ctx, a.portal, a.state, a.activeTools, itemID, item)
-}
-
 func (a streamTurnActions) annotationAdded(annotation any, annotationIndex any) {
 	a.oc.handleResponseOutputAnnotationAdded(a.ctx, a.portal, a.state, annotation, annotationIndex)
-}
-
-// approvalRequested registers an MCP approval request through the actions layer.
-// When needsPrompt is false the approval is auto-resolved immediately.
-func (a streamTurnActions) approvalRequested(params ToolApprovalParams, needsPrompt bool) error {
-	handle, err := a.oc.startStreamingMCPApproval(a.ctx, a.portal, a.state, params, needsPrompt)
-	if err != nil {
-		return err
-	}
-	a.state.pendingMcpApprovals = append(a.state.pendingMcpApprovals, mcpApprovalRequest{
-		approvalID:  params.ApprovalID,
-		toolCallID:  params.ToolCallID,
-		toolName:    params.ToolName,
-		serverLabel: params.ServerLabel,
-		handle:      handle,
-	})
-	return nil
 }
 
 // toolResultCompleted finalises a tool call from a Responses API output item
@@ -221,18 +190,8 @@ func (a streamTurnActions) toolResultCompleted(tool *activeToolCall, item respon
 	a.oc.toolLifecycle(a.portal, a.state).completeFromResponseItem(a.ctx, tool, item)
 }
 
-// emitProviderToolLifecycle handles the common in_progress/completed pattern for
-// provider-managed and MCP tool events, reducing repeated cases in the event switch.
-func (a streamTurnActions) emitProviderToolLifecycle(itemID, toolName string, toolType matrixevents.ToolType, isInProgress bool, failureText string) {
-	if isInProgress {
-		a.providerToolInProgress(itemID, toolName, toolType)
-	} else {
-		a.providerToolCompleted(itemID, toolName, toolType, failureText)
-	}
-}
-
-// emitCustomToolInput handles the common delta/done pattern for custom tool,
-// code interpreter, and MCP call argument events.
+// emitCustomToolInput handles the common delta/done pattern for custom tool and
+// code-interpreter argument events.
 func (a streamTurnActions) emitCustomToolInput(itemID string, item responses.ResponseOutputItemUnion, isDelta bool, content string) {
 	if isDelta {
 		a.customToolInputDelta(itemID, item, content)

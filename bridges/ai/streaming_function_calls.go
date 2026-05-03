@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -14,99 +13,9 @@ import (
 	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
-// processToolMediaResult handles TTS audio (AUDIO: prefix), single image (IMAGE: prefix),
-// and multi-image (IMAGES: prefix) tool results. Returns the display-friendly result string
-// and (possibly updated) result status.
-func (oc *AIClient) processToolMediaResult(
-	ctx context.Context,
-	log zerolog.Logger,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	argsJSON string,
-	result string,
-	resultStatus ResultStatus,
-	logSuffix string,
-) (string, ResultStatus) {
-	// TTS audio (AUDIO: prefix)
-	if audioB64, ok := strings.CutPrefix(result, TTSResultPrefix); ok {
-		audioData, err := base64.StdEncoding.DecodeString(audioB64)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode TTS audio" + logSuffix)
-			return "Error: failed to decode TTS audio", ResultStatusError
-		}
-		mimeType := detectAudioMime(audioData, "audio/mpeg")
-		if _, mediaURL, err := oc.sendGeneratedAudio(ctx, portal, audioData, mimeType, state.turn.ID()); err != nil {
-			log.Warn().Err(err).Msg("Failed to send TTS audio" + logSuffix)
-			return "Error: failed to send TTS audio", ResultStatusError
-		} else {
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			return "Audio message sent successfully", resultStatus
-		}
-	}
-
-	// Extract image caption from tool args.
-	var imageCaption string
-	if prompt, err := parseToolArgsPrompt(argsJSON); err == nil {
-		imageCaption = prompt
-	}
-
-	// Multiple images (IMAGES: prefix)
-	if payload, ok := strings.CutPrefix(result, ImagesResultPrefix); ok {
-		var images []string
-		if err := json.Unmarshal([]byte(payload), &images); err != nil {
-			log.Warn().Err(err).Msg("Failed to parse generated images payload" + logSuffix)
-			return "Error: failed to parse generated images", ResultStatusError
-		}
-		success := 0
-		var sentURLs []string
-		for _, imageB64 := range images {
-			imageData, mimeType, err := decodeBase64Image(imageB64)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
-				continue
-			}
-			_, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
-				continue
-			}
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			sentURLs = append(sentURLs, mediaURL)
-			success++
-		}
-		if success == len(images) && success > 0 {
-			return fmt.Sprintf("Images generated and sent to the user (%d). Media URLs: %s", success, strings.Join(sentURLs, ", ")), resultStatus
-		} else if success > 0 {
-			return fmt.Sprintf("Images generated with %d/%d sent successfully. Media URLs: %s", success, len(images), strings.Join(sentURLs, ", ")), ResultStatusError
-		}
-		return "Error: failed to send generated images", ResultStatusError
-	}
-
-	// Single image (IMAGE: prefix)
-	if imageB64, ok := strings.CutPrefix(result, ImageResultPrefix); ok {
-		imageData, mimeType, err := decodeBase64Image(imageB64)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode generated image" + logSuffix)
-			return "Error: failed to decode generated image", ResultStatusError
-		}
-		if _, mediaURL, err := oc.sendGeneratedImage(ctx, portal, imageData, mimeType, state.turn.ID(), imageCaption); err != nil {
-			log.Warn().Err(err).Msg("Failed to send generated image" + logSuffix)
-			return "Error: failed to send generated image", ResultStatusError
-		} else {
-			recordGeneratedFile(state, mediaURL, mimeType)
-			state.writer().File(ctx, mediaURL, mimeType)
-			return fmt.Sprintf("Image generated and sent to the user. Media URL: %s", mediaURL), resultStatus
-		}
-	}
-
-	return result, resultStatus
-}
-
 // ensureActiveToolCall returns the existing activeToolCall for itemID, or creates and
 // registers a new one with the given toolType. This is the shared constructor used by
-// both function-call and provider/MCP tool handlers.
+// function-call handlers.
 func (oc *AIClient) ensureActiveToolCall(
 	ctx context.Context,
 	portal *bridgev2.Portal,
@@ -272,7 +181,6 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 		}
 	}
 
-	result, resultStatus = oc.processToolMediaResult(ctx, log, portal, state, argsJSON, result, resultStatus, logSuffix)
 	if resultStatus == ResultStatusSuccess {
 		collectToolOutputCitations(state, toolName, result)
 	}

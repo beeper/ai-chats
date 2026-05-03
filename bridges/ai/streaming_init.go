@@ -39,9 +39,6 @@ func (oc *AIClient) createStreamingTurn(
 	turn.SetFinalMetadataProvider(sdk.FinalMetadataProviderFunc(func(_ *sdk.Turn, _ string) any {
 		return oc.buildStreamingMessageMetadata(state, meta, buildCanonicalTurnData(state, nil))
 	}))
-	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
-		return autoApprovalHandle{approvalID: req.ApprovalID, toolCallID: req.ToolCallID}
-	})
 	placeholderExtra := map[string]any{
 		BeeperAIKey: map[string]any{
 			"id":   turn.ID(),

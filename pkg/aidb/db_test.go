@@ -43,7 +43,6 @@ func TestUpgradeFresh(t *testing.T) {
 	}
 
 	for _, table := range []string{
-		"aichats_system_events",
 		"aichats_login_state",
 		"aichats_portal_state",
 		"sdk_conversation_state",
@@ -72,6 +71,7 @@ func TestUpgradeFresh(t *testing.T) {
 		"aichats_managed_heartbeat_run_keys",
 		"aichats_custom_agents",
 		"aichats_sessions",
+		"aichats_system_events",
 		"aichats_tool_approval_rules",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)

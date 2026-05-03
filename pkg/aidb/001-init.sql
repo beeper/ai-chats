@@ -1,17 +1,5 @@
 -- v0 -> v1: create canonical AI Chats schema
 -- Canonical initial schema for fresh AI Chats databases.
-CREATE TABLE IF NOT EXISTS aichats_system_events (
-  bridge_id TEXT NOT NULL,
-  login_id TEXT NOT NULL,
-  agent_id TEXT NOT NULL DEFAULT 'beep',
-  session_key TEXT NOT NULL,
-  event_index INTEGER NOT NULL,
-  text TEXT NOT NULL DEFAULT '',
-  ts INTEGER NOT NULL DEFAULT 0,
-  last_text TEXT NOT NULL DEFAULT '',
-  PRIMARY KEY (bridge_id, login_id, agent_id, session_key, event_index)
-);
-
 CREATE TABLE IF NOT EXISTS aichats_login_state (
   bridge_id TEXT NOT NULL,
   login_id TEXT NOT NULL,

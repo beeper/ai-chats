@@ -142,7 +142,6 @@ func (oc *AIClient) sendPlainAssistantMessage(ctx context.Context, portal *bridg
 		oc.loggerForContext(ctx).Warn().Err(err).Stringer("room_id", portal.MXID).Msg("Failed to send plain assistant message")
 		return err
 	}
-	oc.recordAgentActivity(ctx, portal, portalMeta(portal))
 	return nil
 }
 
@@ -276,7 +275,6 @@ func (oc *AIClient) sendFinalAssistantTurnContent(ctx context.Context, portal *b
 			finishReason,
 		))
 	}
-	oc.recordAgentActivity(ctx, portal, meta)
 	if state != nil && state.turn != nil {
 		oc.loggerForContext(ctx).Debug().
 			Str("initial_event_id", state.turn.InitialEventID().String()).

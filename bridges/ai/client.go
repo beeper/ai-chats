@@ -505,7 +505,6 @@ func (oc *AIClient) postSaveUserMessage(
 	if err := oc.persistAIConversationMessage(ctx, portal, msg); err != nil {
 		oc.loggerForContext(ctx).Warn().Err(err).Msg("Failed to persist AI conversation turn")
 	}
-	oc.notifySessionMutation(ctx, portal, meta, false)
 }
 
 func (oc *AIClient) persistAcceptedUserMessage(

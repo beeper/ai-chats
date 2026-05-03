@@ -199,12 +199,7 @@ func (oc *AIClient) buildPromptContextForTurn(
 				MimeType: actualMimeType,
 			})
 		case pendingTypePDF:
-			content, truncated, err := oc.downloadPDFFile(ctx, opts.attachment.mediaURL, opts.attachment.encryptedFile, opts.attachment.mimeType)
-			if err != nil {
-				return PromptContext{}, fmt.Errorf("failed to download PDF: %w", err)
-			}
-			filename := resolveMediaFileName("document.pdf", "pdf", opts.attachment.mediaURL)
-			appendFragments = append(appendFragments, buildTextFileMessage("", false, filename, "application/pdf", content, truncated))
+			return PromptContext{}, fmt.Errorf("PDF attachments are not supported")
 		case pendingTypeAudio:
 			return PromptContext{}, fmt.Errorf("audio attachments must be preprocessed into text before prompt assembly")
 		case pendingTypeVideo:
@@ -222,14 +217,6 @@ func (oc *AIClient) buildPromptContextForTurn(
 		return PromptContext{}, err
 	}
 	prepend := slices.Clone(textOpts.prepend)
-	if portal != nil && portal.MXID != "" {
-		reactionFeedback := DrainReactionFeedback(portal.MXID)
-		if len(reactionFeedback) > 0 {
-			if feedbackText := FormatReactionFeedback(reactionFeedback); feedbackText != "" {
-				prepend = append(prepend, feedbackText)
-			}
-		}
-	}
 	if result.UntrustedPrefix != "" {
 		prepend = append(prepend, result.UntrustedPrefix)
 	}

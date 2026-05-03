@@ -14,8 +14,6 @@ import (
 var (
 	StreamEventMessageType = event.Type{Type: "com.beeper.llm", Class: event.EphemeralEventType}
 
-	CompactionStatusEventType = event.Type{Type: "com.beeper.ai.compaction_status", Class: event.MessageEventType}
-
 	AIRoomInfoEventType = event.Type{Type: "com.beeper.ai.info", Class: event.StateEventType}
 )
 
@@ -33,13 +31,12 @@ const BeeperAIKey = "com.beeper.ai"
 type ToolStatus string
 
 const (
-	ToolStatusPending          ToolStatus = "pending"
-	ToolStatusRunning          ToolStatus = "running"
-	ToolStatusCompleted        ToolStatus = "completed"
-	ToolStatusFailed           ToolStatus = "failed"
-	ToolStatusTimeout          ToolStatus = "timeout"
-	ToolStatusCancelled        ToolStatus = "cancelled"
-	ToolStatusApprovalRequired ToolStatus = "approval_required"
+	ToolStatusPending   ToolStatus = "pending"
+	ToolStatusRunning   ToolStatus = "running"
+	ToolStatusCompleted ToolStatus = "completed"
+	ToolStatusFailed    ToolStatus = "failed"
+	ToolStatusTimeout   ToolStatus = "timeout"
+	ToolStatusCancelled ToolStatus = "cancelled"
 )
 
 // ResultStatus represents the status of a tool result.
@@ -59,7 +56,6 @@ const (
 	ToolTypeBuiltin  ToolType = "builtin"
 	ToolTypeProvider ToolType = "provider"
 	ToolTypeFunction ToolType = "function"
-	ToolTypeMCP      ToolType = "mcp"
 )
 
 type StreamEventOpts struct {

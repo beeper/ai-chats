@@ -172,20 +172,6 @@ func responsesToolNames(tools []responses.ToolUnionParam) []string {
 			names = append(names, tool.OfFunction.Name)
 		} else if tool.OfWebSearch != nil {
 			names = append(names, ToolNameWebSearch)
-		} else if tool.OfFileSearch != nil {
-			names = append(names, "file_search")
-		} else if tool.OfCodeInterpreter != nil {
-			names = append(names, "code_interpreter")
-		} else if tool.OfComputerUsePreview != nil {
-			names = append(names, "computer")
-		} else if tool.OfImageGeneration != nil {
-			names = append(names, "image_generation")
-		} else if tool.OfLocalShell != nil || tool.OfShell != nil {
-			names = append(names, "shell")
-		} else if tool.OfMcp != nil {
-			names = append(names, "mcp")
-		} else if tool.OfApplyPatch != nil {
-			names = append(names, "apply_patch")
 		}
 	}
 	slices.Sort(names)

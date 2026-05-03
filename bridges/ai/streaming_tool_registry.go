@@ -9,7 +9,6 @@ import (
 
 type activeToolCall struct {
 	callID      string
-	approvalID  string
 	registryKey string
 	itemID      string
 	toolName    string
@@ -45,14 +44,6 @@ func streamToolCallKey(callID string) string {
 		return ""
 	}
 	return "call:" + callID
-}
-
-func streamToolApprovalKey(approvalID string) string {
-	approvalID = strings.TrimSpace(approvalID)
-	if approvalID == "" {
-		return ""
-	}
-	return "approval:" + approvalID
 }
 
 func (r *streamToolRegistry) canonicalKey(key string) string {

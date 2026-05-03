@@ -517,22 +517,6 @@ func (oc *AIClient) extractMediaFileBlocks(
 		if skip[attachment.Index] {
 			continue
 		}
-		mimeType := stringutil.NormalizeMimeType(attachment.MimeType)
-		if mimeType == "" || !isTextFileMime(mimeType) {
-			continue
-		}
-		content, truncated, err := oc.downloadTextFile(ctx, attachment.URL, attachment.EncryptedFile, mimeType)
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).
-				Int("attachment_index", attachment.Index).
-				Msg("Failed to extract text file block for media understanding")
-			continue
-		}
-		block := buildTextFileMessage("", false, attachment.FileName, mimeType, content, truncated)
-		if strings.TrimSpace(block) == "" {
-			continue
-		}
-		blocks = append(blocks, block)
 	}
 	return blocks
 }

@@ -50,10 +50,6 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 }
 
 func (oc *AIClient) noteStreamingPersistenceSideEffects(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {
-	if state == nil {
-		return
-	}
-	oc.notifySessionMutation(ctx, portal, meta, false)
 }
 
 // saveAssistantMessage saves the completed assistant message to the database.

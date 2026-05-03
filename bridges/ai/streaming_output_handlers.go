@@ -10,7 +10,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 )
 
 func (oc *AIClient) upsertActiveToolFromDescriptor(
@@ -42,17 +41,11 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	if strings.TrimSpace(desc.callID) != "" {
 		tool.callID = SanitizeToolCallID(desc.callID, "strict")
 	}
-	if strings.TrimSpace(desc.approvalID) != "" {
-		tool.approvalID = strings.TrimSpace(desc.approvalID)
-	}
 	if strings.TrimSpace(desc.itemID) != "" {
 		tool.itemID = desc.itemID
 		activeTools.BindAlias(streamToolItemKey(desc.itemID), tool)
 	}
 	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)
-	if tool.approvalID != "" {
-		activeTools.BindAlias(streamToolApprovalKey(tool.approvalID), tool)
-	}
 	if strings.TrimSpace(desc.toolName) != "" {
 		tool.toolName = desc.toolName
 	}
@@ -130,106 +123,9 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	lifecycle.emitInput(ctx, tool, tool.toolName, parseJSONOrRaw(tool.input.String()), tool.toolType == matrixevents.ToolTypeProvider)
 }
 
-func (oc *AIClient) handleMCPCallFailedFromOutputItem(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	activeTools *streamToolRegistry,
-	itemID string,
-	item responses.ResponseOutputItemUnion,
-) {
-	lifecycle := oc.toolLifecycle(portal, state)
-	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
-	if tool == nil {
-		return
-	}
-	if state != nil && state.turn != nil {
-		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
-			return
-		}
-	}
-	errorText := strings.TrimSpace(item.Error)
-	if errorText == "" {
-		errorText = "MCP tool call failed"
-	}
-	denied := outputItemLooksDenied(item)
-	resultStatus := ResultStatusError
-	if denied {
-		resultStatus = ResultStatusDenied
-	}
-	lifecycle.fail(ctx, tool, true, resultStatus, errorText, nil)
-}
-
-// gateMcpToolApproval handles an MCP approval request item: registers the
-// approval, auto-approves when policy allows, or emits a UI approval request.
-func (oc *AIClient) gateMcpToolApproval(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	tool *activeToolCall,
-	desc responseToolDescriptor,
-	item responses.ResponseOutputItemUnion,
-) {
-	if state == nil || tool == nil {
-		return
-	}
-	approvalID := strings.TrimSpace(item.ID)
-	if approvalID == "" {
-		approvalID = stableMCPApprovalID(tool.callID, desc)
-	}
-	if state.pendingMcpApprovalsSeen[approvalID] {
-		return
-	}
-	if tool.input.Len() == 0 {
-		tool.input.WriteString(stringifyJSONValue(desc.input))
-	}
-	tool.approvalID = approvalID
-	if state != nil && state.turn != nil {
-		state.turn.UIState().UIToolCallIDByApproval[approvalID] = tool.callID
-	}
-	oc.toolLifecycle(portal, state).emitInput(ctx, tool, tool.toolName, desc.input, true)
-	state.pendingMcpApprovalsSeen[approvalID] = true
-	parsed := item.AsMcpApprovalRequest()
-	serverLabel := strings.TrimSpace(parsed.ServerLabel)
-	mcpToolName := strings.TrimSpace(parsed.Name)
-	presentation := buildMCPApprovalPresentation(serverLabel, mcpToolName, desc.input)
-	ttl := time.Duration(oc.toolApprovalsTTLSeconds()) * time.Second
-	params := ToolApprovalParams{
-		ApprovalID:   approvalID,
-		RoomID:       state.roomID,
-		TurnID:       state.turn.ID(),
-		ToolCallID:   tool.callID,
-		ToolName:     tool.toolName,
-		ToolKind:     ToolApprovalKindMCP,
-		RuleToolName: mcpToolName,
-		ServerLabel:  serverLabel,
-		Presentation: presentation,
-		TTL:          ttl,
-	}
-
-	runtimeDecision := airuntime.DecideToolApproval(airuntime.ToolPolicyInput{
-		ToolName:      mcpToolName,
-		ToolKind:      "mcp",
-		CallID:        tool.callID,
-		RequireForMCP: oc.toolApprovalsRequireForMCP(),
-	})
-	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(ctx, serverLabel, mcpToolName)
-	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
-	if err := actions.approvalRequested(params, needsApproval); err != nil {
-		if state != nil {
-			delete(state.pendingMcpApprovalsSeen, approvalID)
-		}
-		if state != nil && state.turn != nil {
-			delete(state.turn.UIState().UIToolApprovalRequested, approvalID)
-		}
-		oc.toolLifecycle(portal, state).fail(ctx, tool, true, ResultStatusError, err.Error(), nil)
-		return
-	}
-}
-
 // resolveOutputItemTool performs the common setup shared by handleResponseOutputItemAdded
 // and handleResponseOutputItemDone: derives the tool descriptor, upserts the active tool,
-// checks finalization, and handles mcp_approval_request gating.
+// and checks finalization.
 // Returns (tool, desc, ok). When ok is false the caller should return early.
 func (oc *AIClient) resolveOutputItemTool(
 	ctx context.Context,
@@ -250,10 +146,6 @@ func (oc *AIClient) resolveOutputItemTool(
 		if state.turn.UIState().UIToolOutputFinalized[tool.callID] {
 			return nil, desc, false, false
 		}
-	}
-	if item.Type == "mcp_approval_request" {
-		oc.gateMcpToolApproval(ctx, portal, state, tool, desc, item)
-		return nil, desc, false, false
 	}
 	return tool, desc, created, true
 }
@@ -301,12 +193,6 @@ func (oc *AIClient) handleResponseOutputItemDone(
 		oc.emitToolInputIfAvailable(ctx, portal, state, tool, desc)
 	}
 
-	if files := codeInterpreterFileParts(item); len(files) > 0 {
-		for _, file := range files {
-			recordGeneratedFile(state, file.URL, file.MediaType)
-			state.writer().File(ctx, file.URL, file.MediaType)
-		}
-	}
 	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
 	actions.toolResultCompleted(tool, item)
 }

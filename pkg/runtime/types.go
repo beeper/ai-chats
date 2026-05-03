@@ -156,33 +156,3 @@ type FallbackDecision struct {
 	StatusText  string
 	ShouldRetry bool
 }
-
-// ToolApprovalState tracks the approval lifecycle for tools.
-type ToolApprovalState string
-
-const (
-	ToolApprovalRequired ToolApprovalState = "required"
-	ToolApprovalPending  ToolApprovalState = "pending"
-	ToolApprovalApproved ToolApprovalState = "approved"
-	ToolApprovalDenied   ToolApprovalState = "denied"
-	ToolApprovalTimedOut ToolApprovalState = "timed_out"
-	ToolApprovalStale    ToolApprovalState = "stale"
-)
-
-// ToolApprovalDecision is a policy decision output.
-type ToolApprovalDecision struct {
-	State   ToolApprovalState
-	Reason  string
-	Tool    string
-	CallID  string
-	IsError bool
-}
-
-// CompactionDecision captures deterministic compaction outcomes for observability.
-type CompactionDecision struct {
-	Applied       bool
-	DroppedCount  int
-	OriginalChars int
-	FinalChars    int
-	Reason        string
-}

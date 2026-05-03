@@ -22,7 +22,6 @@ type Config struct {
 	Channels *ChannelsConfig     `yaml:"channels"`
 	Messages *MessagesConfig     `yaml:"messages"`
 	Commands *CommandsConfig     `yaml:"commands"`
-	Session  *SessionConfig      `yaml:"session"`
 
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
@@ -39,19 +38,11 @@ type ChannelsConfig struct {
 }
 
 type ChannelDefaultsConfig struct {
-	Heartbeat *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
 }
 
 type ChannelConfig struct {
-	Heartbeat     *ChannelHeartbeatVisibilityConfig `yaml:"heartbeat"`
-	ReplyToMode   string                            `yaml:"reply_to_mode"`  // off|first|all (Matrix)
-	ThreadReplies string                            `yaml:"thread_replies"` // off|inbound|always (Matrix)
-}
-
-type ChannelHeartbeatVisibilityConfig struct {
-	ShowOk       *bool `yaml:"show_ok"`
-	ShowAlerts   *bool `yaml:"show_alerts"`
-	UseIndicator *bool `yaml:"use_indicator"`
+	ReplyToMode   string `yaml:"reply_to_mode"`  // off|first|all (Matrix)
+	ThreadReplies string `yaml:"thread_replies"` // off|inbound|always (Matrix)
 }
 
 // MessagesConfig defines message rendering settings.
@@ -96,12 +87,6 @@ type QueueConfig struct {
 	DebounceMsByChannel map[string]int    `yaml:"debounce_ms_by_channel"`
 	Cap                 *int              `yaml:"cap"`
 	Drop                string            `yaml:"drop"`
-}
-
-// SessionConfig configures session behavior.
-type SessionConfig struct {
-	Scope   string `yaml:"scope"`
-	MainKey string `yaml:"main_key"`
 }
 
 // ToolProvidersConfig configures external tool providers like search and fetch.

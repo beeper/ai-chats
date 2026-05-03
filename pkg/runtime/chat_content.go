@@ -128,7 +128,7 @@ func EstimateMessageChars(msg openai.ChatCompletionMessageParamUnion) int {
 	return 0
 }
 
-// PromptTextPayloads extracts plain-text payloads from prompt messages for compaction heuristics.
+// PromptTextPayloads extracts plain-text payloads from prompt messages.
 func PromptTextPayloads(prompt []openai.ChatCompletionMessageParamUnion) ([]string, int) {
 	texts := make([]string, 0, len(prompt))
 	totalChars := 0
