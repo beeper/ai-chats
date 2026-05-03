@@ -13,19 +13,17 @@ func TestApplyAgentRemoteBridgeInfoRoomTypes(t *testing.T) {
 	cases := []struct {
 		name     string
 		roomType database.RoomType
-		aiKind   string
 		want     string
 	}{
-		{name: "agent dm", roomType: database.RoomTypeDM, aiKind: AIRoomKindAgent, want: "dm"},
-		{name: "agent default", roomType: database.RoomTypeDefault, aiKind: AIRoomKindAgent, want: "group"},
-		{name: "agent space", roomType: database.RoomTypeSpace, aiKind: AIRoomKindAgent, want: "space"},
-		{name: "subagent forced group", roomType: database.RoomTypeDM, aiKind: "subagent", want: "group"},
+		{name: "dm", roomType: database.RoomTypeDM, want: "dm"},
+		{name: "default", roomType: database.RoomTypeDefault, want: "group"},
+		{name: "space", roomType: database.RoomTypeSpace, want: "space"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			content := &event.BridgeEventContent{}
-			ApplyAgentRemoteBridgeInfo(content, "", tc.roomType, tc.aiKind)
+			ApplyAgentRemoteBridgeInfo(content, "", tc.roomType)
 			if content.BeeperRoomTypeV2 != tc.want {
 				t.Fatalf("expected %q, got %q", tc.want, content.BeeperRoomTypeV2)
 			}
@@ -35,7 +33,7 @@ func TestApplyAgentRemoteBridgeInfoRoomTypes(t *testing.T) {
 
 func TestApplyAgentRemoteBridgeInfo(t *testing.T) {
 	content := &event.BridgeEventContent{}
-	ApplyAgentRemoteBridgeInfo(content, "ai-codex", database.RoomTypeDM, AIRoomKindAgent)
+	ApplyAgentRemoteBridgeInfo(content, "ai-codex", database.RoomTypeDM)
 
 	if content.Protocol.ID != "ai-codex" {
 		t.Fatalf("expected protocol id ai-codex, got %q", content.Protocol.ID)

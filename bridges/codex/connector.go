@@ -198,7 +198,7 @@ func (cc *CodexConnector) FillPortalBridgeInfo(portal *bridgev2.Portal, content 
 	if portal == nil {
 		return
 	}
-	sdk.ApplyAgentRemoteBridgeInfo(content, "ai-codex", portal.RoomType, sdk.AIRoomKindAgent)
+	sdk.ApplyAgentRemoteBridgeInfo(content, "ai-codex", portal.RoomType)
 }
 
 func resolveCodexCommandFromConfig(cfg *CodexConfig) string {

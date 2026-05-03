@@ -32,7 +32,6 @@ func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *P
 		ToolType:           "ai",
 		FinishReason:       state.finishReason,
 		TurnID:             turnID,
-		AgentID:            state.agentID,
 		StartedAtMs:        state.startedAtMs,
 		CompletedAtMs:      state.completedAtMs,
 		PromptTokens:       state.promptTokens,

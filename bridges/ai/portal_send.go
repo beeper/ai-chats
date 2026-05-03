@@ -29,9 +29,7 @@ func (oc *AIClient) senderForPortal(ctx context.Context, portal *bridgev2.Portal
 	if responder != nil {
 		senderID = responder.GhostID
 	} else if meta != nil {
-		if agentID := resolveAgentID(meta); agentID != "" {
-			senderID = oc.agentUserID(agentID)
-		} else if modelID := oc.effectiveModel(meta); modelID != "" {
+		if modelID := oc.effectiveModel(meta); modelID != "" {
 			senderID = modelUserID(modelID)
 		}
 	}

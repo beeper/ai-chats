@@ -85,7 +85,6 @@ type streamingRunPrep struct {
 	State         *streamingState
 	TypingSignals *TypingSignaler
 	TouchTyping   func()
-	IsHeartbeat   bool
 }
 
 // prepareStreamingRun performs the shared preamble for both the Responses API
@@ -121,7 +120,6 @@ func (oc *AIClient) prepareStreamingRun(
 	}
 	if responder, err := oc.resolveResponder(ctx, meta, opts); err == nil && responder != nil {
 		state.respondingGhostID = string(responder.GhostID)
-		state.respondingAgentID = responder.AgentID
 		state.respondingModelID = responder.ModelID
 		state.respondingContextLimit = responder.ContextLimit
 	} else if err != nil {
@@ -153,14 +151,14 @@ func (oc *AIClient) prepareStreamingRun(
 	var typingSignals *TypingSignaler
 	touchTyping := func() {}
 	if !state.suppressSend {
-		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), false)
+		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx))
 		interval := oc.resolveTypingInterval(meta)
 		if interval > 0 && mode != TypingModeNever {
 			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
 				Interval: interval,
 				TTL:      typingTTL,
 			})
-			typingSignals = NewTypingSignaler(typingCtrl, mode, false)
+			typingSignals = NewTypingSignaler(typingCtrl, mode)
 			touchTyping = func() {
 				typingCtrl.RefreshTTL()
 			}
@@ -181,7 +179,6 @@ func (oc *AIClient) prepareStreamingRun(
 		State:         state,
 		TypingSignals: typingSignals,
 		TouchTyping:   touchTyping,
-		IsHeartbeat:   false,
 	}
 	return prep, cleanup
 }

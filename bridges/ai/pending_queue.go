@@ -435,7 +435,7 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 			item.pending.AckEventIDs = ackIDs
 		}
 		item.acceptedMessages = acceptedMessages
-		blocks := []string{"[Queued messages while agent was busy]"}
+		blocks := []string{"[Queued messages while the assistant was busy]"}
 		if strings.TrimSpace(candidate.summaryPrompt) != "" {
 			blocks = append(blocks, candidate.summaryPrompt)
 		}

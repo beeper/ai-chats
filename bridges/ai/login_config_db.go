@@ -11,18 +11,9 @@ import (
 type aiLoginConfig struct {
 	Credentials          *LoginCredentials `json:"credentials,omitempty"`
 	TitleGenerationModel string            `json:"title_generation_model,omitempty"`
-	Agents               *bool             `json:"agents,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
 	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
-}
-
-func cloneBoolPtr(src *bool) *bool {
-	if src == nil {
-		return nil
-	}
-	v := *src
-	return &v
 }
 
 func cloneLoginCredentials(src *LoginCredentials) *LoginCredentials {

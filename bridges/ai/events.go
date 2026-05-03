@@ -42,7 +42,6 @@ const (
 type SettingSource string
 
 const (
-	SourceAgentPolicy    SettingSource = "agent_policy"
 	SourceProviderConfig SettingSource = "provider_config"
 	SourceGlobalDefault  SettingSource = "global_default"
 	SourceModelLimit     SettingSource = "model_limitation"

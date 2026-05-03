@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strings"
@@ -56,25 +55,6 @@ func modelUserID(modelID string) networkid.UserID {
 	return networkid.UserID(fmt.Sprintf("model-%s", url.PathEscape(modelID)))
 }
 
-func agentUsesGlobalGhostIdentity(agentID string) bool {
-	return false
-}
-
-// Format: "agent-{agent-id}"
-func agentUserID(agentID string) networkid.UserID {
-	return networkid.UserID(fmt.Sprintf("agent-%s", url.PathEscape(agentID)))
-}
-
-// Format: "agent-login-{base64-login-id}:{agent-id}"
-func agentUserIDForLogin(loginID networkid.UserLoginID, agentID string) networkid.UserID {
-	normalized := normalizeAgentID(agentID)
-	if normalized == "" || loginID == "" || agentUsesGlobalGhostIdentity(normalized) {
-		return agentUserID(normalized)
-	}
-	encodedLoginID := base64.RawURLEncoding.EncodeToString([]byte(loginID))
-	return networkid.UserID(fmt.Sprintf("agent-login-%s:%s", encodedLoginID, url.PathEscape(normalized)))
-}
-
 // parseModelFromGhostID extracts the model ID from a ghost ID (format: "model-{escaped-model-id}")
 // Returns empty string if the ghost ID doesn't match the expected format.
 func parseModelFromGhostID(ghostID string) string {
@@ -87,35 +67,6 @@ func parseModelFromGhostID(ghostID string) string {
 	return ""
 }
 
-// parseAgentFromGhostID extracts the agent ID from a ghost ID (format: "agent-{escaped-agent-id}").
-// Returns empty string and false if the ghost ID is not an agent-only ghost.
-func parseAgentFromGhostID(ghostID string) (agentID string, ok bool) {
-	if strings.Contains(ghostID, ":model-") {
-		return "", false
-	}
-	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-login-"); hasPrefix {
-		encodedLoginID, encodedAgentID, found := strings.Cut(suffix, ":")
-		if !found || encodedLoginID == "" || encodedAgentID == "" {
-			return "", false
-		}
-		if _, err := base64.RawURLEncoding.DecodeString(encodedLoginID); err != nil {
-			return "", false
-		}
-		agentID, err := url.PathUnescape(encodedAgentID)
-		if err == nil && strings.TrimSpace(agentID) != "" {
-			return strings.TrimSpace(agentID), true
-		}
-		return "", false
-	}
-	if suffix, hasPrefix := strings.CutPrefix(ghostID, "agent-"); hasPrefix {
-		agentID, err := url.PathUnescape(suffix)
-		if err == nil {
-			return strings.TrimSpace(agentID), true
-		}
-	}
-	return "", false
-}
-
 func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 	return sdk.HumanUserID("openai-user", loginID)
 }
@@ -123,14 +74,12 @@ func humanUserID(loginID networkid.UserLoginID) networkid.UserID {
 const (
 	ResolvedTargetUnknown = ""
 	ResolvedTargetModel   = "model"
-	ResolvedTargetAgent   = "agent"
 )
 
 type ResolvedTarget struct {
 	Kind    string
 	GhostID networkid.UserID
 	ModelID string
-	AgentID string
 }
 
 func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
@@ -142,13 +91,6 @@ func resolveTargetFromGhostID(ghostID networkid.UserID) *ResolvedTarget {
 			Kind:    ResolvedTargetModel,
 			GhostID: ghostID,
 			ModelID: modelID,
-		}
-	}
-	if agentID, ok := parseAgentFromGhostID(string(ghostID)); ok && strings.TrimSpace(agentID) != "" {
-		return &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			GhostID: ghostID,
-			AgentID: strings.TrimSpace(agentID),
 		}
 	}
 	return nil
@@ -173,13 +115,6 @@ func setPortalResolvedTarget(portal *bridgev2.Portal, meta *PortalMetadata, ghos
 	if meta != nil {
 		meta.ResolvedTarget = resolveTargetFromGhostID(ghostID)
 	}
-}
-
-func resolveAgentID(meta *PortalMetadata) string {
-	if meta == nil || meta.ResolvedTarget == nil {
-		return ""
-	}
-	return meta.ResolvedTarget.AgentID
 }
 
 func messageMeta(msg *database.Message) *MessageMetadata {

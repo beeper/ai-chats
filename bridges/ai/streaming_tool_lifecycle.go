@@ -6,24 +6,17 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go/v3/responses"
-	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/shared/jsonutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
 type toolLifecycle struct {
-	oc     *AIClient
-	portal *bridgev2.Portal
-	state  *streamingState
+	state *streamingState
 }
 
-func (oc *AIClient) toolLifecycle(portal *bridgev2.Portal, state *streamingState) toolLifecycle {
-	return toolLifecycle{
-		oc:     oc,
-		portal: portal,
-		state:  state,
-	}
+func newToolLifecycle(state *streamingState) toolLifecycle {
+	return toolLifecycle{state: state}
 }
 
 func (l toolLifecycle) ensureInputStart(ctx context.Context, tool *activeToolCall, providerExecuted bool, extra map[string]any) {

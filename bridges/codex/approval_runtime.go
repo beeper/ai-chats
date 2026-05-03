@@ -9,6 +9,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
+	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -142,7 +144,9 @@ func (cc *CodexClient) requestSDKApproval(
 	})
 	approvalID := started.ApprovalID
 	presentation := started.Presentation
-	cc.setApprovalStateTracking(state, approvalID, req.ToolCallID, req.ToolName)
+	if state != nil && state.turn != nil {
+		streamui.TrackApproval(state.turn.UIState(), approvalID, req.ToolCallID, req.ToolName, matrixevents.ToolTypeProvider)
+	}
 	if started.Pending != nil && started.Pending.Data != nil {
 		started.Pending.Data.ApprovalID = approvalID
 		started.Pending.Data.RoomID = portal.MXID

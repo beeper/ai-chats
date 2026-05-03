@@ -131,7 +131,7 @@ func (oc *AIClient) dispatchPromptRun(
 		runCtx = WithTypingContext(runCtx, item.pending.Typing)
 	}
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
-	oc.launchAgentLoopRun(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext, func() {
+	oc.launchStreamingRun(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext, func() {
 		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 		if item.backlogAfter {
 			followup := item

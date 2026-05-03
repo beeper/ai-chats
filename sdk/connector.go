@@ -142,7 +142,7 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			if portal == nil || content == nil || protocolID == "" {
 				return
 			}
-			ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType, AIRoomKindAgent)
+			ApplyAgentRemoteBridgeInfo(content, protocolID, portal.RoomType)
 		},
 		LoadLogin: loadLogin,
 		LoginFlows: func() []bridgev2.LoginFlow {

@@ -58,7 +58,7 @@ func TestProcessResponseStreamEventEmitsMetadataForCompleted(t *testing.T) {
 	})
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,
@@ -125,7 +125,7 @@ func TestProcessResponseStreamEventUpdatesCompletedResponseStatus(t *testing.T) 
 	})
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,
@@ -169,7 +169,7 @@ func TestProcessResponseStreamEventCompletedSignalsLoopStop(t *testing.T) {
 	oc := &AIClient{}
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,
@@ -194,7 +194,7 @@ func TestProcessResponseStreamEventCompletedSignalsLoopStop(t *testing.T) {
 	}
 }
 
-func TestResponsesTurnAdapterFinalizeAgentLoopDoesNotSkipTerminalLifecycle(t *testing.T) {
+func TestResponsesTurnAdapterFinalizeStreamingTurnDoesNotSkipTerminalLifecycle(t *testing.T) {
 	state := newTestStreamingStateWithTurn()
 	state.turn.SetSuppressSend(true)
 	state.writer().TextDelta(context.Background(), "done")
@@ -202,14 +202,14 @@ func TestResponsesTurnAdapterFinalizeAgentLoopDoesNotSkipTerminalLifecycle(t *te
 	state.finishReason = "stop"
 
 	adapter := &responsesTurnAdapter{
-		agentLoopProviderBase: agentLoopProviderBase{
+		streamProviderBase: streamProviderBase{
 			oc:    &AIClient{},
 			log:   zerolog.Nop(),
 			state: state,
 		},
 	}
 
-	adapter.FinalizeAgentLoop(context.Background())
+	adapter.FinalizeStreamingTurn(context.Background())
 
 	if !state.isFinalized() {
 		t.Fatal("expected finalize agent loop to finalize terminal response state")
@@ -229,7 +229,7 @@ func TestProcessResponseStreamEventFailedFinalizesAsError(t *testing.T) {
 	oc := &AIClient{}
 
 	rsc := &responseStreamContext{
-		base: &agentLoopProviderBase{
+		base: &streamProviderBase{
 			oc:    oc,
 			log:   zerolog.Nop(),
 			state: state,

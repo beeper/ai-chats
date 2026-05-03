@@ -34,8 +34,6 @@ var abortTriggers = map[string]struct{}{
 	"stop current action":     {},
 	"stop run":                {},
 	"stop current run":        {},
-	"stop agent":              {},
-	"stop the agent":          {},
 	"please stop":             {},
 	"stop please":             {},
 	"stop don't do anything":  {},

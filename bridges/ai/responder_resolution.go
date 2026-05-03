@@ -15,13 +15,11 @@ type ResponderKind string
 
 const (
 	ResponderKindModel ResponderKind = "model"
-	ResponderKindAgent ResponderKind = "agent"
 )
 
 type ResponderInfo struct {
 	Kind                ResponderKind
 	GhostID             networkid.UserID
-	AgentID             string
 	ModelID             string
 	DisplayName         string
 	ContextLimit        int
@@ -103,8 +101,6 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 	}
 
 	switch target.Kind {
-	case ResolvedTargetAgent:
-		return nil, fmt.Errorf("agent targets are disabled")
 	case ResolvedTargetModel, ResolvedTargetUnknown:
 		modelID := strings.TrimSpace(target.ModelID)
 		if override != "" {
@@ -192,9 +188,6 @@ func responderMetadataMap(responder *ResponderInfo) map[string]any {
 		"com.beeper.ai.model_id":      responder.ModelID,
 		"com.beeper.ai.context_limit": responder.ContextLimit,
 		"com.beeper.ai.capabilities":  responder.ModelCapabilities(),
-	}
-	if responder.AgentID != "" {
-		metadata["com.beeper.ai.agent"] = responder.AgentID
 	}
 	return metadata
 }

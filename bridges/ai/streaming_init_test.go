@@ -44,40 +44,6 @@ func TestPrepareStreamingRun_ModelRoomKeepsReplyTarget(t *testing.T) {
 	}
 }
 
-func TestPrepareStreamingRun_AgentRoomKeepsReplyTarget(t *testing.T) {
-	oc := &AIClient{}
-	meta := agentModeTestMeta("beeper")
-	evt := &event.Event{
-		ID:     id.EventID("$evt"),
-		Sender: id.UserID("@alice:example.com"),
-		Content: event.Content{
-			Raw: map[string]any{
-				"m.relates_to": map[string]any{
-					"m.in_reply_to": map[string]any{
-						"event_id": "$parent",
-					},
-				},
-			},
-		},
-	}
-
-	prep, cleanup := oc.prepareStreamingRun(
-		context.Background(),
-		zerolog.Nop(),
-		evt,
-		nil,
-		meta,
-	)
-	defer cleanup()
-
-	if prep.State == nil {
-		t.Fatalf("expected streaming state")
-	}
-	if prep.State.replyTarget.ReplyTo == "" {
-		t.Fatalf("expected reply target to be preserved in agent room")
-	}
-}
-
 func TestPrepareStreamingRun_SnapshotsResponderFields(t *testing.T) {
 	oc := newTestAIClientWithProvider("")
 	oc.connector = &OpenAIConnector{}

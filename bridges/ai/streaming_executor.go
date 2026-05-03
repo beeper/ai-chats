@@ -8,15 +8,15 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-// agentLoopProvider owns provider-specific request construction and stream parsing
-// while the agent loop owns the shared turn lifecycle.
-type agentLoopProvider interface {
+// streamProvider owns provider-specific request construction and stream parsing
+// while the streaming loop owns the shared turn lifecycle.
+type streamProvider interface {
 	TrackRoomRunStreaming() bool
-	RunAgentTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
-	FinalizeAgentLoop(ctx context.Context)
+	RunStreamingTurn(ctx context.Context, evt *event.Event, round int) (continueLoop bool, cle *ContextLengthError, err error)
+	FinalizeStreamingTurn(ctx context.Context)
 }
 
-type agentLoopProviderBase struct {
+type streamProviderBase struct {
 	oc            *AIClient
 	log           zerolog.Logger
 	portal        *bridgev2.Portal
@@ -24,19 +24,18 @@ type agentLoopProviderBase struct {
 	state         *streamingState
 	typingSignals *TypingSignaler
 	touchTyping   func()
-	isHeartbeat   bool
 	prompt        PromptContext
 }
 
-func newAgentLoopProviderBase(
+func newStreamProviderBase(
 	oc *AIClient,
 	log zerolog.Logger,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	prep streamingRunPrep,
 	prompt PromptContext,
-) agentLoopProviderBase {
-	return agentLoopProviderBase{
+) streamProviderBase {
+	return streamProviderBase{
 		oc:            oc,
 		log:           log,
 		portal:        portal,
@@ -44,19 +43,18 @@ func newAgentLoopProviderBase(
 		state:         prep.State,
 		typingSignals: prep.TypingSignals,
 		touchTyping:   prep.TouchTyping,
-		isHeartbeat:   prep.IsHeartbeat,
 		prompt:        prompt,
 	}
 }
 
-func (oc *AIClient) runAgentLoop(
+func (oc *AIClient) runStreamingLoop(
 	ctx context.Context,
 	log zerolog.Logger,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	prompt PromptContext,
-	newProvider func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider,
+	newProvider func(prep streamingRunPrep, prompt PromptContext) streamProvider,
 ) (bool, *ContextLengthError, error) {
 	prep, typingCleanup := oc.prepareStreamingRun(ctx, log, evt, portal, meta)
 	defer typingCleanup()
@@ -73,20 +71,20 @@ func (oc *AIClient) runAgentLoop(
 		}
 	}
 
-	return executeAgentLoopRounds(ctx, provider, evt)
+	return executeStreamingRounds(ctx, provider, evt)
 }
 
-func executeAgentLoopRounds(
+func executeStreamingRounds(
 	ctx context.Context,
-	provider agentLoopProvider,
+	provider streamProvider,
 	evt *event.Event,
 ) (bool, *ContextLengthError, error) {
 	for round := 0; ; round++ {
-		touchAgentLoopActivity(ctx)
-		continueLoop, cle, err := provider.RunAgentTurn(ctx, evt, round)
-		touchAgentLoopActivity(ctx)
+		touchStreamingActivity(ctx)
+		continueLoop, cle, err := provider.RunStreamingTurn(ctx, evt, round)
+		touchStreamingActivity(ctx)
 		if cle != nil || err != nil {
-			finalizeAgentLoopExit(ctx, provider)
+			finalizeStreamingExit(ctx, provider)
 			return false, cle, err
 		}
 		if continueLoop {
@@ -95,14 +93,14 @@ func executeAgentLoopRounds(
 
 		// Queued user messages are dispatched after room release via processPendingQueue.
 		// Finalize this turn immediately so later prompts cannot reopen it with more edits.
-		finalizeAgentLoopExit(ctx, provider)
+		finalizeStreamingExit(ctx, provider)
 		return true, nil, nil
 	}
 }
 
-func finalizeAgentLoopExit(ctx context.Context, provider agentLoopProvider) {
+func finalizeStreamingExit(ctx context.Context, provider streamProvider) {
 	if provider == nil {
 		return
 	}
-	provider.FinalizeAgentLoop(ctx)
+	provider.FinalizeStreamingTurn(ctx)
 }

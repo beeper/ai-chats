@@ -5,7 +5,42 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
+
+// TrackTool records the stable metadata used to correlate subsequent tool UI chunks.
+func TrackTool(state *UIState, toolCallID, toolName string, toolType matrixevents.ToolType) {
+	if state == nil {
+		return
+	}
+	toolCallID = strings.TrimSpace(toolCallID)
+	if toolCallID == "" {
+		return
+	}
+	state.InitMaps()
+	if strings.TrimSpace(toolName) != "" {
+		state.UIToolNameByToolCallID[toolCallID] = toolName
+	}
+	if toolType != "" {
+		state.UIToolTypeByToolCallID[toolCallID] = toolType
+	}
+}
+
+// TrackApproval records approval-to-tool correlation for UI replay and response chunks.
+func TrackApproval(state *UIState, approvalID, toolCallID, toolName string, toolType matrixevents.ToolType) {
+	if state == nil {
+		return
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	toolCallID = strings.TrimSpace(toolCallID)
+	if approvalID == "" || toolCallID == "" {
+		return
+	}
+	TrackTool(state, toolCallID, toolName, toolType)
+	state.UIToolCallIDByApproval[approvalID] = toolCallID
+	state.UIToolApprovalRequested[approvalID] = true
+}
 
 // EnsureUIToolInputStart sends "tool-input-start" once per toolCallID.
 func (e *Emitter) EnsureUIToolInputStart(
@@ -23,9 +58,7 @@ func (e *Emitter) EnsureUIToolInputStart(
 	if toolCallID == "" {
 		return
 	}
-	if strings.TrimSpace(toolName) != "" {
-		e.State.UIToolNameByToolCallID[toolCallID] = toolName
-	}
+	TrackTool(e.State, toolCallID, toolName, "")
 	if e.State.UIToolStarted[toolCallID] {
 		return
 	}
@@ -117,8 +150,7 @@ func (e *Emitter) EmitUIToolApprovalRequest(
 	if e.State == nil {
 		return
 	}
-	e.State.UIToolApprovalRequested[approvalID] = true
-	e.State.UIToolCallIDByApproval[approvalID] = toolCallID
+	TrackApproval(e.State, approvalID, toolCallID, "", "")
 	e.Emit(ctx, portal, map[string]any{
 		"type":       "tool-approval-request",
 		"approvalId": approvalID,

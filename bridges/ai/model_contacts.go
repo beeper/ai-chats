@@ -22,21 +22,6 @@ func parseCanonicalModelIdentifier(identifier string) string {
 	return ""
 }
 
-func canonicalAgentIdentifier(agentID string) string {
-	agentID = normalizeAgentID(agentID)
-	if agentID == "" {
-		return ""
-	}
-	return "agent:" + agentID
-}
-
-func parseCanonicalAgentIdentifier(identifier string) string {
-	if suffix, ok := strings.CutPrefix(strings.TrimSpace(identifier), "agent:"); ok {
-		return normalizeAgentID(suffix)
-	}
-	return ""
-}
-
 func modelContactName(modelID string, info *ModelInfo) string {
 	if info != nil && info.Name != "" {
 		return info.Name

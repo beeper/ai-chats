@@ -10,7 +10,7 @@ import (
 )
 
 func (oc *AIClient) canUseMediaUnderstanding(meta *PortalMetadata) bool {
-	return meta != nil && hasAssignedAgent(meta)
+	return true
 }
 
 type modelCapsFilter func(ModelCapabilities) bool
@@ -82,7 +82,7 @@ func (oc *AIClient) resolveModelForCapability(
 	return fallbackID, true
 }
 
-// resolveImageUnderstandingModel returns a vision-capable model from the agent's model chain.
+// resolveImageUnderstandingModel returns a vision-capable model.
 func (oc *AIClient) resolveImageUnderstandingModel(ctx context.Context, meta *PortalMetadata) string {
 	return oc.resolveUnderstandingModel(
 		ctx,

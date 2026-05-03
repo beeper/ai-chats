@@ -18,14 +18,6 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func hasAssignedAgent(meta *PortalMetadata) bool {
-	return false
-}
-
-func hasBossAgent(meta *PortalMetadata) bool {
-	return false
-}
-
 func modelRedirectTarget(requested, resolved string) networkid.UserID {
 	requested = strings.TrimSpace(requested)
 	resolved = strings.TrimSpace(resolved)
@@ -33,18 +25,6 @@ func modelRedirectTarget(requested, resolved string) networkid.UserID {
 		return ""
 	}
 	return modelUserID(resolved)
-}
-
-func (oc *AIClient) agentsEnabledForLogin() bool {
-	return false
-}
-
-func agentsEnabledForLoginConfig(cfg *aiLoginConfig) bool {
-	return false
-}
-
-func agentChatsDisabledError() error {
-	return bridgev2.WrapRespErr(errors.New("agent chats are disabled for this login"), mautrix.MForbidden)
 }
 
 // buildAvailableTools returns a list of ToolInfo for all tools based on tool policy.
@@ -139,14 +119,6 @@ func modelMatchesQuery(query string, model *ModelInfo) bool {
 	return false
 }
 
-func agentContactIdentifiers(agentID string) []string {
-	return nil
-}
-
-func agentMatchesQuery(query string, agent *sdk.Agent) bool {
-	return false
-}
-
 func (oc *AIClient) hydrateContactResponseGhost(ctx context.Context, resp *bridgev2.ResolveIdentifierResponse, field, value string) *bridgev2.ResolveIdentifierResponse {
 	if resp == nil || resp.UserID == "" || oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
 		return resp
@@ -160,13 +132,9 @@ func (oc *AIClient) hydrateContactResponseGhost(ctx context.Context, resp *bridg
 	return resp
 }
 
-func catalogAgentID(agent *sdk.Agent) string {
-	return ""
-}
-
-// SearchUsers searches available AI models and agents by name/ID.
+// SearchUsers searches available AI models by name/ID.
 func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
-	oc.loggerForContext(ctx).Debug().Str("query", query).Msg("Model/agent search requested")
+	oc.loggerForContext(ctx).Debug().Str("query", query).Msg("Model search requested")
 	if !oc.IsLoggedIn() {
 		return nil, mautrix.MForbidden.WithMessage("You must be logged in to search contacts")
 	}
@@ -180,11 +148,11 @@ func (oc *AIClient) SearchUsers(ctx context.Context, query string) ([]*bridgev2.
 		return nil, err
 	}
 
-	oc.loggerForContext(ctx).Info().Str("query", query).Int("results", len(results)).Msg("Model/agent search completed")
+	oc.loggerForContext(ctx).Info().Str("query", query).Int("results", len(results)).Msg("Model search completed")
 	return results, nil
 }
 
-// GetContactList returns a list of available AI agents and models as contacts
+// GetContactList returns available AI models as contacts.
 func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	oc.loggerForContext(ctx).Debug().Msg("Contact list requested")
 	if !oc.IsLoggedIn() {
@@ -252,23 +220,14 @@ type chatResolveTarget struct {
 	response      *bridgev2.ResolveIdentifierResponse
 }
 
-func parseChatGhostTarget(ghostID string) (modelID string, agentID string) {
-	if modelID = parseModelFromGhostID(ghostID); modelID != "" {
-		return modelID, ""
-	}
-	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
-		return "", agentID
-	}
-	return "", ""
+func parseChatGhostTarget(ghostID string) string {
+	return parseModelFromGhostID(ghostID)
 }
 
 func normalizeChatIdentifier(identifier string) string {
 	id := strings.TrimSpace(identifier)
 	if canonicalModelID := parseCanonicalModelIdentifier(id); canonicalModelID != "" {
 		return canonicalModelID
-	}
-	if canonicalAgentID := parseCanonicalAgentIdentifier(id); canonicalAgentID != "" {
-		return canonicalAgentID
 	}
 	return id
 }
@@ -287,17 +246,9 @@ func (oc *AIClient) resolveModelChatTarget(ctx context.Context, identifier strin
 	}, nil
 }
 
-func (oc *AIClient) resolveAgentChatTarget(ctx context.Context, agentID string) (*chatResolveTarget, error) {
-	return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", strings.TrimSpace(agentID)), mautrix.MNotFound)
-}
-
-func (oc *AIClient) resolveParsedChatGhostTarget(ctx context.Context, modelID string, agentID string) (*chatResolveTarget, bool, error) {
-	if modelID == "" && agentID == "" {
+func (oc *AIClient) resolveParsedChatGhostTarget(ctx context.Context, modelID string) (*chatResolveTarget, bool, error) {
+	if modelID == "" {
 		return nil, false, nil
-	}
-	if agentID != "" {
-		target, err := oc.resolveAgentChatTarget(ctx, agentID)
-		return target, true, err
 	}
 	target, err := oc.resolveModelChatTarget(ctx, modelID)
 	if err != nil {
@@ -314,8 +265,8 @@ func (oc *AIClient) resolveChatTargetFromIdentifier(ctx context.Context, identif
 	if id == "" {
 		return nil, bridgev2.WrapRespErr(errors.New("identifier is required"), mautrix.MInvalidParam)
 	}
-	modelID, agentID := parseChatGhostTarget(id)
-	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID, agentID); resolved {
+	modelID := parseChatGhostTarget(id)
+	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID); resolved {
 		if err != nil {
 			return nil, err
 		}
@@ -336,8 +287,8 @@ func (oc *AIClient) resolveChatTargetFromGhost(ctx context.Context, ghost *bridg
 		return nil, bridgev2.WrapRespErr(errors.New("ghost is required"), mautrix.MInvalidParam)
 	}
 	ghostID := string(ghost.ID)
-	modelID, agentID := parseChatGhostTarget(ghostID)
-	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID, agentID); resolved {
+	modelID := parseChatGhostTarget(ghostID)
+	if target, resolved, err := oc.resolveParsedChatGhostTarget(ctx, modelID); resolved {
 		if err != nil {
 			return nil, err
 		}
@@ -409,7 +360,7 @@ func (oc *AIClient) resolveChatGhost(ctx context.Context, userID networkid.UserI
 	return ghost, nil
 }
 
-// ResolveIdentifier resolves an agent ID to a ghost and optionally creates a chat.
+// ResolveIdentifier resolves a model ID to a ghost and optionally creates a chat.
 func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error) {
 	target, err := oc.resolveChatTargetFromIdentifier(ctx, identifier)
 	if err != nil {
@@ -418,7 +369,7 @@ func (oc *AIClient) ResolveIdentifier(ctx context.Context, identifier string, cr
 	return oc.resolveChatTargetResponse(ctx, target, createChat)
 }
 
-// CreateChatWithGhost creates a DM for a known model or agent ghost.
+// CreateChatWithGhost creates a DM for a known model ghost.
 func (oc *AIClient) CreateChatWithGhost(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.CreateChatResponse, error) {
 	target, err := oc.resolveChatTargetFromGhost(ctx, ghost)
 	if err != nil {
@@ -607,8 +558,7 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	return portal, chatInfo, nil
 }
 
-// handleNewChat creates a new chat using the current room's agent/model,
-// or an explicitly provided agent/model.
+// handleNewChat creates a new chat using the current room's model.
 func (oc *AIClient) handleNewChat(
 	ctx context.Context,
 	_ *event.Event,

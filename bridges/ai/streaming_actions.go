@@ -14,18 +14,17 @@ import (
 )
 
 type streamTurnActions struct {
-	oc                           *AIClient
-	ctx                          context.Context
-	log                          zerolog.Logger
-	portal                       *bridgev2.Portal
-	state                        *streamingState
-	meta                         *PortalMetadata
-	activeTools                  *streamToolRegistry
-	typingSignals                *TypingSignaler
-	touchTyping                  func()
-	isHeartbeat                  bool
-	continuationSuffix           string
-	approvalFallbackForNonObject bool
+	oc                         *AIClient
+	ctx                        context.Context
+	log                        zerolog.Logger
+	portal                     *bridgev2.Portal
+	state                      *streamingState
+	meta                       *PortalMetadata
+	activeTools                *streamToolRegistry
+	typingSignals              *TypingSignaler
+	touchTyping                func()
+	continuationSuffix         string
+	checkApprovalWithoutObject bool
 }
 
 func newStreamTurnActions(
@@ -38,27 +37,25 @@ func newStreamTurnActions(
 	activeTools *streamToolRegistry,
 	typingSignals *TypingSignaler,
 	touchTyping func(),
-	isHeartbeat bool,
 	isContinuation bool,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 ) streamTurnActions {
 	suffix := ""
 	if isContinuation {
 		suffix = " (continuation)"
 	}
 	return streamTurnActions{
-		oc:                           oc,
-		ctx:                          ctx,
-		log:                          log,
-		portal:                       portal,
-		state:                        state,
-		meta:                         meta,
-		activeTools:                  activeTools,
-		typingSignals:                typingSignals,
-		touchTyping:                  touchTyping,
-		isHeartbeat:                  isHeartbeat,
-		continuationSuffix:           suffix,
-		approvalFallbackForNonObject: approvalFallbackForNonObject,
+		oc:                         oc,
+		ctx:                        ctx,
+		log:                        log,
+		portal:                     portal,
+		state:                      state,
+		meta:                       meta,
+		activeTools:                activeTools,
+		typingSignals:              typingSignals,
+		touchTyping:                touchTyping,
+		continuationSuffix:         suffix,
+		checkApprovalWithoutObject: checkApprovalWithoutObject,
 	}
 }
 
@@ -103,7 +100,6 @@ func (a streamTurnActions) textDelta(delta string) (string, error) {
 		a.state,
 		a.meta,
 		a.typingSignals,
-		a.isHeartbeat,
 		delta,
 		a.textErrorText(),
 		a.textLogMessage(),
@@ -121,7 +117,6 @@ func (a streamTurnActions) reasoningDelta(delta string) error {
 		a.portal,
 		a.state,
 		a.meta,
-		a.isHeartbeat,
 		delta,
 		a.textErrorText(),
 		a.textLogMessage(),
@@ -158,7 +153,7 @@ func (a streamTurnActions) functionToolInputDone(itemID, name, arguments string)
 		itemID,
 		name,
 		arguments,
-		a.approvalFallbackForNonObject,
+		a.checkApprovalWithoutObject,
 		a.continuationSuffix,
 	)
 }
@@ -187,7 +182,7 @@ func (a streamTurnActions) annotationAdded(annotation any, annotationIndex any) 
 // through the actions layer, consolidating status-to-result mapping.
 func (a streamTurnActions) toolResultCompleted(tool *activeToolCall, item responses.ResponseOutputItemUnion) {
 	a.touch()
-	a.oc.toolLifecycle(a.portal, a.state).completeFromResponseItem(a.ctx, tool, item)
+	newToolLifecycle(a.state).completeFromResponseItem(a.ctx, tool, item)
 }
 
 // emitCustomToolInput handles the common delta/done pattern for custom tool and
@@ -238,13 +233,13 @@ func (a streamTurnActions) chatToolInputDelta(toolDelta openai.ChatCompletionChu
 		return nil
 	}
 	if tool.input.Len() == 0 {
-		a.oc.toolLifecycle(a.portal, a.state).ensureInputStart(a.ctx, tool, false, nil)
+		newToolLifecycle(a.state).ensureInputStart(a.ctx, tool, false, nil)
 	}
 	if desc.toolName != "" {
 		tool.toolName = desc.toolName
 	}
 	if toolDelta.Function.Arguments != "" {
-		a.oc.toolLifecycle(a.portal, a.state).appendInputDelta(a.ctx, tool, tool.toolName, toolDelta.Function.Arguments, false)
+		newToolLifecycle(a.state).appendInputDelta(a.ctx, tool, tool.toolName, toolDelta.Function.Arguments, false)
 	}
 	return tool
 }

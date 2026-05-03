@@ -77,24 +77,6 @@ func (tma *testMatrixAPI) GetEvent(context.Context, id.RoomID, id.EventID) (*eve
 
 var _ bridgev2.MatrixAPI = (*testMatrixAPI)(nil)
 
-func TestSenderForPortalUsesResolvedAgentGhost(t *testing.T) {
-	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "magic-proxy:@user:test"}}
-	oc := &AIClient{UserLogin: login}
-	portal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			OtherUserID: agentUserIDForLogin(login.ID, "agent-1"),
-		},
-	}
-
-	sender := oc.senderForPortal(context.Background(), portal)
-	if sender.Sender != agentUserIDForLogin(login.ID, "agent-1") {
-		t.Fatalf("expected agent ghost sender, got %q", sender.Sender)
-	}
-	if sender.SenderLogin != login.ID {
-		t.Fatalf("expected sender login %q, got %q", login.ID, sender.SenderLogin)
-	}
-}
-
 func TestSenderForPortalUsesModelGhostWithoutAgent(t *testing.T) {
 	login := &bridgev2.UserLogin{UserLogin: &database.UserLogin{ID: "magic-proxy:@user:test"}}
 	oc := &AIClient{UserLogin: login}

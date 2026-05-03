@@ -69,7 +69,6 @@ func TestTurnDataFromStreamingStatePrefersVisibleText(t *testing.T) {
 
 func TestCurrentStreamingTurnMetadataUsesResponderSnapshot(t *testing.T) {
 	state := testStreamingState("turn-metadata")
-	state.respondingAgentID = "agent-1"
 	state.respondingModelID = "openai/gpt-5.2"
 	state.respondingContextLimit = 400000
 	state.promptTokens = 120
@@ -81,9 +80,6 @@ func TestCurrentStreamingTurnMetadataUsesResponderSnapshot(t *testing.T) {
 
 	if got := meta["model"]; got != "openai/gpt-5.2" {
 		t.Fatalf("expected turn snapshot model, got %#v", got)
-	}
-	if got := meta["agent_id"]; got != "agent-1" {
-		t.Fatalf("expected turn snapshot agent id, got %#v", got)
 	}
 	usage, ok := meta["usage"].(map[string]any)
 	if !ok {

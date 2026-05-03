@@ -34,14 +34,14 @@ func (oc *AIClient) responseWithRetry(
 	return false, cle
 }
 
-func (oc *AIClient) runAgentLoopWithRetry(
+func (oc *AIClient) runStreamingWithRetry(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 	promptContext PromptContext,
 ) {
-	responseFn, logLabel := oc.selectAgentLoopRunFunc(meta, promptContext)
+	responseFn, logLabel := oc.selectStreamingRunFunc(meta, promptContext)
 	success, err := oc.responseWithRetry(ctx, evt, portal, meta, promptContext, responseFn, logLabel)
 	if success || err == nil {
 		return
@@ -49,8 +49,8 @@ func (oc *AIClient) runAgentLoopWithRetry(
 	oc.notifyMatrixSendFailure(ctx, portal, evt, err)
 }
 
-func (oc *AIClient) selectAgentLoopRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFuncCanonical, string) {
-	return oc.runResponsesAgentLoopPrompt, "responses"
+func (oc *AIClient) selectStreamingRunFunc(meta *PortalMetadata, promptContext PromptContext) (responseFuncCanonical, string) {
+	return oc.runResponsesStreamingPrompt, "responses"
 }
 
 func (oc *AIClient) notifyContextLengthExceeded(

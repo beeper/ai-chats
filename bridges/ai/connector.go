@@ -56,9 +56,6 @@ func (oc *OpenAIConnector) ValidateUserID(id networkid.UserID) bool {
 	if modelID := parseModelFromGhostID(string(id)); strings.TrimSpace(modelID) != "" {
 		return resolveModelIDFromManifest(modelID) != ""
 	}
-	if agentID, ok := parseAgentFromGhostID(string(id)); ok && isValidAgentID(strings.TrimSpace(agentID)) {
-		return true
-	}
 	return false
 }
 

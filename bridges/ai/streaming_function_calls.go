@@ -62,7 +62,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDelta(
 	name string,
 	delta string,
 ) {
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, "")
 	if tool == nil {
 		return
@@ -82,7 +82,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	itemID string,
 	name string,
 	arguments string,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 	logSuffix string,
 ) {
 	tool := oc.ensureActiveToolCall(ctx, portal, state, meta, activeTools, streamToolItemKey(itemID), name, matrixevents.ToolTypeFunction, arguments)
@@ -91,7 +91,7 @@ func (oc *AIClient) handleFunctionCallArgumentsDone(
 	}
 	activeTools.BindAlias(streamToolItemKey(itemID), tool)
 	tool.itemID = itemID
-	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, approvalFallbackForNonObject, logSuffix)
+	execution := oc.executeStreamingBuiltinTool(ctx, log, portal, state, meta, tool, name, arguments, checkApprovalWithoutObject, logSuffix)
 	activeTools.BindAlias(streamToolCallKey(tool.callID), tool)
 
 	// Store result for API continuation.
@@ -124,10 +124,10 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 	tool *activeToolCall,
 	fallbackName string,
 	fallbackArguments string,
-	approvalFallbackForNonObject bool,
+	checkApprovalWithoutObject bool,
 	logSuffix string,
 ) streamingBuiltinToolExecution {
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	toolName := strings.TrimSpace(tool.toolName)
 	if toolName == "" {
 		toolName = strings.TrimSpace(fallbackName)
@@ -157,12 +157,12 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				resultStatus = ResultStatusDenied
 				result = "Denied by user"
 			}
-		} else if approvalFallbackForNonObject && oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
+		} else if checkApprovalWithoutObject && oc.isBuiltinToolDenied(ctx, portal, state, tool, toolName, nil) {
 			resultStatus = ResultStatusDenied
 			result = "Denied by user"
 		}
 		if resultStatus != ResultStatusDenied {
-			touchAgentLoopActivity(ctx)
+			touchStreamingActivity(ctx)
 			toolCtx := WithBridgeToolContext(ctx, &BridgeToolContext{
 				Client:        oc,
 				Portal:        portal,
@@ -177,7 +177,7 @@ func (oc *AIClient) executeStreamingBuiltinTool(
 				result = fmt.Sprintf("Error: %s", err)
 				resultStatus = ResultStatusError
 			}
-			touchAgentLoopActivity(ctx)
+			touchStreamingActivity(ctx)
 		}
 	}
 

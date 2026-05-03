@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-func (oc *AIClient) launchAgentLoopRun(
+func (oc *AIClient) launchStreamingRun(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -17,7 +17,7 @@ func (oc *AIClient) launchAgentLoopRun(
 ) {
 	go func() {
 		defer done()
-		run, _ := oc.selectAgentLoopRunFunc(meta, prompt)
+		run, _ := oc.selectStreamingRunFunc(meta, prompt)
 		if _, _, err := run(ctx, evt, portal, meta, prompt); err != nil {
 			oc.loggerForContext(ctx).Warn().Err(err).Msg("AI response run failed")
 		}

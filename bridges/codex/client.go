@@ -1894,19 +1894,3 @@ func (cc *CodexClient) sendSystemNoticeOnce(ctx context.Context, portal *bridgev
 	state.codexTimelineNotices[key] = true
 	cc.sendSystemNotice(ctx, portal, message)
 }
-
-// setApprovalStateTracking populates the streaming state maps used for approval correlation.
-func (cc *CodexClient) setApprovalStateTracking(state *streamingState, approvalID, toolCallID, toolName string) {
-	if state == nil {
-		return
-	}
-	if state.turn == nil || state.turn.UIState() == nil {
-		return
-	}
-	uiState := state.turn.UIState()
-	uiState.InitMaps()
-	uiState.UIToolCallIDByApproval[approvalID] = toolCallID
-	uiState.UIToolApprovalRequested[approvalID] = true
-	uiState.UIToolNameByToolCallID[toolCallID] = toolName
-	uiState.UIToolTypeByToolCallID[toolCallID] = matrixevents.ToolTypeProvider
-}

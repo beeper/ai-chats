@@ -39,10 +39,9 @@ type userStopPlan struct {
 }
 
 type userStopResult struct {
-	Plan             userStopPlan
-	ActiveStopped    bool
-	QueuedStopped    int
-	SubagentsStopped int
+	Plan          userStopPlan
+	ActiveStopped bool
+	QueuedStopped int
 }
 
 func stopLabel(count int, singular string) string {
@@ -57,9 +56,6 @@ func formatAbortNotice(result userStopResult) string {
 	case stopPlanKindNoMatch:
 		return "No matching active or queued turn found for that reply."
 	case stopPlanKindActive:
-		if result.SubagentsStopped > 0 {
-			return fmt.Sprintf("Stopped that turn. Stopped %d %s.", result.SubagentsStopped, stopLabel(result.SubagentsStopped, "sub-agent"))
-		}
 		return "Stopped that turn."
 	case stopPlanKindQueued:
 		if result.QueuedStopped <= 1 {
@@ -73,9 +69,6 @@ func formatAbortNotice(result userStopResult) string {
 		}
 		if result.QueuedStopped > 0 {
 			parts = append(parts, fmt.Sprintf("removed %d queued %s", result.QueuedStopped, stopLabel(result.QueuedStopped, "turn")))
-		}
-		if result.SubagentsStopped > 0 {
-			parts = append(parts, fmt.Sprintf("stopped %d %s", result.SubagentsStopped, stopLabel(result.SubagentsStopped, "sub-agent")))
 		}
 		if len(parts) == 0 {
 			return "No active or queued turns to stop."
@@ -183,7 +176,7 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 		}
 	}
 
-	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0 || result.SubagentsStopped > 0) {
+	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0) {
 		req.Meta.AbortedLastRun = true
 		oc.savePortalQuiet(ctx, req.Portal, "stop")
 	}

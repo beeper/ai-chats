@@ -53,10 +53,7 @@ func TestLoadAIUserLoginMagicProxyBuildsClientFromPersistedConfig(t *testing.T) 
 	if login.Bridge != nil {
 		login.Bridge.BackgroundCtx = context.Background()
 	}
-	agentsDisabled := false
-
 	if err := saveAILoginConfig(context.Background(), login, &aiLoginConfig{
-		Agents: &agentsDisabled,
 		Credentials: &LoginCredentials{
 			APIKey:  "proxy-token",
 			BaseURL: "https://temporary-ai-proxy.beeper-tools.com",

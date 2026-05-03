@@ -16,12 +16,12 @@ import (
 // responseStreamContext holds loop-invariant parameters for processing a Responses API
 // stream.  Only streamEvent and isContinuation change per event.
 type responseStreamContext struct {
-	base  *agentLoopProviderBase
+	base  *streamProviderBase
 	tools *streamToolRegistry
 }
 
 type responsesTurnAdapter struct {
-	agentLoopProviderBase
+	streamProviderBase
 	params      responses.ResponseNewParams
 	initialized bool
 	rsc         *responseStreamContext
@@ -34,7 +34,7 @@ func (a *responsesTurnAdapter) TrackRoomRunStreaming() bool {
 func (a *responsesTurnAdapter) startInitialRound(ctx context.Context) (*ssestream.Stream[responses.ResponseStreamEventUnion], error) {
 	if !a.initialized {
 		input := promptContextToResponsesInput(a.prompt)
-		a.params = a.oc.buildResponsesAgentLoopParams(ctx, a.meta, a.prompt.SystemPrompt, input, false)
+		a.params = a.oc.buildResponsesStreamingParams(ctx, a.meta, a.prompt.SystemPrompt, input, false)
 		if len(a.params.Tools) > 0 {
 			zerolog.Ctx(ctx).Debug().Int("count", len(a.params.Tools)).Msg("Added streaming turn tools")
 		}
@@ -70,7 +70,7 @@ func (a *responsesTurnAdapter) startContinuationRound(ctx context.Context) (*sse
 	return stream, continuationParams, nil
 }
 
-func (a *responsesTurnAdapter) RunAgentTurn(
+func (a *responsesTurnAdapter) RunStreamingTurn(
 	ctx context.Context,
 	evt *event.Event,
 	round int,
@@ -93,8 +93,8 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 		if len(state.pendingFunctionOutputs) == 0 && len(state.pendingSteeringPrompts) == 0 {
 			return false, nil, nil
 		}
-		if round > maxAgentLoopToolTurns {
-			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxAgentLoopToolTurns)
+		if round > maxStreamingToolTurns {
+			err = fmt.Errorf("max responses tool call rounds reached (%d)", maxStreamingToolTurns)
 			a.log.Warn().Err(err).Int("pending_outputs", len(state.pendingFunctionOutputs)).Msg("Stopping responses continuation loop")
 			return false, nil, a.oc.finalizeStreamingTurn(ctx, a.portal, state, a.meta, streamingFinalizeParams{
 				reason: "error",
@@ -124,7 +124,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 	tools := newStreamToolRegistry()
 	a.rsc.tools = tools
 	accepted := round > 0
-	done, cle, err := runAgentLoopStreamStep(ctx, state, stream,
+	done, cle, err := runStreamingStep(ctx, state, stream,
 		func(streamEvent responses.ResponseStreamEventUnion) (bool, *ContextLengthError, error) {
 			if !accepted {
 				a.oc.markTurnAccepted(ctx, a.portal, state, a.meta)
@@ -160,7 +160,7 @@ func (a *responsesTurnAdapter) RunAgentTurn(
 	return state != nil && (len(state.pendingFunctionOutputs) > 0 || len(state.pendingSteeringPrompts) > 0), nil, nil
 }
 
-func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
+func (a *responsesTurnAdapter) FinalizeStreamingTurn(ctx context.Context) {
 	if a.state == nil || a.state.isFinalized() {
 		return
 	}
@@ -210,7 +210,6 @@ func (oc *AIClient) processResponseStreamEvent(
 		tools,
 		rsc.base.typingSignals,
 		rsc.base.touchTyping,
-		rsc.base.isHeartbeat,
 		isContinuation,
 		!isContinuation,
 	)
@@ -340,8 +339,8 @@ func (oc *AIClient) processResponseStreamEvent(
 	return false, nil, nil
 }
 
-// runResponsesAgentLoop handles the Responses API provider adapter under the canonical agent loop.
-func (oc *AIClient) runResponsesAgentLoopPrompt(
+// runResponsesStreamingPrompt handles the Responses API provider adapter.
+func (oc *AIClient) runResponsesStreamingPrompt(
 	ctx context.Context,
 	evt *event.Event,
 	portal *bridgev2.Portal,
@@ -355,10 +354,10 @@ func (oc *AIClient) runResponsesAgentLoopPrompt(
 	log := zerolog.Ctx(ctx).With().
 		Str("portal_id", portalID).
 		Logger()
-	return oc.runAgentLoop(ctx, log, evt, portal, meta, prompt, func(prep streamingRunPrep, prompt PromptContext) agentLoopProvider {
-		base := newAgentLoopProviderBase(oc, log, portal, meta, prep, prompt)
+	return oc.runStreamingLoop(ctx, log, evt, portal, meta, prompt, func(prep streamingRunPrep, prompt PromptContext) streamProvider {
+		base := newStreamProviderBase(oc, log, portal, meta, prep, prompt)
 		return &responsesTurnAdapter{
-			agentLoopProviderBase: base,
+			streamProviderBase: base,
 			rsc: &responseStreamContext{
 				base:  &base,
 				tools: newStreamToolRegistry(),

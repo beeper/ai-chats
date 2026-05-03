@@ -105,7 +105,7 @@ func (oc *AIClient) buildStatusText(
 	sb.WriteString(queueLine + "\n")
 
 	typingCtx := &TypingContext{IsGroup: isGroup, WasMentioned: !isGroup}
-	typingMode := oc.resolveTypingMode(meta, typingCtx, false)
+	typingMode := oc.resolveTypingMode(meta, typingCtx)
 	typingInterval := oc.resolveTypingInterval(meta)
 	typingLine := fmt.Sprintf(
 		"Typing: mode=%s interval=%s",
@@ -121,7 +121,7 @@ func (oc *AIClient) buildStatusText(
 		if meta.TypingIntervalSeconds != nil {
 			overrideInterval = fmt.Sprintf("%ds", *meta.TypingIntervalSeconds)
 		}
-		typingLine = fmt.Sprintf("%s (session override: mode=%s interval=%s)", typingLine, overrideMode, overrideInterval)
+		typingLine = fmt.Sprintf("%s (room override: mode=%s interval=%s)", typingLine, overrideMode, overrideInterval)
 	}
 	sb.WriteString(typingLine + "\n")
 

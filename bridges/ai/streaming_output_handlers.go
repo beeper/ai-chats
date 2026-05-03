@@ -10,6 +10,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/agentremote/pkg/shared/streamui"
 )
 
 func (oc *AIClient) upsertActiveToolFromDescriptor(
@@ -22,7 +23,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 	if activeTools == nil || strings.TrimSpace(desc.callID) == "" {
 		return nil, false
 	}
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	tool, created := activeTools.Upsert(desc.registryKey, func(canonicalKey string) *activeToolCall {
 		return &activeToolCall{
 			callID:      SanitizeToolCallID(desc.callID, "strict"),
@@ -53,9 +54,7 @@ func (oc *AIClient) upsertActiveToolFromDescriptor(
 		tool.toolType = desc.toolType
 	}
 	if state != nil && state.turn != nil {
-		uiState := state.turn.UIState()
-		uiState.UIToolNameByToolCallID[tool.callID] = tool.toolName
-		uiState.UIToolTypeByToolCallID[tool.callID] = tool.toolType
+		streamui.TrackTool(state.turn.UIState(), tool.callID, tool.toolName, tool.toolType)
 	}
 
 	if created {
@@ -95,7 +94,7 @@ func (oc *AIClient) handleCustomToolInputDeltaFromOutputItem(
 	item responses.ResponseOutputItemUnion,
 	delta string,
 ) {
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
 	if tool == nil {
 		return
@@ -112,7 +111,7 @@ func (oc *AIClient) handleCustomToolInputDoneFromOutputItem(
 	item responses.ResponseOutputItemUnion,
 	inputText string,
 ) {
-	lifecycle := oc.toolLifecycle(portal, state)
+	lifecycle := newToolLifecycle(state)
 	tool := oc.ensureActiveToolForStreamItem(ctx, portal, state, activeTools, itemID, item)
 	if tool == nil {
 		return
@@ -159,7 +158,7 @@ func (oc *AIClient) emitToolInputIfAvailable(ctx context.Context, portal *bridge
 	if tool.input.Len() == 0 {
 		tool.input.WriteString(stringifyJSONValue(desc.input))
 	}
-	oc.toolLifecycle(portal, state).emitInput(ctx, tool, tool.toolName, desc.input, desc.providerExecuted)
+	newToolLifecycle(state).emitInput(ctx, tool, tool.toolName, desc.input, desc.providerExecuted)
 }
 
 func (oc *AIClient) handleResponseOutputItemAdded(

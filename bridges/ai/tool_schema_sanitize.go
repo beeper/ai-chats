@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Based on AgentRemote's tool schema cleaning to keep providers happy.
+// sanitizeToolSchemaWithReport keeps tool schemas within provider-supported JSON Schema.
 var unsupportedSchemaKeywords = map[string]struct{}{
 	"patternProperties":    {},
 	"additionalProperties": {},

@@ -5,18 +5,12 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const AIRoomKindAgent = "agent"
-
-func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType, aiKind string) {
+func ApplyAgentRemoteBridgeInfo(content *event.BridgeEventContent, protocolID string, roomType database.RoomType) {
 	if content == nil {
 		return
 	}
 	if protocolID != "" {
 		content.Protocol.ID = protocolID
-	}
-	if aiKind != "" && aiKind != AIRoomKindAgent {
-		content.BeeperRoomTypeV2 = "group"
-		return
 	}
 	switch roomType {
 	case database.RoomTypeDM:

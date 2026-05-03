@@ -65,10 +65,7 @@ func (oc *AIClient) buildSystemPromptText(
 	portal *bridgev2.Portal,
 	meta *PortalMetadata,
 ) string {
-	base := oc.effectiveAgentPrompt(ctx, portal, meta)
-	if base == "" {
-		base = oc.effectivePrompt(meta)
-	}
+	base := oc.effectivePrompt(meta)
 	return joinPromptFragments(base, oc.buildAdditionalSystemPromptText(ctx, portal, meta))
 }
 

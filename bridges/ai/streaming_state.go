@@ -20,7 +20,6 @@ import (
 type streamingState struct {
 	turn *sdk.Turn
 
-	agentID         string
 	startedAtMs     int64
 	lastStreamOrder int64
 	firstTokenAtMs  int64
@@ -28,7 +27,6 @@ type streamingState struct {
 	roomID          id.RoomID
 
 	respondingGhostID      string
-	respondingAgentID      string
 	respondingModelID      string
 	respondingContextLimit int
 
@@ -242,12 +240,7 @@ func (s *streamingState) trackFirstToken() {
 }
 
 func newStreamingState(ctx context.Context, meta *PortalMetadata, roomID id.RoomID) *streamingState {
-	agentID := ""
-	if meta != nil {
-		agentID = resolveAgentID(meta)
-	}
 	state := &streamingState{
-		agentID:          agentID,
 		startedAtMs:      time.Now().UnixMilli(),
 		roomID:           roomID,
 		replyAccumulator: runtimeparse.NewStreamingDirectiveAccumulator(),

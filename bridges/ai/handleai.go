@@ -210,14 +210,9 @@ func (oc *AIClient) sendDisclaimerNotice(ctx context.Context, portal *bridgev2.P
 	bgCtx, cancel := context.WithTimeout(oc.backgroundContext(ctx), 10*time.Second)
 	defer cancel()
 
-	var disclaimer string
-	if resolveAgentID(meta) == "" {
-		modelID := oc.effectiveModel(meta)
-		displayName := modelContactName(modelID, oc.findModelInfo(modelID))
-		disclaimer = fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName)
-	} else {
-		disclaimer = "AI can make mistakes."
-	}
+	modelID := oc.effectiveModel(meta)
+	displayName := modelContactName(modelID, oc.findModelInfo(modelID))
+	disclaimer := fmt.Sprintf("You are chatting with %s. AI can make mistakes.", displayName)
 	oc.log.Debug().Stringer("portal", portal.PortalKey).Msg("Sending disclaimer notice")
 	if err := oc.sendSystemNoticeMessage(bgCtx, portal, disclaimer); err != nil {
 		return fmt.Errorf("send disclaimer: %w", err)

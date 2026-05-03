@@ -11,13 +11,13 @@ import (
 	"github.com/beeper/agentremote/sdk"
 )
 
-func TestStripAgentRemoteToolResults(t *testing.T) {
+func TestStripTranscriptToolResults(t *testing.T) {
 	input := []map[string]any{
 		{"role": "user"},
 		{"role": "assistant"},
 		{"role": "toolResult"},
 	}
-	got := stripAgentRemoteToolResults(input)
+	got := stripTranscriptToolResults(input)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 messages after strip, got %d", len(got))
 	}
@@ -28,7 +28,7 @@ func TestStripAgentRemoteToolResults(t *testing.T) {
 	}
 }
 
-func TestRepairAgentRemoteToolPairing(t *testing.T) {
+func TestRepairTranscriptToolPairing(t *testing.T) {
 	messages := []map[string]any{
 		{
 			"role": "assistant",
@@ -43,7 +43,7 @@ func TestRepairAgentRemoteToolPairing(t *testing.T) {
 		{"role": "assistant", "content": []map[string]any{{"type": "text", "text": "done"}}},
 	}
 
-	repaired := repairAgentRemoteToolPairing(messages)
+	repaired := repairTranscriptToolPairing(messages)
 	if len(repaired) != 4 {
 		t.Fatalf("expected 4 messages after repair, got %d", len(repaired))
 	}
@@ -64,7 +64,7 @@ func TestRepairAgentRemoteToolPairing(t *testing.T) {
 	}
 }
 
-func TestRepairAgentRemoteToolPairingInsertsSynthetic(t *testing.T) {
+func TestRepairTranscriptToolPairingInsertsSynthetic(t *testing.T) {
 	messages := []map[string]any{
 		{
 			"role": "assistant",
@@ -75,7 +75,7 @@ func TestRepairAgentRemoteToolPairingInsertsSynthetic(t *testing.T) {
 		{"role": "user", "content": []map[string]any{{"type": "text", "text": "next"}}},
 	}
 
-	repaired := repairAgentRemoteToolPairing(messages)
+	repaired := repairTranscriptToolPairing(messages)
 	if len(repaired) != 3 {
 		t.Fatalf("expected 3 messages after repair, got %d", len(repaired))
 	}
@@ -93,12 +93,12 @@ func TestRepairAgentRemoteToolPairingInsertsSynthetic(t *testing.T) {
 		t.Fatalf("expected synthetic content blocks")
 	}
 	text := content[0]["text"]
-	if !strings.Contains(toString(text), "[agentremote] missing tool result") {
+	if !strings.Contains(toString(text), "[transcript] missing tool result") {
 		t.Fatalf("unexpected synthetic text: %v", text)
 	}
 }
 
-func TestBuildAgentRemoteSessionMessagesFromCanonical(t *testing.T) {
+func TestBuildTranscriptMessagesFromCanonical(t *testing.T) {
 	msg := &database.Message{
 		MXID:      id.EventID("$assistant1"),
 		Timestamp: time.UnixMilli(1730000000000),
@@ -134,7 +134,7 @@ func TestBuildAgentRemoteSessionMessagesFromCanonical(t *testing.T) {
 		},
 	}
 
-	out := buildAgentRemoteSessionMessages([]*database.Message{msg}, true)
+	out := buildTranscriptMessages([]*database.Message{msg}, true)
 	if len(out) != 2 {
 		t.Fatalf("expected assistant + toolResult, got %d messages", len(out))
 	}
@@ -151,7 +151,7 @@ func TestBuildAgentRemoteSessionMessagesFromCanonical(t *testing.T) {
 		t.Fatalf("expected projected result id from metadata, got %v", out[1]["id"])
 	}
 
-	filtered := buildAgentRemoteSessionMessages([]*database.Message{msg}, false)
+	filtered := buildTranscriptMessages([]*database.Message{msg}, false)
 	if len(filtered) != 1 {
 		t.Fatalf("expected toolResult filtered out when includeTools=false, got %d", len(filtered))
 	}

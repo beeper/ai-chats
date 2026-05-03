@@ -28,7 +28,7 @@ type transcriptToolCall struct {
 	ResultEventID string
 }
 
-func normalizeAgentRemoteHistoryLimit(raw int) int {
+func normalizeTranscriptHistoryLimit(raw int) int {
 	limit := transcriptDefaultHistoryLimit
 	if raw > 0 {
 		limit = raw
@@ -42,7 +42,7 @@ func normalizeAgentRemoteHistoryLimit(raw int) int {
 	return limit
 }
 
-func stripAgentRemoteToolResults(messages []map[string]any) []map[string]any {
+func stripTranscriptToolResults(messages []map[string]any) []map[string]any {
 	filtered := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
 		if strings.TrimSpace(toString(msg["role"])) == "toolResult" {
@@ -53,7 +53,7 @@ func stripAgentRemoteToolResults(messages []map[string]any) []map[string]any {
 	return filtered
 }
 
-func capAgentRemoteHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[string]any {
+func capTranscriptHistoryByJSONBytes(items []map[string]any, maxBytes int) []map[string]any {
 	if len(items) == 0 || maxBytes <= 0 {
 		return items
 	}
@@ -85,16 +85,16 @@ func capAgentRemoteHistoryByJSONBytes(items []map[string]any, maxBytes int) []ma
 	return items
 }
 
-func buildAgentRemoteSessionMessages(messages []*database.Message, includeTools bool) []map[string]any {
-	projected := projectAgentRemoteMessages(messages)
-	repaired := repairAgentRemoteToolPairing(projected)
+func buildTranscriptMessages(messages []*database.Message, includeTools bool) []map[string]any {
+	projected := projectTranscriptMessages(messages)
+	repaired := repairTranscriptToolPairing(projected)
 	if !includeTools {
-		repaired = stripAgentRemoteToolResults(repaired)
+		repaired = stripTranscriptToolResults(repaired)
 	}
 	return repaired
 }
 
-func projectAgentRemoteMessages(messages []*database.Message) []map[string]any {
+func projectTranscriptMessages(messages []*database.Message) []map[string]any {
 	out := make([]map[string]any, 0, len(messages)*2)
 	for _, msg := range messages {
 		meta := messageMeta(msg)
@@ -114,10 +114,10 @@ func projectAgentRemoteMessages(messages []*database.Message) []map[string]any {
 			}
 			out = append(out, entry)
 		case "assistant":
-			assistant, calls := projectAssistantAgentRemoteMessage(meta, msg)
+			assistant, calls := projectAssistantTranscriptMessage(meta, msg)
 			out = append(out, assistant)
 			for idx, call := range calls {
-				toolResult := projectToolResultAgentRemoteMessage(call, msg, idx)
+				toolResult := projectToolResultTranscriptMessage(call, msg, idx)
 				out = append(out, toolResult)
 			}
 		}
@@ -125,7 +125,7 @@ func projectAgentRemoteMessages(messages []*database.Message) []map[string]any {
 	return out
 }
 
-func projectAssistantAgentRemoteMessage(meta *MessageMetadata, msg *database.Message) (map[string]any, []transcriptToolCall) {
+func projectAssistantTranscriptMessage(meta *MessageMetadata, msg *database.Message) (map[string]any, []transcriptToolCall) {
 	content := make([]map[string]any, 0, 1+len(meta.ToolCalls))
 	calls := make([]transcriptToolCall, 0, len(meta.ToolCalls))
 
@@ -259,7 +259,7 @@ func parseCanonicalAssistantBlocks(meta *MessageMetadata) ([]map[string]any, []t
 	return nil, nil
 }
 
-func projectToolResultAgentRemoteMessage(call transcriptToolCall, msg *database.Message, index int) map[string]any {
+func projectToolResultTranscriptMessage(call transcriptToolCall, msg *database.Message, index int) map[string]any {
 	callID := strings.TrimSpace(call.ID)
 	if callID == "" {
 		callID = fmt.Sprintf("call_%s_%d", msg.MXID.String(), index)
@@ -268,8 +268,8 @@ func projectToolResultAgentRemoteMessage(call transcriptToolCall, msg *database.
 	if toolName == "" {
 		toolName = "unknown_tool"
 	}
-	resultText := renderAgentRemoteToolResultText(call)
-	isError := isAgentRemoteToolResultError(call)
+	resultText := renderTranscriptToolResultText(call)
+	isError := isTranscriptToolResultError(call)
 	toolResult := map[string]any{
 		"role":       "toolResult",
 		"toolCallId": callID,
@@ -292,7 +292,7 @@ func projectToolResultAgentRemoteMessage(call transcriptToolCall, msg *database.
 	return toolResult
 }
 
-func renderAgentRemoteToolResultText(call transcriptToolCall) string {
+func renderTranscriptToolResultText(call transcriptToolCall) string {
 	if call.Output != nil {
 		if text, ok := call.Output["result"].(string); ok && strings.TrimSpace(text) != "" {
 			return text
@@ -307,7 +307,7 @@ func renderAgentRemoteToolResultText(call transcriptToolCall) string {
 	return ""
 }
 
-func isAgentRemoteToolResultError(call transcriptToolCall) bool {
+func isTranscriptToolResultError(call transcriptToolCall) bool {
 	status := strings.ToLower(strings.TrimSpace(call.ResultStatus))
 	if status == string(ResultStatusError) || status == string(ResultStatusDenied) || status == "failed" || status == "timeout" || status == "cancelled" {
 		return true
@@ -318,7 +318,7 @@ func isAgentRemoteToolResultError(call transcriptToolCall) bool {
 	return false
 }
 
-func repairAgentRemoteToolPairing(messages []map[string]any) []map[string]any {
+func repairTranscriptToolPairing(messages []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(messages))
 	seenToolResults := make(map[string]struct{})
 
@@ -333,7 +333,7 @@ func repairAgentRemoteToolPairing(messages []map[string]any) []map[string]any {
 			continue
 		}
 
-		toolCalls := extractAgentRemoteToolCalls(msg)
+		toolCalls := extractTranscriptToolCalls(msg)
 		if len(toolCalls) == 0 {
 			out = append(out, msg)
 			continue
@@ -355,7 +355,7 @@ func repairAgentRemoteToolPairing(messages []map[string]any) []map[string]any {
 				break
 			}
 			if nextRole == "toolResult" {
-				id := extractAgentRemoteToolResultID(next)
+				id := extractTranscriptToolResultID(next)
 				if id != "" {
 					if _, ok := toolCallSet[id]; ok {
 						if _, dup := seenToolResults[id]; dup {
@@ -388,7 +388,7 @@ func repairAgentRemoteToolPairing(messages []map[string]any) []map[string]any {
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": "[agentremote] missing tool result in session history; inserted synthetic error result for transcript repair.",
+						"text": "[transcript] missing tool result in turn history; inserted synthetic error result for transcript repair.",
 					},
 				},
 			}
@@ -407,7 +407,7 @@ type transcriptToolCallPair struct {
 	Name string
 }
 
-func extractAgentRemoteToolCalls(msg map[string]any) []transcriptToolCallPair {
+func extractTranscriptToolCalls(msg map[string]any) []transcriptToolCallPair {
 	contentRaw, ok := msg["content"]
 	if !ok {
 		return nil
@@ -443,7 +443,7 @@ func extractAgentRemoteToolCalls(msg map[string]any) []transcriptToolCallPair {
 	return out
 }
 
-func extractAgentRemoteToolResultID(msg map[string]any) string {
+func extractTranscriptToolResultID(msg map[string]any) string {
 	if id := strings.TrimSpace(toString(msg["toolCallId"])); id != "" {
 		return id
 	}

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"encoding/json"
-	"maps"
 	"slices"
 	"strings"
 
@@ -165,9 +164,8 @@ type PortalMetadata struct {
 	DisclaimerSent   bool   `json:"disclaimer_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
-	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
-	InternalRoomKind        string           `json:"internal_room_kind,omitempty"`
+	AbortedLastRun   bool   `json:"aborted_last_run,omitempty"`
+	InternalRoomKind string `json:"internal_room_kind,omitempty"`
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
@@ -178,13 +176,9 @@ type PortalMetadata struct {
 	// Debounce configuration (0 = use default, -1 = disabled)
 	DebounceMs int `json:"debounce_ms,omitempty"`
 
-	// Per-session typing overrides (AgentRemote-style).
+	// Per-room typing overrides.
 	TypingMode            string `json:"typing_mode,omitempty"` // never|instant|thinking|message
 	TypingIntervalSeconds *int   `json:"typing_interval_seconds,omitempty"`
-}
-
-func (m *PortalMetadata) AgentID() string {
-	return resolveAgentID(m)
 }
 
 func (m *PortalMetadata) InternalRoom() bool {
@@ -222,10 +216,6 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 		clone.TypingIntervalSeconds = &interval
 	}
 
-	if src.SessionBootstrapByAgent != nil {
-		clone.SessionBootstrapByAgent = maps.Clone(src.SessionBootstrapByAgent)
-	}
-
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
@@ -243,7 +233,7 @@ type MessageMetadata struct {
 	sdk.BaseMessageMetadata
 	sdk.AssistantMessageMetadata
 
-	// Media understanding (AgentRemote-style)
+	// Media understanding.
 	MediaUnderstanding          []MediaUnderstandingOutput   `json:"media_understanding,omitempty"`
 	MediaUnderstandingDecisions []MediaUnderstandingDecision `json:"media_understanding_decisions,omitempty"`
 

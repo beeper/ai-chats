@@ -7,8 +7,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
-// buildContinuationParams builds params for continuing a response after tool execution
-// and/or after responding to tool approval requests.
+// buildContinuationParams builds params for continuing a response after tool execution.
 func (oc *AIClient) buildContinuationParams(
 	ctx context.Context,
 	prompt *PromptContext,
@@ -47,5 +46,5 @@ func (oc *AIClient) buildContinuationParams(
 	if prompt != nil {
 		systemPrompt = prompt.SystemPrompt
 	}
-	return oc.buildResponsesAgentLoopParams(ctx, meta, systemPrompt, input, true)
+	return oc.buildResponsesStreamingParams(ctx, meta, systemPrompt, input, true)
 }

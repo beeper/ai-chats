@@ -23,7 +23,6 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -292,7 +291,7 @@ type AIClient struct {
 	queueTypingMu sync.Mutex
 	queueTyping   map[id.RoomID]*TypingController
 
-	// Model catalog cache (VFS-backed)
+	// Model catalog cache
 	modelCatalogMu     sync.Mutex
 	modelCatalogLoaded bool
 	modelCatalogCache  []ModelCatalogEntry
@@ -655,29 +654,12 @@ func (oc *AIClient) LogoutRemote(ctx context.Context) {
 	})
 }
 
-func (oc *AIClient) agentUserID(agentID string) networkid.UserID {
-	if oc == nil || oc.UserLogin == nil {
-		return agentUserID(agentID)
-	}
-	return agentUserIDForLogin(oc.UserLogin.ID, agentID)
-}
-
 func (oc *AIClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	return oc.chatInfoFromPortal(ctx, portal), nil
 }
 
 func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
 	ghostID := string(ghost.ID)
-
-	// Parse agent from ghost ID (format: "agent-{id}")
-	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
-		return &bridgev2.UserInfo{
-			Name:         ptr.Ptr("Unknown Agent"),
-			IsBot:        ptr.Ptr(true),
-			Identifiers:  stringutil.DedupeStrings([]string{canonicalAgentIdentifier(agentID)}),
-			ExtraUpdates: updateGhostLastSync,
-		}, nil
-	}
 
 	// Parse model from ghost ID (format: "model-{escaped-model-id}")
 	if modelID := parseModelFromGhostID(ghostID); modelID != "" {
@@ -891,7 +873,7 @@ func defaultModelForProviderName(provider string) string {
 	}
 }
 
-// effectivePrompt returns the base system prompt to use for non-agent rooms.
+// effectivePrompt returns the base system prompt.
 func (oc *AIClient) effectivePrompt(meta *PortalMetadata) string {
 	base := oc.connector.Config.DefaultSystemPrompt
 	supplement := oc.profilePromptSupplement()
@@ -970,17 +952,11 @@ func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 	return config
 }
 
-// effectiveAgentPrompt returns the resolved agent prompt for the current room target.
-func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
-	return ""
-}
-
 func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) *float64 {
 	return nil
 }
 
-// defaultThinkLevel resolves the default think level in an AgentRemote-compatible way:
-// low for reasoning-capable models, off otherwise.
+// defaultThinkLevel resolves the default think level from model reasoning settings.
 func (oc *AIClient) defaultThinkLevel(meta *PortalMetadata) string {
 	switch effort := strings.ToLower(strings.TrimSpace(oc.effectiveReasoningEffort(meta))); effort {
 	case "off", "none":
@@ -1100,7 +1076,6 @@ func (oc *AIClient) defaultPDFEngine() string {
 }
 
 // effectivePDFEngine returns the PDF engine to use for the given portal.
-// Priority: room-level PDFConfig > agent defaults > default "mistral-ocr"
 func (oc *AIClient) effectivePDFEngine(meta *PortalMetadata) string {
 	// Room-level override
 	if meta != nil && meta.PDFConfig != nil && meta.PDFConfig.Engine != "" {
@@ -1295,7 +1270,7 @@ func (oc *AIClient) applyAbortHint(ctx context.Context, portal *bridgev2.Portal,
 	if portal != nil {
 		oc.savePortalQuiet(ctx, portal, "abort hint")
 	}
-	note := "Note: The previous agent run was aborted by the user. Resume carefully or ask for clarification."
+	note := "Note: The previous assistant turn was aborted by the user. Resume carefully or ask for clarification."
 	if strings.TrimSpace(body) == "" {
 		return note
 	}
@@ -1481,29 +1456,7 @@ func (oc *AIClient) ensureGhostDisplayNameWithGhost(ctx context.Context, ghost *
 	}
 }
 
-// ensureAgentGhostDisplayName ensures the agent ghost has its display name set.
-func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, modelID, agentName string) {
-	if oc == nil || oc.UserLogin == nil || oc.UserLogin.Bridge == nil {
-		return
-	}
-	ghost, err := oc.UserLogin.Bridge.GetGhostByID(ctx, oc.agentUserID(agentID))
-	if err != nil || ghost == nil {
-		return
-	}
-	displayName := agentName
-	shouldUpdate := ghost.Name == "" || !ghost.NameSet || ghost.Name != displayName
-	if shouldUpdate {
-		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
-			Name:        ptr.Ptr(displayName),
-			IsBot:       ptr.Ptr(true),
-			Identifiers: agentContactIdentifiers(agentID),
-		})
-		oc.loggerForContext(ctx).Debug().Str("agent", agentID).Str("model", modelID).Str("name", displayName).Msg("Updated agent ghost display name")
-	}
-}
-
 // ensureModelInRoom ensures the current portal sender ghost is joined to the portal room.
-// The sender may be a model ghost or an agent ghost depending on the portal target.
 func (oc *AIClient) ensureModelInRoom(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal == nil || portal.MXID == "" {
 		return errors.New("invalid portal")

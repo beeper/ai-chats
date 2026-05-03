@@ -51,7 +51,6 @@ func buildAssistantTurnMetadata(state *streamingState, turnID, networkMessageID,
 	}
 	return sdk.BuildUIMessageMetadata(sdk.UIMessageMetadataParams{
 		TurnID:           turnID,
-		AgentID:          state.respondingAgentID,
 		Model:            state.respondingModelID,
 		FinishReason:     state.finishReason,
 		PromptTokens:     state.promptTokens,

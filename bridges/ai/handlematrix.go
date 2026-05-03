@@ -176,7 +176,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	pendingSent := false
 
-	// Ack reaction (AgentRemote-style scope gating)
+	// Ack reaction.
 	ackReaction := strings.TrimSpace(meta.AckReactionEmoji)
 	if ackReaction == "" && oc.connector != nil && oc.connector.Config.Messages != nil {
 		ackReaction = strings.TrimSpace(oc.connector.Config.Messages.AckReaction)
@@ -711,7 +711,7 @@ func (oc *AIClient) handleMediaMessage(
 			return dispatchTextOnly(understanding.Body)
 		}
 
-		// If model lacks vision but agent supports image understanding, analyze image first.
+		// If the model lacks vision but media understanding is configured, analyze image first.
 		if msgType == event.MsgImage {
 			visionModel, visionFallback := oc.resolveVisionModelForImage(ctx, meta)
 			if resp, err := oc.dispatchMediaUnderstandingFallback(

@@ -13,11 +13,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const maxAgentLoopToolTurns = 1
-
-func normalizeAgentID(agentID string) string {
-	return strings.ToLower(strings.TrimSpace(agentID))
-}
+const maxStreamingToolTurns = 1
 
 type mentionContext struct {
 	WasMentioned   bool
@@ -38,11 +34,11 @@ func stripMentionPatterns(body string, patterns []*regexp.Regexp) string {
 	return body
 }
 
-func (oc *AIClient) buildResponsesAgentLoopParams(ctx context.Context, meta *PortalMetadata, systemPrompt string, input responses.ResponseInputParam, store bool) responses.ResponseNewParams {
+func (oc *AIClient) buildResponsesStreamingParams(ctx context.Context, meta *PortalMetadata, systemPrompt string, input responses.ResponseInputParam, store bool) responses.ResponseNewParams {
 	return responses.ResponseNewParams{Model: oc.modelIDForAPI(oc.effectiveModel(meta)), Input: responses.ResponseNewParamsInputUnion{OfInputItemList: input}}
 }
 
-func runAgentLoopStreamStep[T any](
+func runStreamingStep[T any](
 	ctx context.Context,
 	state *streamingState,
 	stream *ssestream.Stream[T],
@@ -74,7 +70,7 @@ func runAgentLoopStreamStep[T any](
 	return false, nil, nil
 }
 
-func touchAgentLoopActivity(context.Context) {}
+func touchStreamingActivity(context.Context) {}
 
 func normalizeToolArgsJSON(argsJSON string) string {
 	argsJSON = strings.TrimSpace(argsJSON)

@@ -11,7 +11,6 @@ import (
 
 type ConnectorSpec struct {
 	ProtocolID string
-	AIRoomKind string
 
 	Init  func(*bridgev2.Bridge)
 	Start func(context.Context, *bridgev2.Bridge) error
@@ -35,9 +34,6 @@ type ConnectorBase struct {
 }
 
 func NewConnector(spec ConnectorSpec) *ConnectorBase {
-	if spec.AIRoomKind == "" {
-		spec.AIRoomKind = AIRoomKindAgent
-	}
 	return &ConnectorBase{spec: spec}
 }
 
@@ -137,6 +133,6 @@ func (c *ConnectorBase) FillPortalBridgeInfo(portal *bridgev2.Portal, content *e
 		return
 	}
 	if portal != nil && content != nil && c.spec.ProtocolID != "" {
-		ApplyAgentRemoteBridgeInfo(content, c.spec.ProtocolID, portal.RoomType, c.spec.AIRoomKind)
+		ApplyAgentRemoteBridgeInfo(content, c.spec.ProtocolID, portal.RoomType)
 	}
 }

@@ -66,7 +66,7 @@ const (
 	ReplyToModeAll   ReplyToMode = "all"
 )
 
-// QueueMode models AgentRemote-like queue behavior presets.
+// QueueMode models queue behavior presets.
 type QueueMode string
 
 const (

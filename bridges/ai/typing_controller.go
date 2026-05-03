@@ -16,7 +16,7 @@ const (
 )
 
 // TypingController manages typing indicators with TTL and refresh.
-// Similar to AgentRemote's TypingController pattern.
+// TypingController owns repeated typing notifications for a room.
 type TypingController struct {
 	client   *AIClient
 	portal   *bridgev2.Portal
