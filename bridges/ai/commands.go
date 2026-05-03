@@ -239,7 +239,7 @@ func aiCommandStatus(ce *commands.Event, oc *AIClient) {
 		return
 	}
 	caps := oc.getModelCapabilitiesForMeta(ce.Ctx, meta)
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: &oc.connector.Config, channel: "matrix"})
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: &oc.connector.Config})
 	_, sourceEventID, _, _ := oc.roomRunTarget(portal.MXID)
 	tools := oc.selectedBuiltinToolsForTurn(ce.Ctx, meta)
 	toolNames := make([]string, 0, len(tools))
@@ -261,7 +261,6 @@ func aiCommandStatus(ce *commands.Event, oc *AIClient) {
 		fmt.Sprintf("Capabilities: vision=%t audio=%t video=%t pdf=%t imagegen=%t tool-calling=%t reasoning=%t", caps.SupportsVision, caps.SupportsAudio, caps.SupportsVideo, caps.SupportsPDF, caps.SupportsImageGen, caps.SupportsToolCalling, caps.SupportsReasoning),
 		fmt.Sprintf("History: direct=%d group=%d", oc.historyLimit(ce.Ctx, portal, meta), oc.resolveGroupHistoryLimit()),
 		fmt.Sprintf("Queue: mode=%s debounce_ms=%d cap=%d drop=%s", queueSettings.Mode, queueSettings.DebounceMs, queueSettings.Cap, queueSettings.DropPolicy),
-		fmt.Sprintf("Reply: mode=%s threads=%s", oc.resolveMatrixReplyToMode(), oc.resolveMatrixThreadReplies()),
 		fmt.Sprintf("Links: enabled=%t", getLinkPreviewConfig(&oc.connector.Config).Enabled),
 		fmt.Sprintf("Running: %t queued=%t source=%s", sourceEventID != "", oc.roomHasPendingQueueWork(portal.MXID), sourceEventID),
 	}, "\n"))

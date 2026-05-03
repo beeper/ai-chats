@@ -23,7 +23,6 @@ type roomRunState struct {
 	steerQueue           []pendingQueueItem
 	statusEvents         []*event.Event
 	acceptedUserMessages []*database.Message
-	ackPending           []pendingMessage
 }
 
 func (oc *AIClient) attachRoomRun(ctx context.Context, roomID id.RoomID) context.Context {
@@ -76,16 +75,6 @@ func (oc *AIClient) clearRoomRun(roomID id.RoomID) {
 	}
 	if run.cancel != nil {
 		run.cancel()
-	}
-	run.mu.Lock()
-	ackPending := slices.Clone(run.ackPending)
-	run.mu.Unlock()
-	if len(ackPending) == 0 {
-		return
-	}
-	ctx := oc.backgroundContext(context.Background())
-	for _, pending := range ackPending {
-		oc.removePendingAckReactions(ctx, pending.Portal, pending)
 	}
 }
 
@@ -184,9 +173,6 @@ func (oc *AIClient) registerRoomRunPendingItemLocked(run *roomRunState, item pen
 	}
 	if len(item.pending.StatusEvents) > 0 {
 		run.statusEvents = append(run.statusEvents, item.pending.StatusEvents...)
-	}
-	if item.pending.Meta != nil && item.pending.Meta.AckReactionRemoveAfter {
-		run.ackPending = append(run.ackPending, item.pending)
 	}
 	if len(item.acceptedMessages) > 0 {
 		run.acceptedUserMessages = append(run.acceptedUserMessages, item.acceptedMessages...)

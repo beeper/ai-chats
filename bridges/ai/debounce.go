@@ -29,8 +29,7 @@ type DebounceEntry struct {
 	RoomName     string
 	IsGroup      bool
 	WasMentioned bool
-	AckEventID   id.EventID // Track ack reaction for removal after flush
-	PendingSent  bool       // Whether a pending status was already sent for this event
+	PendingSent  bool // Whether a pending status was already sent for this event
 	DBMessage    *database.Message
 }
 

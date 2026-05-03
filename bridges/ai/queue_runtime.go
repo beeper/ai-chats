@@ -132,7 +132,6 @@ func (oc *AIClient) dispatchPromptRun(
 	}
 	metaSnapshot := clonePortalMetadata(item.pending.Meta)
 	oc.launchStreamingRun(runCtx, item.pending.Event, item.pending.Portal, metaSnapshot, promptContext, func() {
-		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 		if item.backlogAfter {
 			followup := item
 			followup.backlogAfter = false
@@ -141,7 +140,7 @@ func (oc *AIClient) dispatchPromptRun(
 			if oc != nil && oc.connector != nil {
 				cfg = &oc.connector.Config
 			}
-			queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+			queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, inlineOpts: airuntime.QueueInlineOptions{}})
 			if oc.enqueuePendingItem(roomID, followup, queueSettings) {
 				oc.startQueueTyping(oc.backgroundContext(context.Background()), followup.pending.Portal, followup.pending.Meta, followup.pending.Typing)
 			}
@@ -264,7 +263,6 @@ func (oc *AIClient) processPendingQueue(ctx context.Context, roomID id.RoomID) {
 					oc.notifyMatrixSendFailure(ctx, item.pending.Portal, event, err)
 				}
 			}
-			oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 			oc.releaseRoom(roomID)
 			oc.processPendingQueue(oc.backgroundContext(ctx), roomID)
 			return

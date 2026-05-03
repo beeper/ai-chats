@@ -177,7 +177,7 @@ func (oc *AIClient) regenerateFromEdit(
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, inlineOpts: airuntime.QueueInlineOptions{}})
 	queueItem := pendingQueueItem{
 		pending:     pending,
 		messageID:   string(evt.ID),

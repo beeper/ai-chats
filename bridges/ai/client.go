@@ -120,7 +120,6 @@ type pendingMessage struct {
 	StatusEvents    []*event.Event           // Extra events to mark sent when processing starts
 	PendingSent     bool                     // Whether a pending status was already sent for this event
 	RawEventContent map[string]any           // Raw Matrix event content for link previews
-	AckEventIDs     []id.EventID             // Ack reactions to remove after completion
 	Typing          *TypingContext
 }
 
@@ -154,7 +153,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	// Initialize inbound message processing with config values
 	inboundCfg := connector.Config.Inbound.WithDefaults()
 	oc.inboundDedupeCache = NewDedupeCache(inboundCfg.DedupeTTL, inboundCfg.DedupeMaxSize)
-	debounceMs := oc.resolveInboundDebounceMs("matrix")
+	debounceMs := oc.resolveInboundDebounceMs()
 	log.Info().
 		Dur("dedupe_ttl", inboundCfg.DedupeTTL).
 		Int("dedupe_max", inboundCfg.DedupeMaxSize).

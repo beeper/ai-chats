@@ -1,11 +1,9 @@
 package ai
 
 import (
-	"context"
 	"strconv"
 	"strings"
 
-	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
@@ -89,25 +87,14 @@ func preparePendingQueueDispatchCandidate(candidate *pendingQueueDispatchCandida
 	}
 	if candidate.collect {
 		items := candidate.items
-		ackIDs := make([]id.EventID, 0, len(items))
 		acceptedMessages := make([]*database.Message, 0, len(items))
 		for idx := range items {
-			if items[idx].pending.Event != nil {
-				if len(items[idx].pending.AckEventIDs) > 0 {
-					ackIDs = append(ackIDs, items[idx].pending.AckEventIDs...)
-				} else {
-					ackIDs = append(ackIDs, items[idx].pending.Event.ID)
-				}
-			}
 			if items[idx].prompt == "" {
 				items[idx].prompt = items[idx].pending.MessageBody
 			}
 			acceptedMessages = append(acceptedMessages, items[idx].acceptedMessages...)
 		}
 		item := items[len(items)-1]
-		if len(ackIDs) > 0 {
-			item.pending.AckEventIDs = ackIDs
-		}
 		item.acceptedMessages = acceptedMessages
 		blocks := []string{"[Queued messages while the assistant was busy]"}
 		if strings.TrimSpace(candidate.summaryPrompt) != "" {
@@ -206,20 +193,5 @@ func (oc *AIClient) clearQueueDraining(roomID id.RoomID) {
 	queue.draining = false
 	if len(queue.items) == 0 && queue.droppedCount == 0 {
 		delete(oc.pendingQueues, roomID)
-	}
-}
-
-func (oc *AIClient) removePendingAckReactions(ctx context.Context, portal *bridgev2.Portal, pending pendingMessage) {
-	if portal == nil || pending.Meta == nil || !pending.Meta.AckReactionRemoveAfter {
-		return
-	}
-	ids := pending.AckEventIDs
-	if len(ids) == 0 && pending.Event != nil {
-		ids = []id.EventID{pending.Event.ID}
-	}
-	for _, sourceID := range ids {
-		if sourceID != "" {
-			oc.removeAckReaction(ctx, portal, sourceID)
-		}
 	}
 }

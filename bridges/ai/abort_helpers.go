@@ -133,7 +133,6 @@ func (oc *AIClient) resolveUserStopPlan(req userStopRequest) userStopPlan {
 
 func (oc *AIClient) finalizeStoppedQueueItems(ctx context.Context, items []pendingQueueItem) int {
 	for _, item := range items {
-		oc.removePendingAckReactions(oc.backgroundContext(ctx), item.pending.Portal, item.pending)
 		message := "Stopped."
 		err := fmt.Errorf("%s", message)
 		msgStatus := bridgev2.WrapErrorInStatus(err).

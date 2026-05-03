@@ -244,26 +244,11 @@ func (oc *AIClient) applyStreamingReplyTarget(state *streamingState, parsed *run
 	if oc == nil || state == nil || parsed == nil || !parsed.HasReplyTag {
 		return
 	}
-	mode := runtimeparse.NormalizeReplyToMode(oc.resolveMatrixReplyToMode())
 	if parsed.ReplyToExplicitID != "" {
 		state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(parsed.ReplyToExplicitID))
 	} else if parsed.ReplyToCurrent && state.sourceEventID() != "" {
 		state.replyTarget.ReplyTo = state.sourceEventID()
 	}
-
-	applied := runtimeparse.ApplyReplyToMode([]runtimeparse.ReplyPayload{{
-		ReplyToID:      state.replyTarget.ReplyTo.String(),
-		ReplyToTag:     parsed.HasReplyTag,
-		ReplyToCurrent: parsed.ReplyToCurrent,
-	}}, runtimeparse.ReplyThreadPolicy{
-		Mode:                     mode,
-		AllowExplicitWhenModeOff: false,
-	})
-	if len(applied) == 0 || strings.TrimSpace(applied[0].ReplyToID) == "" {
-		state.replyTarget.ReplyTo = ""
-		return
-	}
-	state.replyTarget.ReplyTo = id.EventID(strings.TrimSpace(applied[0].ReplyToID))
 }
 
 func (oc *AIClient) markTurnAccepted(ctx context.Context, portal *bridgev2.Portal, state *streamingState, meta *PortalMetadata) {

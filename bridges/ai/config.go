@@ -19,7 +19,6 @@ type Config struct {
 	Models   *ModelsConfig       `yaml:"models"`
 	Bridge   BridgeConfig        `yaml:"bridge"`
 	Tools    ToolProvidersConfig `yaml:"tools"`
-	Channels *ChannelsConfig     `yaml:"channels"`
 	Messages *MessagesConfig     `yaml:"messages"`
 
 	// Global settings
@@ -30,29 +29,12 @@ type Config struct {
 	Inbound *InboundConfig `yaml:"inbound"`
 }
 
-// ChannelsConfig defines per-channel settings.
-type ChannelsConfig struct {
-	Defaults *ChannelDefaultsConfig `yaml:"defaults"`
-	Matrix   *ChannelConfig         `yaml:"matrix"`
-}
-
-type ChannelDefaultsConfig struct {
-}
-
-type ChannelConfig struct {
-	ReplyToMode   string `yaml:"reply_to_mode"`  // off|first|all (Matrix)
-	ThreadReplies string `yaml:"thread_replies"` // off|inbound|always (Matrix)
-}
-
 // MessagesConfig defines message rendering settings.
 type MessagesConfig struct {
-	AckReaction      string                 `yaml:"ack_reaction"`
-	AckReactionScope string                 `yaml:"ack_reaction_scope"` // group-mentions|group-all|direct|all|off|none
-	RemoveAckAfter   bool                   `yaml:"remove_ack_after"`
-	GroupChat        *GroupChatConfig       `yaml:"group_chat"`
-	DirectChat       *DirectChatConfig      `yaml:"direct_chat"`
-	Queue            *QueueConfig           `yaml:"queue"`
-	InboundDebounce  *InboundDebounceConfig `yaml:"inbound"`
+	GroupChat       *GroupChatConfig       `yaml:"group_chat"`
+	DirectChat      *DirectChatConfig      `yaml:"direct_chat"`
+	Queue           *QueueConfig           `yaml:"queue"`
+	InboundDebounce *InboundDebounceConfig `yaml:"inbound"`
 }
 
 // GroupChatConfig defines group chat settings.
@@ -69,18 +51,15 @@ type DirectChatConfig struct {
 
 // InboundDebounceConfig defines inbound debounce behavior.
 type InboundDebounceConfig struct {
-	DebounceMs int            `yaml:"debounce_ms"`
-	ByChannel  map[string]int `yaml:"by_channel"`
+	DebounceMs int `yaml:"debounce_ms"`
 }
 
 // QueueConfig defines queue behavior.
 type QueueConfig struct {
-	Mode                string            `yaml:"mode"`
-	ByChannel           map[string]string `yaml:"by_channel"`
-	DebounceMs          *int              `yaml:"debounce_ms"`
-	DebounceMsByChannel map[string]int    `yaml:"debounce_ms_by_channel"`
-	Cap                 *int              `yaml:"cap"`
-	Drop                string            `yaml:"drop"`
+	Mode       string `yaml:"mode"`
+	DebounceMs *int   `yaml:"debounce_ms"`
+	Cap        *int   `yaml:"cap"`
+	Drop       string `yaml:"drop"`
 }
 
 // ToolProvidersConfig configures external tool providers like search and fetch.

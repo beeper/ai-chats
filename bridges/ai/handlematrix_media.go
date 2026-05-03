@@ -133,7 +133,7 @@ func (oc *AIClient) handleMediaMessage(
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, inlineOpts: airuntime.QueueInlineOptions{}})
 
 	// Get caption (body is usually the filename or caption)
 	rawCaption := strings.TrimSpace(msg.Content.Body)

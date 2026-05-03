@@ -87,10 +87,6 @@ network:
       cap: 20
       drop: "summarize"
 
-  channels:
-    matrix:
-      reply_to_mode: "first"
-
   tools:
     web:
       search:

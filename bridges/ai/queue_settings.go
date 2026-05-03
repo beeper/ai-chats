@@ -1,20 +1,14 @@
 package ai
 
-import (
-	"strings"
-
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
-)
+import airuntime "github.com/beeper/agentremote/pkg/runtime"
 
 type queueResolveParams struct {
 	cfg        *Config
-	channel    string
 	inlineMode airuntime.QueueMode
 	inlineOpts airuntime.QueueInlineOptions
 }
 
 func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
-	channel := strings.TrimSpace(strings.ToLower(params.channel))
 	cfg := params.cfg
 	queueCfg := (*QueueConfig)(nil)
 	if cfg != nil && cfg.Messages != nil {
@@ -23,17 +17,8 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 
 	resolvedMode := params.inlineMode
 	if resolvedMode == "" && queueCfg != nil {
-		if channel != "" && queueCfg.ByChannel != nil {
-			if raw, ok := queueCfg.ByChannel[channel]; ok {
-				if mode, ok := airuntime.NormalizeQueueMode(raw); ok {
-					resolvedMode = mode
-				}
-			}
-		}
-		if resolvedMode == "" {
-			if mode, ok := airuntime.NormalizeQueueMode(queueCfg.Mode); ok {
-				resolvedMode = mode
-			}
+		if mode, ok := airuntime.NormalizeQueueMode(queueCfg.Mode); ok {
+			resolvedMode = mode
 		}
 	}
 	if resolvedMode == "" {
@@ -43,15 +28,8 @@ func resolveQueueSettings(params queueResolveParams) airuntime.QueueSettings {
 	debounce := (*int)(nil)
 	if params.inlineOpts.DebounceMs != nil {
 		debounce = params.inlineOpts.DebounceMs
-	} else if queueCfg != nil {
-		if channel != "" && queueCfg.DebounceMsByChannel != nil {
-			if v, ok := queueCfg.DebounceMsByChannel[channel]; ok {
-				debounce = &v
-			}
-		}
-		if debounce == nil && queueCfg.DebounceMs != nil {
-			debounce = queueCfg.DebounceMs
-		}
+	} else if queueCfg != nil && queueCfg.DebounceMs != nil {
+		debounce = queueCfg.DebounceMs
 	}
 
 	debounceMs := airuntime.DefaultQueueDebounceMs

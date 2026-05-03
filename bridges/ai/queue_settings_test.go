@@ -21,8 +21,7 @@ func TestResolveQueueSettingsUsesConfigDefaults(t *testing.T) {
 	}
 
 	settings := resolveQueueSettings(queueResolveParams{
-		cfg:     cfg,
-		channel: "matrix",
+		cfg: cfg,
 	})
 
 	if settings.Mode != airuntime.QueueModeFollowup {
@@ -46,7 +45,6 @@ func TestResolveQueueSettingsInlineOverridesWin(t *testing.T) {
 
 	settings := resolveQueueSettings(queueResolveParams{
 		cfg:        &Config{},
-		channel:    "matrix",
 		inlineMode: airuntime.QueueModeSteer,
 		inlineOpts: airuntime.QueueInlineOptions{
 			DebounceMs: &debounce,

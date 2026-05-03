@@ -121,12 +121,6 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		}
 	}
 	statusEvents := queueStatusEvents(last.Event, extraStatusEvents)
-	ackRemoveIDs := make([]id.EventID, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Event != nil {
-			ackRemoveIDs = append(ackRemoveIDs, entry.Event.ID)
-		}
-	}
 
 	pending := pendingMessage{
 		Event:           pendingEvent,
@@ -138,7 +132,6 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 		StatusEvents:    statusEvents,
 		PendingSent:     last.PendingSent,
 		RawEventContent: rawEventContent,
-		AckEventIDs:     ackRemoveIDs,
 		Typing: &TypingContext{
 			IsGroup:      last.IsGroup,
 			WasMentioned: last.WasMentioned,
@@ -148,13 +141,6 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	if err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to build prompt for debounced messages")
 		oc.notifyMatrixSendFailure(ctx, last.Portal, last.Event, err)
-		if last.Meta != nil && last.Meta.AckReactionRemoveAfter {
-			for _, entry := range entries {
-				if entry.AckEventID != "" {
-					oc.removeAckReactionByID(ctx, last.Portal, entry.AckEventID)
-				}
-			}
-		}
 		return
 	}
 	acceptedMessages := make([]*database.Message, 0, len(entries))
@@ -198,41 +184,11 @@ func (oc *AIClient) handleDebouncedMessages(entries []DebounceEntry) {
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, inlineOpts: airuntime.QueueInlineOptions{}})
 
 	if err = oc.dispatchOrQueueCore(ctx, pendingEvent, last.Portal, last.Meta, queueItem, queueSettings, promptContext); err != nil {
 		oc.loggerForContext(ctx).Err(err).Msg("Failed to dispatch debounced messages")
 		oc.notifyMatrixSendFailure(ctx, last.Portal, last.Event, err)
 	}
 
-}
-
-// removeAckReactionByID removes an ack reaction by its event ID.
-func (oc *AIClient) removeAckReactionByID(ctx context.Context, portal *bridgev2.Portal, reactionEventID id.EventID) {
-	if portal == nil || portal.MXID == "" || reactionEventID == "" {
-		return
-	}
-
-	part, err := oc.loadPortalMessagePartByMXID(ctx, portal, reactionEventID)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Stringer("reaction_event", reactionEventID).
-			Msg("Failed to look up ack reaction by ID")
-		return
-	}
-	if part == nil {
-		oc.loggerForContext(ctx).Warn().
-			Stringer("reaction_event", reactionEventID).
-			Msg("Ack reaction not found by ID")
-		return
-	}
-	if err := oc.redactNetworkMessageViaPortal(ctx, portal, part.ID); err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).
-			Stringer("reaction_event", reactionEventID).
-			Msg("Failed to remove ack reaction by ID")
-	} else {
-		oc.loggerForContext(ctx).Debug().
-			Stringer("reaction_event", reactionEventID).
-			Msg("Removed ack reaction by ID")
-	}
 }

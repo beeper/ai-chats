@@ -69,20 +69,6 @@ func TestFinalizeInboundContext_BodyFallbacks(t *testing.T) {
 	}
 }
 
-func TestApplyReplyToMode_First(t *testing.T) {
-	in := []ReplyPayload{
-		{ReplyToID: "$a", ReplyToTag: true},
-		{ReplyToID: "$b", ReplyToTag: true},
-	}
-	out := ApplyReplyToMode(in, ReplyThreadPolicy{Mode: ReplyToModeFirst})
-	if out[0].ReplyToID != "$a" {
-		t.Fatalf("expected first reply id to be preserved")
-	}
-	if out[1].ReplyToID != "" {
-		t.Fatalf("expected second reply id to be stripped in first mode")
-	}
-}
-
 func TestQueueFallbackDecisions(t *testing.T) {
 	if cls := ClassifyFallbackError(assertErr("rate limit exceeded")); cls != FailureClassRateLimit {
 		t.Fatalf("unexpected fallback classification: %s", cls)

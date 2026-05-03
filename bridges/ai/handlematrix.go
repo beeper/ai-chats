@@ -120,7 +120,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	if oc != nil && oc.connector != nil {
 		cfg = &oc.connector.Config
 	}
-	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, channel: "matrix", inlineOpts: airuntime.QueueInlineOptions{}})
+	queueSettings := resolveQueueSettings(queueResolveParams{cfg: cfg, inlineOpts: airuntime.QueueInlineOptions{}})
 
 	if isGroup {
 		rawBody = stripMentionPatterns(rawBody, mc.MentionRegexes)
@@ -149,7 +149,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	wasMentioned := mc.WasMentioned
 	groupActivation := oc.resolveGroupActivation(meta)
 	requireMention := isGroup && groupActivation != "always"
-	canDetectMention := len(mc.MentionRegexes) > 0 || mc.HasExplicit
 	shouldBypassMention := groupActivation == "always"
 	if isGroup && requireMention && !wasMentioned && !shouldBypassMention {
 		logCtx.Debug().
@@ -166,38 +165,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 	}
 
 	pendingSent := false
-
-	// Ack reaction.
-	ackReaction := strings.TrimSpace(meta.AckReactionEmoji)
-	if ackReaction == "" && oc.connector != nil && oc.connector.Config.Messages != nil {
-		ackReaction = strings.TrimSpace(oc.connector.Config.Messages.AckReaction)
-	}
-	ackScope := AckScopeGroupMention
-	if oc.connector != nil && oc.connector.Config.Messages != nil {
-		ackScope = normalizeAckScope(oc.connector.Config.Messages.AckReactionScope)
-	}
-	removeAckAfter := meta.AckReactionRemoveAfter
-	if !removeAckAfter && oc.connector != nil && oc.connector.Config.Messages != nil && oc.connector.Config.Messages.RemoveAckAfter {
-		removeAckAfter = true
-	}
-	meta.AckReactionRemoveAfter = removeAckAfter
-
-	var ackReactionEventID id.EventID
-	if ackReaction != "" && shouldAckReaction(AckReactionGateParams{
-		Scope:              ackScope,
-		IsDirect:           !isGroup,
-		IsGroup:            isGroup,
-		IsMentionableGroup: isGroup,
-		RequireMention:     requireMention,
-		CanDetectMention:   canDetectMention,
-		EffectiveMention:   wasMentioned || shouldBypassMention,
-		ShouldBypass:       shouldBypassMention,
-	}) {
-		ackReactionEventID = oc.sendAckReaction(ctx, portal, msg.Event.ID, ackReaction)
-	}
-	if ackReactionEventID != "" && removeAckAfter {
-		oc.storeAckReaction(ctx, portal, msg.Event.ID, ackReaction)
-	}
 	body := oc.buildMatrixInboundBody(ctx, portal, meta, msg.Event, rawBody, senderName, roomName, isGroup)
 	inboundCtx := oc.buildMatrixInboundContext(portal, msg.Event, rawBody, senderName, roomName, isGroup)
 	runCtx = withInboundContext(runCtx, inboundCtx)
@@ -207,7 +174,7 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 
 	debounceDelay := meta.DebounceMs
 	if debounceDelay == 0 {
-		debounceDelay = oc.resolveInboundDebounceMs("matrix")
+		debounceDelay = oc.resolveInboundDebounceMs()
 	}
 	shouldDebounce := oc.inboundDebouncer != nil && ShouldDebounce(msg.Event, rawBody) && debounceDelay > 0
 	debounceKey := ""
@@ -236,7 +203,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 			RoomName:     roomName,
 			IsGroup:      isGroup,
 			WasMentioned: wasMentioned,
-			AckEventID:   ackReactionEventID,
 			DBMessage:    userMessage,
 		}
 		if !pendingSent {
@@ -272,7 +238,6 @@ func (oc *AIClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.Matri
 		Type:            pendingTypeText,
 		MessageBody:     body,
 		RawEventContent: rawEventContent,
-		AckEventIDs:     []id.EventID{msg.Event.ID},
 		PendingSent:     pendingSent,
 		Typing: &TypingContext{
 			IsGroup:      isGroup,

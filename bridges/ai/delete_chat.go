@@ -49,10 +49,6 @@ func (oc *AIClient) cleanupDeletedRoomRuntime(ctx context.Context, roomID id.Roo
 	oc.groupHistoryMu.Lock()
 	delete(oc.groupHistoryBuffers, roomID)
 	oc.groupHistoryMu.Unlock()
-
-	ackReactionStoreMu.Lock()
-	delete(ackReactionStore, roomID)
-	ackReactionStoreMu.Unlock()
 }
 
 func (oc *AIClient) deletePersistedRoomArtifacts(ctx context.Context, portal *bridgev2.Portal, roomKey string) {

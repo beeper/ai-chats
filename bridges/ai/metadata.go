@@ -145,10 +145,8 @@ type GravatarState struct {
 
 // PortalMetadata stores durable room configuration/state plus transient runtime overrides.
 type PortalMetadata struct {
-	AckReactionEmoji       string     `json:"ack_reaction_emoji,omitempty"`
-	AckReactionRemoveAfter bool       `json:"ack_reaction_remove_after,omitempty"`
-	PDFConfig              *PDFConfig `json:"pdf_config,omitempty"`
-	EditMode               string     `json:"edit_mode,omitempty"`
+	PDFConfig *PDFConfig `json:"pdf_config,omitempty"`
+	EditMode  string     `json:"edit_mode,omitempty"`
 
 	Slug             string `json:"slug,omitempty"`
 	TitleGenerated   bool   `json:"title_generated,omitempty"`

@@ -45,27 +45,6 @@ type StreamingDirectiveResult struct {
 	IsSilent          bool
 }
 
-// ReplyPayload is a normalized assistant payload fragment.
-type ReplyPayload struct {
-	Text           string
-	MediaURL       string
-	MediaURLs      []string
-	ReplyToID      string
-	ReplyToTag     bool
-	ReplyToCurrent bool
-	AudioAsVoice   bool
-	IsError        bool
-}
-
-// ReplyToMode controls how reply IDs are applied to payloads.
-type ReplyToMode string
-
-const (
-	ReplyToModeOff   ReplyToMode = "off"
-	ReplyToModeFirst ReplyToMode = "first"
-	ReplyToModeAll   ReplyToMode = "all"
-)
-
 // QueueMode models queue behavior presets.
 type QueueMode string
 
@@ -115,13 +94,6 @@ type QueueBehavior struct {
 	Followup     bool
 	Collect      bool
 	BacklogAfter bool
-}
-
-// ReplyTargetDecision is the resolved target for a reply action.
-type ReplyTargetDecision struct {
-	ReplyToID  string
-	ThreadRoot string
-	Reason     string
 }
 
 // FailureClass groups error types for fallback and UX handling.
