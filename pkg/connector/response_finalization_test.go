@@ -14,7 +14,7 @@ import (
 )
 
 func testStreamingState(turnID string) *streamingState {
-	conv := aihelpers.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := aihelpers.NewConversation[*AIClient](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
 	turn.SetID(turnID)
 	return &streamingState{

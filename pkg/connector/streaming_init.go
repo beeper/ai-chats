@@ -22,7 +22,7 @@ func (oc *AIClient) createStreamingTurn(
 	sourceEventID id.EventID,
 	senderID string,
 ) *aihelpers.Turn {
-	sdkConfig := &aihelpers.Config[*AIClient, *Config]{
+	conversationConfig := &aihelpers.Config[*AIClient]{
 		ProviderIdentity: aihelpers.ProviderIdentity{
 			IDPrefix:      oc.ClientBase.MessageIDPrefix,
 			LogKey:        oc.ClientBase.MessageLogKey,
@@ -33,7 +33,7 @@ func (oc *AIClient) createStreamingTurn(
 	if oc.UserLogin != nil {
 		sender = oc.senderForPortal(ctx, portal)
 	}
-	conv := aihelpers.NewConversation(ctx, oc.UserLogin, portal, sender, sdkConfig, oc)
+	conv := aihelpers.NewConversation(ctx, oc.UserLogin, portal, sender, conversationConfig, oc)
 	turn := conv.StartTurn(ctx, nil, &aihelpers.SourceRef{EventID: string(sourceEventID), SenderID: senderID})
 	turn.SetSender(sender)
 	turn.SetFinalMetadataProvider(aihelpers.FinalMetadataProviderFunc(func(_ *aihelpers.Turn, _ string) any {

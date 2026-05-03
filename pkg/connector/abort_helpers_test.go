@@ -151,7 +151,7 @@ func TestExecuteUserStopPlanActiveNoOpFallsBackToNoMatch(t *testing.T) {
 
 func TestBuildStreamUIMessageIncludesStopMetadata(t *testing.T) {
 	oc := &AIClient{}
-	conv := aihelpers.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := aihelpers.NewConversation[*AIClient](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	turn := conv.StartTurn(context.Background(), nil, &aihelpers.SourceRef{EventID: "$user", SenderID: "@user:test"})
 	turn.SetID("turn-stop")
 	state := &streamingState{

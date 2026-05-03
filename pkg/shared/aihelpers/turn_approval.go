@@ -14,25 +14,25 @@ type pendingAIHelperApprovalData struct {
 	ToolName   string
 }
 
-type sdkApprovalHandle struct {
+type aiApprovalHandle struct {
 	approvalID string
 	toolCallID string
 	turn       *Turn
 }
 
-func (h *sdkApprovalHandle) ID() string {
+func (h *aiApprovalHandle) ID() string {
 	if h == nil {
 		return ""
 	}
 	return h.approvalID
 }
-func (h *sdkApprovalHandle) ToolCallID() string {
+func (h *aiApprovalHandle) ToolCallID() string {
 	if h == nil {
 		return ""
 	}
 	return h.toolCallID
 }
-func (h *sdkApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, error) {
+func (h *aiApprovalHandle) Wait(ctx context.Context) (ToolApprovalResponse, error) {
 	if h == nil || h.turn == nil || h.turn.conv == nil || h.turn.turnCtx == nil {
 		return ToolApprovalResponse{}, nil
 	}
@@ -71,7 +71,7 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 		return t.approvalRequester(t.turnCtx, t, req)
 	}
 	if t.conv == nil || t.conv.portal == nil || t.conv.approvalFlow == nil {
-		return &sdkApprovalHandle{turn: t, toolCallID: req.ToolCallID}
+		return &aiApprovalHandle{turn: t, toolCallID: req.ToolCallID}
 	}
 	approvalFlow := t.conv.approvalFlow
 	started := approvalFlow.StartApprovalRequest(t.turnCtx, StartApprovalRequestParams[*pendingAIHelperApprovalData]{
@@ -97,5 +97,5 @@ func (t *Turn) requestApproval(req ApprovalRequest) ApprovalHandle {
 			ToolName:   req.ToolName,
 		},
 	})
-	return &sdkApprovalHandle{approvalID: started.ApprovalID, toolCallID: req.ToolCallID, turn: t}
+	return &aiApprovalHandle{approvalID: started.ApprovalID, toolCallID: req.ToolCallID, turn: t}
 }

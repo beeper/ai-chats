@@ -61,7 +61,7 @@ func TestDeriveToolDescriptorForOutputItem_FunctionCallParsesArgumentsJSON(t *te
 func TestUpsertActiveToolFromDescriptor_RecreatesNilMapEntry(t *testing.T) {
 	oc := &AIClient{}
 	state := newStreamingState(context.Background(), nil, "")
-	conv := aihelpers.NewConversation[*AIClient, *Config](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
+	conv := aihelpers.NewConversation[*AIClient](context.Background(), nil, nil, bridgev2.EventSender{}, nil, nil)
 	state.turn = conv.StartTurn(context.Background(), nil, nil)
 	activeTools := newStreamToolRegistry()
 	activeTools.byKey[streamToolItemKey("item_123")] = nil

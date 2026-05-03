@@ -184,7 +184,7 @@ func TestTurnPersistFinalMessageUsesFinalMetadataProvider(t *testing.T) {
 }
 
 func TestTurnStreamSetTransportReceivesEvents(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{}, nil)
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}]{}, nil)
 	turn := conv.StartTurn(context.Background(), &Agent{ID: "agent"}, nil)
 
 	var gotTurnID string
@@ -336,7 +336,7 @@ func TestTurnEnsureStreamStartedAsyncStartsAfterTargetResolution(t *testing.T) {
 }
 
 func TestTurnIdleTimeoutAbortsStuckTurn(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}]{
 		TurnManagement: &TurnConfig{IdleTimeoutMs: 20},
 	}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)
@@ -355,7 +355,7 @@ func TestTurnIdleTimeoutAbortsStuckTurn(t *testing.T) {
 }
 
 func TestTurnIdleTimeoutResetsOnActivity(t *testing.T) {
-	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}, *struct{}]{
+	conv := NewConversation(context.Background(), nil, nil, bridgev2.EventSender{}, &Config[*struct{}]{
 		TurnManagement: &TurnConfig{IdleTimeoutMs: 40},
 	}, nil)
 	turn := conv.StartTurn(context.Background(), nil, nil)

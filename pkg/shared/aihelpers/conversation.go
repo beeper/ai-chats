@@ -66,7 +66,7 @@ type NewConversationOptions struct {
 
 // NewConversation creates an AI helper conversation wrapper for provider bridges
 // that drive their own bridgev2 clients.
-func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
+func NewConversation[SessionT SessionValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT], session SessionT, opts ...NewConversationOptions) *Conversation {
 	conv := newConversation(ctx, portal, login, sender)
 	var options NewConversationOptions
 	if len(opts) > 0 {

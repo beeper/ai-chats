@@ -165,10 +165,8 @@ type ProviderIdentity struct {
 
 type SessionValue interface{}
 
-type ConfigValue interface{}
-
 // Config configures shared AI conversation helpers.
-type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
+type Config[SessionT SessionValue] struct {
 	Agent        *Agent
 	AgentCatalog AgentCatalog
 
