@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 // Fetch executes a fetch using the configured provider chain.

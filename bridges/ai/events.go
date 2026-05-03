@@ -5,7 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
 func init() {

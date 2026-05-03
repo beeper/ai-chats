@@ -7,8 +7,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestParseJSONOrRaw_EmptyStringReturnsNil(t *testing.T) {

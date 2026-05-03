@@ -7,7 +7,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
 )
 
 // EmitUISourceURL sends a "source-url" event (deduplicated by URL).

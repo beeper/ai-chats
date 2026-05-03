@@ -1,6 +1,6 @@
 package websearch
 
-import "github.com/beeper/agentremote/pkg/shared/maputil"
+import "github.com/beeper/ai-chats/pkg/shared/maputil"
 
 // ParseCountAndIgnoredOptions extracts count and unsupported option warnings from args.
 func ParseCountAndIgnoredOptions(args map[string]any) (int, []string) {

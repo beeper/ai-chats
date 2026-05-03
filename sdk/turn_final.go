@@ -11,8 +11,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/turns"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/turns"
 )
 
 func (t *Turn) finalMetadata(finishReason string) BaseMessageMetadata {

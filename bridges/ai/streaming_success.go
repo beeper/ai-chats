@@ -7,8 +7,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/format"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/sdk"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 type streamingFinalizeParams struct {

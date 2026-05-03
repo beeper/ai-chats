@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
 type activeToolCall struct {

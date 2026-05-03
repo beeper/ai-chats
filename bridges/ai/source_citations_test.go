@@ -3,7 +3,7 @@ package ai
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
 )
 
 func TestExtractWebSearchCitationsFromToolOutput(t *testing.T) {

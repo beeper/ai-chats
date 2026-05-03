@@ -10,9 +10,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/sdk"
-	"github.com/beeper/agentremote/turns"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/sdk"
+	"github.com/beeper/ai-chats/turns"
 )
 
 // sendContinuationMessage sends overflow text as a new (non-edit) message from the bot.

@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/shared/toolspec"
+	"github.com/beeper/ai-chats/pkg/shared/toolspec"
 )
 
 type ToolDefinition struct {

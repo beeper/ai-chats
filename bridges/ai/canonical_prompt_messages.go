@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func filterPromptMessagesForHistory(messages []PromptMessage, injectImages bool) []PromptMessage {

@@ -3,7 +3,7 @@ package ai
 import (
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // newBrokenLoginClient creates a BrokenLoginClient that also wires up

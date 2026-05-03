@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func displayStreamingText(state *streamingState) string {

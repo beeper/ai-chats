@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestMapFinishReason(t *testing.T) {

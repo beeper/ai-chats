@@ -8,8 +8,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/rs/zerolog"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestFinalizeStreamingStepErrorFinalizesContextLength(t *testing.T) {

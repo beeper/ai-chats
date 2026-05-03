@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 type stopPlanKind string

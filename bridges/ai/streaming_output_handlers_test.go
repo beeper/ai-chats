@@ -6,7 +6,7 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
 func TestHandleResponseOutputItemDoneEmitsLateArrivingToolInput(t *testing.T) {

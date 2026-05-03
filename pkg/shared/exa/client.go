@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/beeper/agentremote/pkg/shared/httputil"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/httputil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 // Endpoint resolves an Exa API endpoint path against the configured base URL.

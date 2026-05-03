@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
 // ensureActiveToolCall returns the existing activeToolCall for itemID, or creates and

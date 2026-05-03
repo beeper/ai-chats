@@ -8,7 +8,7 @@ import (
 func BuildInboundMetaSystemPrompt(ctx InboundContext) string {
 	ctx = FinalizeInboundContext(ctx)
 	payload := map[string]any{
-		"schema": "com.beeper.agentremote.inbound_meta.v1",
+		"schema": "com.beeper.ai_chats.inbound_meta.v1",
 	}
 	setIfNotEmpty(payload, "provider", ctx.Provider)
 	setIfNotEmpty(payload, "surface", ctx.Surface)

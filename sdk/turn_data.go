@@ -3,7 +3,7 @@ package sdk
 import (
 	"encoding/json"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 // TurnData is the SDK-owned semantic turn record used as the canonical source

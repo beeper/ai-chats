@@ -14,8 +14,8 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/turns"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
+	"github.com/beeper/ai-chats/turns"
 )
 
 type sdkTestMatrixAPI struct {

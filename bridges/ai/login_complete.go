@@ -10,8 +10,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/status"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func (ol *OpenAILogin) completeLogin(ctx context.Context, input loginCompletionInput) (*bridgev2.LoginStep, error) {
@@ -91,7 +91,7 @@ func (ol *OpenAILogin) completeLogin(ctx context.Context, input loginCompletionI
 			RemoteName: remoteName,
 			Metadata:   meta,
 		},
-		"com.beeper.agentremote.ai.complete",
+		"com.beeper.ai_chats.ai.complete",
 		sdk.PersistLoginCompletionOptions{
 			NewLoginParams: &bridgev2.NewLoginParams{
 				DeleteOnConflict: ol.Override != nil,

@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // createStreamingTurn builds an sdk.Turn configured with bridges/ai-specific

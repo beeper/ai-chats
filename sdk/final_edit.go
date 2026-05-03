@@ -10,9 +10,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
-	"github.com/beeper/agentremote/turns"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/turns"
 )
 
 const MaxMatrixEventContentBytes = 60000

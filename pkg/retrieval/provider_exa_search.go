@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/ai-chats/pkg/shared/exa"
 )
 
 type exaSearchProvider struct {

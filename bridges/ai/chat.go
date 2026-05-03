@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/bridgeutil"
+	"github.com/beeper/ai-chats/sdk"
 
 	"go.mau.fi/util/ptr"
 	"maunium.net/go/mautrix/bridgev2"

@@ -14,7 +14,7 @@ repos:
       - id: go-imports-repo
         args:
           - "-local"
-          - "github.com/beeper/agentremote"
+          - "github.com/beeper/ai-chats"
           - "-w"
       - id: go-mod-tidy
 
@@ -24,12 +24,12 @@ repos:
         name: go-vet-root
         language: system
         pass_filenames: false
-        entry: bash -lc 'GOCACHE=/tmp/agentremote-precommit-gocache go vet ./...'
+        entry: bash -lc 'GOCACHE=/tmp/ai-chats-precommit-gocache go vet ./...'
       - id: go-staticcheck-root
         name: go-staticcheck-root
         language: system
         pass_filenames: false
-        entry: bash -lc 'GOCACHE=/tmp/agentremote-precommit-gocache staticcheck ./...'
+        entry: bash -lc 'GOCACHE=/tmp/ai-chats-precommit-gocache staticcheck ./...'
 
   - repo: https://github.com/beeper/pre-commit-go
     rev: v0.4.2

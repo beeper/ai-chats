@@ -1,6 +1,6 @@
 package ai
 
-import airuntime "github.com/beeper/agentremote/pkg/runtime"
+import airuntime "github.com/beeper/ai-chats/pkg/runtime"
 
 type queueResolveParams struct {
 	cfg        *Config

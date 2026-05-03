@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/util/random"
 
-	"github.com/beeper/agentremote/pkg/shared/httputil"
+	"github.com/beeper/ai-chats/pkg/shared/httputil"
 )
 
 // OpenAIProvider wraps the OpenAI client and provider-specific request helpers.

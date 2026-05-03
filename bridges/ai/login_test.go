@@ -9,7 +9,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestOpenAILoginStartRejectsInvalidFlow(t *testing.T) {
@@ -45,7 +45,7 @@ func TestOpenAILoginStartWithOverrideRejectsInvalidTarget(t *testing.T) {
 	if !errors.As(err, &respErr) {
 		t.Fatalf("expected RespError, got %T", err)
 	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.INVALID_RELOGIN_TARGET" {
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.AI.INVALID_RELOGIN_TARGET" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }
@@ -70,7 +70,7 @@ func TestOpenAILoginCompleteLoginRejectsProviderMismatch(t *testing.T) {
 	if !errors.As(err, &respErr) {
 		t.Fatalf("expected RespError, got %T", err)
 	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.PROVIDER_MISMATCH" {
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.AI.PROVIDER_MISMATCH" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }

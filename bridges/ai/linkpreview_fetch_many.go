@@ -12,7 +12,7 @@ import (
 	_ "golang.org/x/image/webp"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
 )
 
 func (lp *LinkPreviewer) FetchPreviews(ctx context.Context, urls []string) []*PreviewWithImage {

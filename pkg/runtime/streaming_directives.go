@@ -3,7 +3,7 @@ package runtime
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 type streamingPendingReplyState struct {

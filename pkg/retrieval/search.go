@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 // Search executes a search using the configured provider chain.

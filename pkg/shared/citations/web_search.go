@@ -3,7 +3,7 @@ package citations
 import (
 	"net/url"
 
-	"github.com/beeper/agentremote/pkg/shared/websearch"
+	"github.com/beeper/ai-chats/pkg/shared/websearch"
 )
 
 // ExtractWebSearchCitations parses a JSON tool output containing web search results

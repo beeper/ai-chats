@@ -17,7 +17,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/aidb"
+	"github.com/beeper/ai-chats/pkg/aidb"
 )
 
 type testMatrixConnector struct {

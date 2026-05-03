@@ -9,7 +9,7 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // ModelCache stores available models cached in AI-owned login runtime state.

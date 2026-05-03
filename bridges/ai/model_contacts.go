@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 func canonicalModelIdentifier(modelID string) string {

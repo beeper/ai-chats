@@ -11,9 +11,9 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/sdk"
+	runtimeparse "github.com/beeper/ai-chats/pkg/runtime"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // streamingState tracks the state of a streaming response

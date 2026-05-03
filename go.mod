@@ -1,4 +1,4 @@
-module github.com/beeper/agentremote
+module github.com/beeper/ai-chats
 
 go 1.25.0
 
@@ -6,8 +6,6 @@ tool go.mau.fi/util/cmd/maubuild
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
-	github.com/beeper/bridge-manager v0.14.0
-	github.com/coder/websocket v1.8.14
 	github.com/dyatlov/go-opengraph/opengraph v0.0.0-20220524092352-606d7b1e5f8a
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.34
@@ -23,6 +21,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/coder/websocket v1.8.14 // indirect
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
 	github.com/lib/pq v1.11.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect

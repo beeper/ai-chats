@@ -12,9 +12,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/sdk"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // mediaConfig describes how to handle a specific media type

@@ -7,8 +7,8 @@ import (
 
 	"github.com/openai/openai-go/v3/responses"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 type toolLifecycle struct {

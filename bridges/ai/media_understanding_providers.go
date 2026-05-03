@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 const (

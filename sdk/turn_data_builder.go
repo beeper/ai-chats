@@ -3,7 +3,7 @@ package sdk
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 // TurnDataBuildOptions describes provider/runtime-specific data that should be

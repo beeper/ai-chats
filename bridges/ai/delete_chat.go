@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // HandleMatrixDeleteChat best-effort cleans up AI-room runtime and persisted

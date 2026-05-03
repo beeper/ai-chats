@@ -10,13 +10,13 @@ import (
 )
 
 func TestAILoginErrorCodesUseAgentRemoteNamespace(t *testing.T) {
-	if ErrAPIKeyRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.API_KEY_REQUIRED" {
+	if ErrAPIKeyRequired.ErrCode != "COM.BEEPER.AI_CHATS.AI.API_KEY_REQUIRED" {
 		t.Fatalf("unexpected api key errcode: %q", ErrAPIKeyRequired.ErrCode)
 	}
-	if ErrBaseURLRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.BASE_URL_REQUIRED" {
+	if ErrBaseURLRequired.ErrCode != "COM.BEEPER.AI_CHATS.AI.BASE_URL_REQUIRED" {
 		t.Fatalf("unexpected base url errcode: %q", ErrBaseURLRequired.ErrCode)
 	}
-	if ErrOpenAIOrOpenRouterRequired.ErrCode != "COM.BEEPER.AGENTREMOTE.AI.OPENAI_OR_OPENROUTER_REQUIRED" {
+	if ErrOpenAIOrOpenRouterRequired.ErrCode != "COM.BEEPER.AI_CHATS.AI.OPENAI_OR_OPENROUTER_REQUIRED" {
 		t.Fatalf("unexpected openai/openrouter errcode: %q", ErrOpenAIOrOpenRouterRequired.ErrCode)
 	}
 }

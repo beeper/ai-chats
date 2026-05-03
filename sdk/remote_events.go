@@ -12,7 +12,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote/turns"
+	"github.com/beeper/ai-chats/turns"
 )
 
 var (

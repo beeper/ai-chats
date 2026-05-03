@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func (oc *AIClient) buildStreamingMessageMetadata(state *streamingState, meta *PortalMetadata, turnData sdk.TurnData) *MessageMetadata {

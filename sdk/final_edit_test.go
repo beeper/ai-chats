@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/matrixevents"
+	"github.com/beeper/ai-chats/pkg/matrixevents"
 )
 
 func TestFitFinalEditPayloadCompactsOptionalMetadataFirst(t *testing.T) {

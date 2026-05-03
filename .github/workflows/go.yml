@@ -44,12 +44,7 @@ jobs:
           go-version: "1.25"
           cache: true
 
-      - name: Build AgentRemote Manager release binary
+      - name: Build AI bridge binary
         env:
           CGO_ENABLED: "1"
-        run: go build -tags goolm -trimpath -o "$RUNNER_TEMP/agentremote" ./cmd/agentremote
-
-      - name: Validate install scripts
-        run: |
-          sh -n ./install.sh
-          sh -n ./tools/generate-homebrew-cask.sh
+        run: go build -tags goolm -trimpath -o "$RUNNER_TEMP/ai" ./cmd/ai

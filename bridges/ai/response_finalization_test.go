@@ -8,9 +8,9 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func testStreamingState(turnID string) *streamingState {

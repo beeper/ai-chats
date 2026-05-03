@@ -167,7 +167,7 @@ func (c *sdkClient[SessionT, ConfigDataT]) GetCapabilities(ctx context.Context, 
 	}
 	capID := features.CustomCapabilityID
 	if capID == "" {
-		capID = "com.beeper.agentremote.sdk"
+		capID = "com.beeper.ai_chats.sdk"
 	}
 	roomFeatures := &event.RoomFeatures{
 		ID:                  capID,

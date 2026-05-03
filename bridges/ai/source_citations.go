@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/maputil"
 )
 
 func extractURLCitation(annotation any) (citations.SourceCitation, bool) {

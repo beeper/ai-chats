@@ -6,7 +6,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	runtimeparse "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 type ReplyTarget struct {

@@ -3,7 +3,7 @@ package ai
 import (
 	"maunium.net/go/mautrix/event"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 func messageStatusForError(err error) event.MessageStatus {

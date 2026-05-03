@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
+	"github.com/beeper/ai-chats/pkg/shared/bridgeconfig"
 )
 
 //go:embed example-config.yaml

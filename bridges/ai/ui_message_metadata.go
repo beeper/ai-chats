@@ -1,8 +1,8 @@
 package ai
 
 import (
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 type assistantStopMetadata struct {

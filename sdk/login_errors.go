@@ -7,7 +7,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 )
 
-const loginErrorCodePrefix = "COM.BEEPER.AGENTREMOTE"
+const loginErrorCodePrefix = "COM.BEEPER.AI_CHATS"
 
 func sanitizeLoginErrorCodePart(part string) string {
 	part = strings.TrimSpace(strings.ToUpper(part))

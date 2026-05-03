@@ -5,10 +5,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 . "$ROOT_DIR/tools/lib/crypto_backend.sh"
-agentremote_resolve_go_crypto_backend
+ai_chats_resolve_go_crypto_backend
 
-if [ -n "$AGENTREMOTE_GO_TAG" ]; then
-	exec go tool maubuild -tags "$AGENTREMOTE_GO_TAG" "$@"
+if [ -n "$AI_CHATS_GO_TAG" ]; then
+	exec go tool maubuild -tags "$AI_CHATS_GO_TAG" "$@"
 fi
 
 exec go tool maubuild "$@"

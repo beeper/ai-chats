@@ -5,7 +5,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 type aiLoginConfig struct {

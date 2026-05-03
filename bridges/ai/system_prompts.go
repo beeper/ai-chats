@@ -6,7 +6,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	runtimeparse "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 func buildGroupIntro(roomName string, activation string) string {

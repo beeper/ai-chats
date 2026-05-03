@@ -1,8 +1,8 @@
 package sdk
 
 import (
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 // BaseMessageMetadata contains fields common to all bridge MessageMetadata structs.

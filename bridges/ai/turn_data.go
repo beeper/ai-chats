@@ -3,8 +3,8 @@ package ai
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func canonicalTurnData(meta *MessageMetadata) (sdk.TurnData, bool) {

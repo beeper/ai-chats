@@ -11,7 +11,7 @@ import (
 	bridgev2database "maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
-	"github.com/beeper/agentremote/pkg/aidb"
+	"github.com/beeper/ai-chats/pkg/aidb"
 )
 
 const (

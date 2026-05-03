@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 func TestPendingQueueCollectsBusyRoomMessagesIntoOneTurn(t *testing.T) {

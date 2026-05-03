@@ -30,17 +30,17 @@ var (
 // Pre-defined bridgev2.RespError constants for consistent error responses
 var (
 	ErrAPIKeyRequired = bridgev2.RespError{
-		ErrCode:    "COM.BEEPER.AGENTREMOTE.AI.API_KEY_REQUIRED",
+		ErrCode:    "COM.BEEPER.AI_CHATS.AI.API_KEY_REQUIRED",
 		Err:        "Enter an API key.",
 		StatusCode: http.StatusBadRequest,
 	}
 	ErrBaseURLRequired = bridgev2.RespError{
-		ErrCode:    "COM.BEEPER.AGENTREMOTE.AI.BASE_URL_REQUIRED",
+		ErrCode:    "COM.BEEPER.AI_CHATS.AI.BASE_URL_REQUIRED",
 		Err:        "Enter a base URL.",
 		StatusCode: http.StatusBadRequest,
 	}
 	ErrOpenAIOrOpenRouterRequired = bridgev2.RespError{
-		ErrCode:    "COM.BEEPER.AGENTREMOTE.AI.OPENAI_OR_OPENROUTER_REQUIRED",
+		ErrCode:    "COM.BEEPER.AI_CHATS.AI.OPENAI_OR_OPENROUTER_REQUIRED",
 		Err:        "Enter an OpenAI or OpenRouter API key.",
 		StatusCode: http.StatusBadRequest,
 	}

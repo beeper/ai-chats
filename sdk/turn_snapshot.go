@@ -3,7 +3,7 @@ package sdk
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 func TurnText(td TurnData) string {

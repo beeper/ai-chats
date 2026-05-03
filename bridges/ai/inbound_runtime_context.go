@@ -8,7 +8,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/id"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 type inboundContextKey struct{}

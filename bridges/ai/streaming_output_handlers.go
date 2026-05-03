@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
 )
 
 func (oc *AIClient) upsertActiveToolFromDescriptor(

@@ -3,7 +3,7 @@ package ai
 import (
 	"testing"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	runtimeparse "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 func TestStripEnvelope(t *testing.T) {

@@ -3,7 +3,7 @@ package ai
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestPromptMessagesFromTurnDataJSONEncodesPlainStringToolArguments(t *testing.T) {

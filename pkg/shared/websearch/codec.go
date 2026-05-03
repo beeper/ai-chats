@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/retrieval"
-	"github.com/beeper/agentremote/pkg/shared/maputil"
+	"github.com/beeper/ai-chats/pkg/retrieval"
+	"github.com/beeper/ai-chats/pkg/shared/maputil"
 )
 
 // RequestFromArgs converts tool arguments into a normalized search request.

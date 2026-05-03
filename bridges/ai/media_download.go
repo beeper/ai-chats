@@ -14,7 +14,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/shared/media"
+	"github.com/beeper/ai-chats/pkg/shared/media"
 )
 
 func (oc *AIClient) downloadMediaBytes(

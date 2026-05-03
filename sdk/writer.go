@@ -6,8 +6,8 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
-	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
 )
 
 // ToolInputOptions controls how a tool input start is represented in the SDK UI stream.

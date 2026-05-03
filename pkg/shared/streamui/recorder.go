@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 func ApplyChunk(state *UIState, chunk map[string]any) {

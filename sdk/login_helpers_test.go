@@ -16,7 +16,7 @@ func TestValidateLoginStateReturnsTypedErrors(t *testing.T) {
 	if respErr.StatusCode != 500 {
 		t.Fatalf("unexpected status code: %d", respErr.StatusCode)
 	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.LOGIN.MISSING_USER_CONTEXT" {
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.LOGIN.MISSING_USER_CONTEXT" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 
@@ -24,7 +24,7 @@ func TestValidateLoginStateReturnsTypedErrors(t *testing.T) {
 	if !errors.As(err, &respErr) {
 		t.Fatalf("expected RespError, got %T", err)
 	}
-	if respErr.ErrCode != "COM.BEEPER.AGENTREMOTE.LOGIN.CONNECTOR_NOT_INITIALIZED" {
+	if respErr.ErrCode != "COM.BEEPER.AI_CHATS.LOGIN.CONNECTOR_NOT_INITIALIZED" {
 		t.Fatalf("unexpected errcode: %q", respErr.ErrCode)
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/retrieval"
-	"github.com/beeper/agentremote/pkg/shared/websearch"
+	"github.com/beeper/ai-chats/pkg/retrieval"
+	"github.com/beeper/ai-chats/pkg/shared/websearch"
 )
 
 func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (string, error) {

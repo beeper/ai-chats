@@ -6,7 +6,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func (oc *AIClient) sendSuccessMessageStatus(ctx context.Context, portal *bridgev2.Portal, events []*event.Event) {

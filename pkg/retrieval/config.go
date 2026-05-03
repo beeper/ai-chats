@@ -1,7 +1,7 @@
 package retrieval
 
 import (
-	"github.com/beeper/agentremote/pkg/shared/exa"
+	"github.com/beeper/ai-chats/pkg/shared/exa"
 )
 
 const (

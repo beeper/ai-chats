@@ -3,7 +3,7 @@ package websearch
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/retrieval"
+	"github.com/beeper/ai-chats/pkg/retrieval"
 )
 
 func TestRequestFromArgs(t *testing.T) {

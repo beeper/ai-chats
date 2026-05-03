@@ -3,8 +3,8 @@ package ai
 import (
 	"testing"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 func TestPromptMessagesFromTurnDataBuildsAssistantAndToolResultMessages(t *testing.T) {

@@ -104,7 +104,7 @@ func NewConnectorBase[SessionT SessionValue, ConfigDataT ConfigValue](cfg *Confi
 			}
 			return bridgev2.BridgeName{
 				DisplayName:      cfg.Name,
-				NetworkURL:       "https://github.com/beeper/agentremote",
+				NetworkURL:       "https://github.com/beeper/ai-chats",
 				NetworkID:        cfg.Name,
 				BeeperBridgeType: cfg.Name,
 				DefaultPort:      uint16(port),

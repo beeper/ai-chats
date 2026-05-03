@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/beeper/agentremote/pkg/shared/jsonutil"
+	"github.com/beeper/ai-chats/pkg/shared/jsonutil"
 )
 
 // PatchConfigWithRegistration applies the standard Beeper self-hosted bridge

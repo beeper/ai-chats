@@ -11,7 +11,7 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
+	"github.com/beeper/ai-chats/pkg/shared/stringutil"
 )
 
 func (oc *AIClient) describeImageWithEntry(

@@ -8,7 +8,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 // Provider constants - all use OpenAI SDK with different base URLs
@@ -178,7 +178,7 @@ func (ol *OpenAILogin) credentialsStep() *bridgev2.LoginStep {
 
 	return &bridgev2.LoginStep{
 		Type:         bridgev2.LoginStepTypeUserInput,
-		StepID:       "com.beeper.agentremote.ai.enter_credentials",
+		StepID:       "com.beeper.ai_chats.ai.enter_credentials",
 		Instructions: "Enter your API credentials",
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: fields,

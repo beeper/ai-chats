@@ -3,7 +3,7 @@ package ai
 import (
 	"strings"
 
-	"github.com/beeper/agentremote/sdk"
+	"github.com/beeper/ai-chats/sdk"
 )
 
 type PromptRole string

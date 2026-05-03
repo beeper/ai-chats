@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/event"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
+	airuntime "github.com/beeper/ai-chats/pkg/runtime"
 )
 
 const (

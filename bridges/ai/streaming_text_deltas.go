@@ -9,9 +9,9 @@ import (
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 
-	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
+	runtimeparse "github.com/beeper/ai-chats/pkg/runtime"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
 )
 
 func (oc *AIClient) emitVisibleTextDelta(

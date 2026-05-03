@@ -3,7 +3,7 @@ package sdk
 import (
 	"maunium.net/go/mautrix/bridgev2"
 
-	"github.com/beeper/agentremote/pkg/shared/streamui"
+	"github.com/beeper/ai-chats/pkg/shared/streamui"
 )
 
 // TurnStream is the transport/escape-hatch surface for a turn.

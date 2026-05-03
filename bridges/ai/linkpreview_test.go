@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/shared/citations"
+	"github.com/beeper/ai-chats/pkg/shared/citations"
 )
 
 func TestPreviewCacheReturnsClones(t *testing.T) {
