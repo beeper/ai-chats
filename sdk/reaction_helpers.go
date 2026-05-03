@@ -61,21 +61,3 @@ func BuildReactionEvent(
 		ExtraContent:   extraContent,
 	}
 }
-
-// BuildReactionRemoveEvent creates a reaction removal event with explicit timing.
-func BuildReactionRemoveEvent(
-	portal networkid.PortalKey,
-	sender bridgev2.EventSender,
-	targetMessage networkid.MessageID,
-	emojiID networkid.EmojiID,
-	timestamp time.Time,
-	streamOrder int64,
-	logKey string,
-) *simplevent.Reaction {
-	timing := ResolveEventTiming(timestamp, streamOrder)
-	return &simplevent.Reaction{
-		EventMeta:     reactionEventMeta(bridgev2.RemoteEventReactionRemove, portal, sender, targetMessage, logKey, timing),
-		TargetMessage: targetMessage,
-		EmojiID:       emojiID,
-	}
-}

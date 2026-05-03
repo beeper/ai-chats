@@ -49,16 +49,6 @@ func BuiltinTools() []ToolDefinition {
 	}
 }
 
-func GetBuiltinTool(name string) *ToolDefinition {
-	for _, tool := range BuiltinTools() {
-		if tool.Name == name {
-			copy := tool
-			return &copy
-		}
-	}
-	return nil
-}
-
 func (oc *AIClient) executeBuiltinTool(ctx context.Context, portal *bridgev2.Portal, name string, argsJSON string) (string, error) {
 	var args map[string]any
 	if argsJSON != "" {

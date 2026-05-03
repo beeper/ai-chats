@@ -14,11 +14,6 @@ func MatrixMessageID(eventID id.EventID) networkid.MessageID {
 	return networkid.MessageID("mx:" + string(eventID))
 }
 
-// NewEventID generates a unique Matrix-style event ID with the given prefix.
-func NewEventID(prefix string) id.EventID {
-	return id.EventID(fmt.Sprintf("$%s-%s", prefix, uuid.NewString()))
-}
-
 func HumanUserID(prefix string, loginID networkid.UserLoginID) networkid.UserID {
 	return networkid.UserID(prefix + ":" + string(loginID))
 }

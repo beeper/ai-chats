@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 
 	"github.com/beeper/agentremote/pkg/shared/httputil"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
@@ -36,14 +35,4 @@ func PostAndDecodeJSON(ctx context.Context, baseURL, path, apiKey string, payloa
 		return err
 	}
 	return json.Unmarshal(data, out)
-}
-
-// ApplyEnv fills empty Exa credentials from standard environment variables.
-func ApplyEnv(apiKey, baseURL *string) {
-	if apiKey != nil {
-		*apiKey = stringutil.EnvOr(*apiKey, os.Getenv("EXA_API_KEY"))
-	}
-	if baseURL != nil {
-		*baseURL = stringutil.EnvOr(*baseURL, os.Getenv("EXA_BASE_URL"))
-	}
 }

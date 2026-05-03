@@ -56,15 +56,6 @@ func Names() []string {
 	return slices.Sorted(maps.Keys(registry))
 }
 
-func All() []Definition {
-	names := Names()
-	defs := make([]Definition, 0, len(names))
-	for _, name := range names {
-		defs = append(defs, registry[name])
-	}
-	return defs
-}
-
 func (d Definition) NewMain(connector bridgev2.NetworkConnector) *mxmain.BridgeMain {
 	return &mxmain.BridgeMain{
 		Name:        d.Name,

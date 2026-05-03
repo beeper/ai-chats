@@ -22,16 +22,6 @@ func StringArg(args map[string]any, key string) string {
 	}
 }
 
-// StringArgDefault extracts a trimmed string value, returning defaultVal if the
-// key is missing, nil, empty, or not a string.
-func StringArgDefault(args map[string]any, key, defaultVal string) string {
-	s := StringArg(args, key)
-	if s == "" {
-		return defaultVal
-	}
-	return s
-}
-
 // StringArgMulti tries multiple keys in order, returning the first non-empty
 // trimmed string value and true. Returns ("", false) if none match.
 func StringArgMulti(args map[string]any, keys ...string) (string, bool) {

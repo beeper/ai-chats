@@ -43,17 +43,6 @@ func BaseAgentCapabilities() AgentCapabilities {
 	}
 }
 
-// MultimodalAgentCapabilities extends the base agent capabilities with broad media input support.
-func MultimodalAgentCapabilities() AgentCapabilities {
-	caps := BaseAgentCapabilities()
-	caps.SupportsImageInput = true
-	caps.SupportsAudioInput = true
-	caps.SupportsVideoInput = true
-	caps.SupportsFileInput = true
-	caps.SupportsPDFInput = true
-	return caps
-}
-
 // Agent is the thin SDK identity model for an AI agent.
 type Agent struct {
 	ID           string

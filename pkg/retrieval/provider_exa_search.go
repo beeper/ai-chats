@@ -13,10 +13,6 @@ type exaSearchProvider struct {
 	cfg ExaConfig
 }
 
-func (p *exaSearchProvider) Name() string {
-	return ProviderExa
-}
-
 func (p *exaSearchProvider) Search(ctx context.Context, req SearchRequest) (*SearchResponse, error) {
 	numResults := p.cfg.NumResults
 	if req.Count > 0 {
