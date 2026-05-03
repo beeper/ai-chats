@@ -204,7 +204,7 @@ func (a *responsesTurnAdapter) FinalizeAgentLoop(ctx context.Context) {
 		}
 		recordGeneratedFile(a.state, mediaURL, mimeType)
 		a.state.writer().File(ctx, mediaURL, mimeType)
-		a.log.Info().Stringer("event_id", eventID).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
+		a.log.Info().Str("event_id", string(eventID)).Str("item_id", img.itemID).Msg("Sent generated image to Matrix")
 	}
 	_ = a.oc.finalizeStreamingTurn(ctx, a.portal, a.state, a.meta, streamingFinalizeParams{
 		success:               true,

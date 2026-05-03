@@ -31,6 +31,11 @@ var bridgeRegistry = map[string]bridgeDef{
 	},
 }
 
+func lookupBridge(name string) (bridgeDef, bool) {
+	def, ok := bridgeRegistry[name]
+	return def, ok
+}
+
 func beeperBridgeName(deviceID, bridgeType, name string) string {
 	base := "sh-" + strings.TrimSpace(deviceID) + "-" + bridgeType
 	if name == "" {
@@ -49,7 +54,7 @@ func instanceDirName(bridgeType, name string) string {
 func splitInstanceName(instanceName string) (bridgeType, name string, ok bool) {
 	instanceName = strings.TrimSpace(instanceName)
 	longest := ""
-	for candidate := range bridgeRegistry {
+	for _, candidate := range bridgeentry.Names() {
 		if instanceName == candidate || strings.HasPrefix(instanceName, candidate+"-") {
 			if len(candidate) > len(longest) {
 				longest = candidate

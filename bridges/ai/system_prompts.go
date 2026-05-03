@@ -6,7 +6,6 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 
-	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	runtimeparse "github.com/beeper/agentremote/pkg/runtime"
 )
 
@@ -58,7 +57,6 @@ func (oc *AIClient) buildAdditionalSystemPromptText(
 ) string {
 	return joinPromptFragments(
 		oc.buildAdditionalSystemPromptCoreText(ctx, portal, meta),
-		oc.buildMemoryPromptContextText(ctx, portal, meta),
 	)
 }
 
@@ -81,10 +79,7 @@ func (oc *AIClient) buildConversationSystemPromptText(
 	includeGreeting bool,
 ) string {
 	base := oc.buildSystemPromptText(ctx, portal, meta)
-	if !includeGreeting {
-		return base
-	}
-	return joinPromptFragments(sessionGreetingFragment(ctx, portal, meta, oc.log), base)
+	return base
 }
 
 func (oc *AIClient) buildAdditionalSystemPromptCoreText(
@@ -102,32 +97,9 @@ func (oc *AIClient) buildAdditionalSystemPromptCoreText(
 		}
 	}
 
-	if accountHint := oc.buildDesktopAccountHintPrompt(ctx); accountHint != "" {
-		out = append(out, accountHint)
-	}
-
 	if ident := buildSessionIdentityHint(portal, meta); ident != "" {
 		out = append(out, ident)
 	}
 
 	return joinPromptFragments(out...)
-}
-
-func (oc *AIClient) buildMemoryPromptContextText(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	meta *PortalMetadata,
-) string {
-	if oc == nil || len(oc.integrationModules) == 0 {
-		return ""
-	}
-	module := oc.integrationModules["memory"]
-	augmentor, ok := module.(integrationruntime.PromptContextIntegration)
-	if !ok || augmentor == nil {
-		return ""
-	}
-	return strings.TrimSpace(augmentor.PromptContextText(ctx, integrationruntime.PromptScope{
-		Portal: portal,
-		Meta:   meta,
-	}))
 }

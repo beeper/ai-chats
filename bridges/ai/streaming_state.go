@@ -57,15 +57,8 @@ type streamingState struct {
 	// Used when a tool continuation resumes a previously-started assistant message.
 	needsTextSeparator bool
 
-	// Heartbeat handling
-	heartbeat         *HeartbeatRunConfig
-	heartbeatResultCh chan HeartbeatRunOutcome
-	suppressSave      bool
-	suppressSend      bool
-
-	// Pending MCP approvals to resolve before the turn can continue.
-	pendingMcpApprovals     []mcpApprovalRequest
-	pendingMcpApprovalsSeen map[string]bool
+	suppressSave bool
+	suppressSend bool
 
 	finalized atomic.Bool
 	accepted  atomic.Bool
@@ -215,14 +208,13 @@ func (s *streamingState) applyResponseLifecycleEvent(eventType string, response 
 	return true
 }
 
-// clearContinuationState resets pending function outputs and MCP approvals
-// after they have been consumed for a continuation round.
+// clearContinuationState resets pending continuation state after it has been
+// consumed for a continuation round.
 func (s *streamingState) clearContinuationState() {
 	if s == nil {
 		return
 	}
 	s.pendingFunctionOutputs = nil
-	s.pendingMcpApprovals = nil
 	s.pendingSteeringPrompts = nil
 }
 
@@ -249,33 +241,16 @@ func (s *streamingState) trackFirstToken() {
 	}
 }
 
-type mcpApprovalRequest struct {
-	approvalID  string
-	toolCallID  string
-	toolName    string
-	serverLabel string
-	handle      sdk.ApprovalHandle
-}
-
 func newStreamingState(ctx context.Context, meta *PortalMetadata, roomID id.RoomID) *streamingState {
 	agentID := ""
 	if meta != nil {
 		agentID = resolveAgentID(meta)
 	}
 	state := &streamingState{
-		agentID:                 agentID,
-		startedAtMs:             time.Now().UnixMilli(),
-		roomID:                  roomID,
-		replyAccumulator:        runtimeparse.NewStreamingDirectiveAccumulator(),
-		pendingMcpApprovalsSeen: make(map[string]bool),
-	}
-	if hb := heartbeatRunFromContext(ctx); hb != nil {
-		state.heartbeat = hb.Config
-		state.heartbeatResultCh = hb.ResultCh
-		if hb.Config != nil {
-			state.suppressSave = hb.Config.SuppressSave
-			state.suppressSend = hb.Config.SuppressSend
-		}
+		agentID:          agentID,
+		startedAtMs:      time.Now().UnixMilli(),
+		roomID:           roomID,
+		replyAccumulator: runtimeparse.NewStreamingDirectiveAccumulator(),
 	}
 	return state
 }

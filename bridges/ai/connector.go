@@ -13,12 +13,10 @@ import (
 	"go.mau.fi/util/dbutil"
 
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -52,17 +50,6 @@ func (oc *OpenAIConnector) applyRuntimeDefaults() {
 	if oc.Config.Bridge.CommandPrefix == "" {
 		oc.Config.Bridge.CommandPrefix = "!ai"
 	}
-	if oc.Config.Agents == nil {
-		oc.Config.Agents = &AgentsConfig{}
-	}
-	if oc.Config.Agents.Defaults == nil {
-		oc.Config.Agents.Defaults = &AgentDefaultsConfig{}
-	}
-	if oc.Config.Agents.Defaults.Compaction == nil {
-		oc.Config.Agents.Defaults.Compaction = airuntime.DefaultPruningConfig()
-	} else {
-		oc.Config.Agents.Defaults.Compaction = airuntime.ApplyPruningDefaults(oc.Config.Agents.Defaults.Compaction)
-	}
 }
 
 func (oc *OpenAIConnector) ValidateUserID(id networkid.UserID) bool {
@@ -93,18 +80,10 @@ func (oc *OpenAIConnector) Start(ctx context.Context) error {
 	if db == nil {
 		return fmt.Errorf("ai database not initialized")
 	}
-	if err := db.Upgrade(ctx); err != nil {
+	if err := upgradeBridgeChildDB(ctx, db); err != nil {
 		return err
 	}
 	oc.applyRuntimeDefaults()
-	oc.registerStaticIntegrationCommands()
-	if proc, ok := oc.br.Commands.(*commands.Processor); ok {
-		registerCommandsWithOwnerGuard(proc, &oc.Config, &oc.br.Log, HelpSectionAI)
-		oc.br.Log.Info().Msg("Registered AI commands with command processor")
-	} else {
-		oc.br.Log.Warn().Type("commands_type", oc.br.Commands).Msg("Failed to register AI commands: command processor type assertion failed")
-	}
-	oc.initProvisioning()
 	return nil
 }
 

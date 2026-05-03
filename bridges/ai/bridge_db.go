@@ -39,6 +39,13 @@ func newBridgeChildDB(parent *dbutil.Database, log zerolog.Logger) *dbutil.Datab
 	)
 }
 
+func upgradeBridgeChildDB(ctx context.Context, db *dbutil.Database) error {
+	if err := db.Upgrade(ctx); err != nil {
+		return bridgev2.DBUpgradeError{Section: "ai", Err: err}
+	}
+	return nil
+}
+
 func (oc *OpenAIConnector) bridgeDB() *dbutil.Database {
 	if oc == nil {
 		return nil

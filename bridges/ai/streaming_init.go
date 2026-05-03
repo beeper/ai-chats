@@ -23,7 +23,6 @@ func (oc *AIClient) createStreamingTurn(
 	senderID string,
 ) *sdk.Turn {
 	sdkConfig := &sdk.Config[*AIClient, *Config]{
-		AgentCatalog: aiAgentCatalog{connector: oc.connector},
 		ProviderIdentity: sdk.ProviderIdentity{
 			IDPrefix:      oc.ClientBase.MessageIDPrefix,
 			LogKey:        oc.ClientBase.MessageLogKey,
@@ -41,7 +40,7 @@ func (oc *AIClient) createStreamingTurn(
 		return oc.buildStreamingMessageMetadata(state, meta, buildCanonicalTurnData(state, nil))
 	}))
 	turn.Approvals().SetHandler(func(callCtx context.Context, sdkTurn *sdk.Turn, req sdk.ApprovalRequest) sdk.ApprovalHandle {
-		return oc.requestTurnApproval(callCtx, portal, state, sdkTurn, req)
+		return autoApprovalHandle{approvalID: req.ApprovalID, toolCallID: req.ToolCallID}
 	})
 	placeholderExtra := map[string]any{
 		BeeperAIKey: map[string]any{
@@ -156,16 +155,15 @@ func (oc *AIClient) prepareStreamingRun(
 	var typingCtrl *TypingController
 	var typingSignals *TypingSignaler
 	touchTyping := func() {}
-	isHeartbeat := state.heartbeat != nil
-	if !state.suppressSend && !isHeartbeat {
-		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), isHeartbeat)
+	if !state.suppressSend {
+		mode := oc.resolveTypingMode(meta, typingContextFromContext(ctx), false)
 		interval := oc.resolveTypingInterval(meta)
 		if interval > 0 && mode != TypingModeNever {
 			typingCtrl = NewTypingController(oc, ctx, portal, TypingControllerOptions{
 				Interval: interval,
 				TTL:      typingTTL,
 			})
-			typingSignals = NewTypingSignaler(typingCtrl, mode, isHeartbeat)
+			typingSignals = NewTypingSignaler(typingCtrl, mode, false)
 			touchTyping = func() {
 				typingCtrl.RefreshTTL()
 			}
@@ -186,7 +184,7 @@ func (oc *AIClient) prepareStreamingRun(
 		State:         state,
 		TypingSignals: typingSignals,
 		TouchTyping:   touchTyping,
-		IsHeartbeat:   isHeartbeat,
+		IsHeartbeat:   false,
 	}
 	return prep, cleanup
 }

@@ -37,47 +37,6 @@ func (oc *AIClient) resolveUnderstandingModel(
 	supportsInfo modelInfoFilter,
 	logLabel string,
 ) string {
-	if !oc.canUseMediaUnderstanding(meta) {
-		return ""
-	}
-
-	agentID := resolveAgentID(meta)
-	if agentID == "" {
-		return ""
-	}
-
-	store := &AgentStoreAdapter{client: oc}
-	agent, err := store.GetAgentByID(ctx, agentID)
-	if err != nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent_id", agentID).Msg(fmt.Sprintf("Failed to load agent for %s understanding", logLabel))
-		return ""
-	}
-	if agent == nil {
-		return ""
-	}
-
-	candidates := collectModelCandidates(agent.Model.Primary, agent.Model.Fallbacks)
-	for _, candidate := range candidates {
-		resolved := ResolveAlias(candidate)
-		if resolved == "" {
-			continue
-		}
-		responder := oc.responderForMeta(ctx, &PortalMetadata{
-			ResolvedTarget: &ResolvedTarget{
-				Kind:    ResolvedTargetModel,
-				ModelID: resolved,
-				GhostID: modelUserID(resolved),
-			},
-		})
-		if responder == nil {
-			continue
-		}
-		caps := responder.ModelCapabilities()
-		if supportsCaps(caps) {
-			return resolved
-		}
-	}
-
 	loginState := oc.loginStateSnapshot(ctx)
 	provider := loginMetadata(oc.UserLogin).Provider
 

@@ -65,16 +65,6 @@ func (oc *AIClient) sendGeneratedMedia(
 		}
 	}
 
-	if msgType == event.MsgVideo {
-		if w, h, dur := analyzeVideo(ctx, data); w > 0 && h > 0 {
-			info.Width = w
-			info.Height = h
-			if dur > 0 {
-				info.Duration = dur
-			}
-		}
-	}
-
 	populateAudioMessageContent(content, data, mimeType, asVoice, msgType)
 
 	if turnID != "" && metadataKey != "" {
@@ -141,12 +131,6 @@ func extensionForMIME(mimeType, defaultExt string, overrides map[string]string) 
 func populateAudioMessageContent(content *event.MessageEventContent, data []byte, mimeType string, asVoice bool, msgType event.MessageType) {
 	if msgType != event.MsgAudio {
 		return
-	}
-	if durationMs, waveform := analyzeAudio(data, mimeType); durationMs > 0 || len(waveform) > 0 {
-		content.MSC1767Audio = &event.MSC1767Audio{
-			Duration: durationMs,
-			Waveform: waveform,
-		}
 	}
 	if asVoice {
 		content.MSC3245Voice = &event.MSC3245Voice{}

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -12,34 +11,7 @@ import (
 
 	"github.com/beeper/agentremote/pkg/matrixevents"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/sdk"
 )
-
-func stableMCPApprovalID(toolCallID string, desc responseToolDescriptor) string {
-	input := stringifyJSONValue(desc.input)
-	return "mcp_approval_" + stringutil.ShortHash(strings.TrimSpace(toolCallID)+"\n"+desc.toolName+"\n"+input, 8)
-}
-
-func (oc *AIClient) startStreamingMCPApproval(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	state *streamingState,
-	params ToolApprovalParams,
-	needsPrompt bool,
-) (sdk.ApprovalHandle, error) {
-	handle, created := oc.startTurnApproval(ctx, portal, state, state.turn, params, needsPrompt)
-	if !created {
-		return nil, fmt.Errorf("failed to register MCP approval request")
-	}
-	if needsPrompt {
-		return handle, nil
-	}
-	if err := oc.resolveToolApproval(params.ApprovalID, true, sdk.ApprovalReasonAutoApproved); err != nil {
-		return nil, fmt.Errorf("failed to auto-approve MCP tool call: %w", err)
-	}
-	return handle, nil
-}
 
 func (oc *AIClient) upsertActiveToolFromDescriptor(
 	ctx context.Context,
@@ -242,9 +214,6 @@ func (oc *AIClient) gateMcpToolApproval(
 		RequireForMCP: oc.toolApprovalsRequireForMCP(),
 	})
 	needsApproval := oc.toolApprovalsRuntimeEnabled() && runtimeDecision.State == airuntime.ToolApprovalRequired && !oc.isMcpAlwaysAllowed(ctx, serverLabel, mcpToolName)
-	if needsApproval && state.heartbeat != nil {
-		needsApproval = false
-	}
 	actions := streamTurnActions{oc: oc, ctx: ctx, portal: portal, state: state}
 	if err := actions.approvalRequested(params, needsApproval); err != nil {
 		if state != nil {

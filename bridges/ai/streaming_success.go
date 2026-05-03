@@ -53,9 +53,7 @@ func (oc *AIClient) finalizeStreamingTurn(
 		reason = state.finishReason
 	}
 
-	if state.heartbeat != nil {
-		oc.sendFinalHeartbeatTurn(ctx, portal, state, meta)
-	} else if state.hasInitialMessageTarget() && !state.suppressSend {
+	if state.hasInitialMessageTarget() && !state.suppressSend {
 		rawContent := state.accumulated.String()
 		directives := airuntime.ParseReplyDirectives(rawContent, state.sourceEventID().String())
 		if directives.IsSilent {

@@ -15,7 +15,7 @@ func cmdInternalBridge(args []string) error {
 		return fmt.Errorf("__bridge requires a bridge type argument")
 	}
 	bridgeType := args[0]
-	def, ok := bridgeRegistry[bridgeType]
+	def, ok := lookupBridge(bridgeType)
 	if !ok {
 		return fmt.Errorf("unknown bridge type %q", bridgeType)
 	}

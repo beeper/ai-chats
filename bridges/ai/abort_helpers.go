@@ -168,15 +168,12 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
 		}
 		result.QueuedStopped = oc.finalizeStoppedQueueItems(ctx, oc.drainPendingQueue(roomID))
-		result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
 	case stopPlanKindActive:
 		markedStopped := oc.markRoomRunStopped(roomID, buildStopMetadata(plan, req))
 		if markedStopped {
 			result.ActiveStopped = oc.cancelRoomRun(roomID)
 		}
-		if result.ActiveStopped {
-			result.SubagentsStopped = oc.stopSubagentRuns(ctx, roomID)
-		} else {
+		if !result.ActiveStopped {
 			result.Plan.Kind = stopPlanKindNoMatch
 		}
 	case stopPlanKindQueued:
@@ -189,9 +186,6 @@ func (oc *AIClient) executeUserStopPlan(ctx context.Context, req userStopRequest
 	if req.Meta != nil && (result.ActiveStopped || result.QueuedStopped > 0 || result.SubagentsStopped > 0) {
 		req.Meta.AbortedLastRun = true
 		oc.savePortalQuiet(ctx, req.Portal, "stop")
-	}
-	if req.Meta != nil && result.QueuedStopped > 0 {
-		oc.notifySessionMutation(ctx, req.Portal, req.Meta, false)
 	}
 	return result
 }

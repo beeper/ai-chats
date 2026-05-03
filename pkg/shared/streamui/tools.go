@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2"
-
-	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 // EnsureUIToolInputStart sends "tool-input-start" once per toolCallID.
@@ -231,9 +229,6 @@ func ToolDisplayTitle(toolName string) string {
 	toolName = strings.TrimSpace(toolName)
 	if toolName == "" {
 		return "tool"
-	}
-	if t := tools.GetTool(toolName); t != nil && t.Annotations != nil && t.Annotations.Title != "" {
-		return t.Annotations.Title
 	}
 	return toolName
 }

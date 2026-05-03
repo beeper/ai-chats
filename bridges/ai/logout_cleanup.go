@@ -33,9 +33,6 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 		return
 	}
 
-	if client, ok := login.Client.(*AIClient); ok && client != nil {
-		client.purgeLoginIntegrations(ctx, login, bridgeID, loginID)
-	}
 	logger := &login.Bridge.Log
 	var deleteErrs []error
 	recordDelete := func(query string, args ...any) {
@@ -45,35 +42,7 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	}
 
 	recordDelete(
-		`DELETE FROM `+aiSessionsTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiCronJobsTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiCronJobRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiManagedHeartbeatsTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiHeartbeatRunKeysTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiSystemEventsTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
 		`DELETE FROM `+aiPortalStateTable+` WHERE bridge_id=$1 AND portal_receiver=$2`,
-		bridgeID, loginID,
-	)
-	recordDelete(
-		`DELETE FROM `+aiToolApprovalRulesTable+` WHERE bridge_id=$1 AND login_id=$2`,
 		bridgeID, loginID,
 	)
 	recordDelete(
@@ -83,10 +52,6 @@ func purgeLoginData(ctx context.Context, login *bridgev2.UserLogin) {
 	if err := sdk.DeleteLoginConversationState(ctx, db, bridgeID, loginID); err != nil {
 		deleteErrs = append(deleteErrs, err)
 	}
-	recordDelete(
-		`DELETE FROM `+aiCustomAgentsTable+` WHERE bridge_id=$1 AND login_id=$2`,
-		bridgeID, loginID,
-	)
 	recordDelete(
 		`DELETE FROM `+aiTurnRefsTable+` WHERE bridge_id=$1 AND portal_receiver=$2`,
 		bridgeID, loginID,

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/beeper/agentremote/cmd/internal/beeperauth"
+	"github.com/beeper/agentremote/cmd/internal/bridgeentry"
 )
 
 type flagDef struct {
@@ -332,7 +333,7 @@ func envNames() []string {
 }
 
 func bridgeNames() []string {
-	return slices.Sorted(maps.Keys(bridgeRegistry))
+	return bridgeentry.Names()
 }
 
 func visibleCommands() []cmdDef {

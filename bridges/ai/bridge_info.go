@@ -27,5 +27,12 @@ func applyAIChatsBridgeInfo(portal *bridgev2.Portal, meta *PortalMetadata, conte
 	if portal == nil {
 		return
 	}
-	sdk.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, integrationPortalAIKind(meta))
+	sdk.ApplyAgentRemoteBridgeInfo(content, aiBridgeProtocolIDForPortal(portal), portal.RoomType, aiPortalKind(meta))
+}
+
+func aiPortalKind(meta *PortalMetadata) string {
+	if meta != nil && meta.InternalRoom() {
+		return strings.TrimSpace(meta.InternalRoomKind)
+	}
+	return "chat"
 }

@@ -104,44 +104,7 @@ func (oc *AIClient) resolveResponder(ctx context.Context, meta *PortalMetadata, 
 
 	switch target.Kind {
 	case ResolvedTargetAgent:
-		agentID := normalizeAgentID(target.AgentID)
-		if agentID == "" {
-			return nil, fmt.Errorf("agent target missing agent id")
-		}
-		agent, err := (&AgentStoreAdapter{client: oc}).GetAgentByID(ctx, agentID)
-		if err != nil {
-			return nil, fmt.Errorf("resolve agent %s: %w", agentID, err)
-		}
-		if agent == nil {
-			return nil, fmt.Errorf("agent not found: %s", agentID)
-		}
-		modelID := strings.TrimSpace(agent.Model.Primary)
-		if override != "" {
-			modelID = override
-		}
-		modelID = strings.TrimSpace(ResolveAlias(modelID))
-		if modelID == "" {
-			return nil, fmt.Errorf("agent %s has no model", agentID)
-		}
-		info := oc.responderModelInfo(modelID)
-		ghostID := target.GhostID
-		if ghostID == "" {
-			ghostID = agentUserID(agentID)
-		}
-		displayName := oc.resolveAgentDisplayName(ctx, agent)
-		if displayName == "" {
-			displayName = agent.EffectiveName()
-		}
-		if displayName == "" {
-			displayName = agentID
-		}
-		ri := responderFromModelInfo(info)
-		ri.Kind = ResponderKindAgent
-		ri.GhostID = ghostID
-		ri.AgentID = agentID
-		ri.ModelID = modelID
-		ri.DisplayName = strings.TrimSpace(displayName)
-		return &ri, nil
+		return nil, fmt.Errorf("agent targets are disabled")
 	case ResolvedTargetModel, ResolvedTargetUnknown:
 		modelID := strings.TrimSpace(target.ModelID)
 		if override != "" {

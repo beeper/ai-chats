@@ -41,22 +41,6 @@ func (oc *AIClient) resolveTypingMode(meta *PortalMetadata, ctx *TypingContext, 
 			return mode
 		}
 	}
-	agentID := normalizeAgentID(resolveAgentID(meta))
-	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil {
-		for _, entry := range oc.connector.Config.Agents.List {
-			if normalizeAgentID(entry.ID) != agentID {
-				continue
-			}
-			if mode, ok := normalizeTypingMode(entry.TypingMode); ok {
-				return mode
-			}
-		}
-		if defaults := oc.connector.Config.Agents.Defaults; defaults != nil {
-			if mode, ok := normalizeTypingMode(defaults.TypingMode); ok {
-				return mode
-			}
-		}
-	}
 	isGroup := false
 	wasMentioned := false
 	if ctx != nil {
@@ -77,25 +61,6 @@ func (oc *AIClient) resolveTypingInterval(meta *PortalMetadata) time.Duration {
 			return 0
 		}
 		return interval
-	}
-	agentID := normalizeAgentID(resolveAgentID(meta))
-	if oc != nil && oc.connector != nil && oc.connector.Config.Agents != nil {
-		for _, entry := range oc.connector.Config.Agents.List {
-			if normalizeAgentID(entry.ID) != agentID {
-				continue
-			}
-			if entry.TypingIntervalSec != nil {
-				interval = time.Duration(*entry.TypingIntervalSec) * time.Second
-				if interval <= 0 {
-					return 0
-				}
-				return interval
-			}
-			break
-		}
-		if defaults := oc.connector.Config.Agents.Defaults; defaults != nil && defaults.TypingIntervalSec != nil {
-			interval = time.Duration(*defaults.TypingIntervalSec) * time.Second
-		}
 	}
 	if interval <= 0 {
 		return 0

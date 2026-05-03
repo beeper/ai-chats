@@ -216,10 +216,3 @@ func setTestLoginState(client *AIClient, state *loginRuntimeState) {
 	}
 	client.loginState = cloneLoginRuntimeState(state)
 }
-
-func seedTestCustomAgent(t *testing.T, client *AIClient, agent *AgentDefinitionContent) {
-	t.Helper()
-	if err := saveCustomAgentForLogin(context.Background(), client.UserLogin, agent); err != nil {
-		t.Fatalf("save custom agent: %v", err)
-	}
-}

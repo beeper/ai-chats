@@ -64,7 +64,6 @@ func cloneAILoginConfig(src *aiLoginConfig) *aiLoginConfig {
 	return &aiLoginConfig{
 		Credentials:          cloneLoginCredentials(src.Credentials),
 		TitleGenerationModel: src.TitleGenerationModel,
-		Agents:               cloneBoolPtr(src.Agents),
 		Timezone:             src.Timezone,
 		Profile:              cloneUserProfile(src.Profile),
 		Gravatar:             cloneGravatarState(src.Gravatar),
@@ -83,7 +82,6 @@ func loadAILoginConfig(ctx context.Context, login *bridgev2.UserLogin) (*aiLogin
 	return &aiLoginConfig{
 		Credentials:          cloneLoginCredentials(meta.Credentials),
 		TitleGenerationModel: meta.TitleGenerationModel,
-		Agents:               cloneBoolPtr(meta.Agents),
 		Timezone:             meta.Timezone,
 		Profile:              cloneUserProfile(meta.Profile),
 		Gravatar:             cloneGravatarState(meta.Gravatar),
@@ -98,7 +96,6 @@ func saveAILoginConfig(ctx context.Context, login *bridgev2.UserLogin, cfg *aiLo
 	if meta != nil {
 		meta.Credentials = cloneLoginCredentials(cfg.Credentials)
 		meta.TitleGenerationModel = cfg.TitleGenerationModel
-		meta.Agents = cloneBoolPtr(cfg.Agents)
 		meta.Timezone = cfg.Timezone
 		meta.Profile = cloneUserProfile(cfg.Profile)
 		meta.Gravatar = cloneGravatarState(cfg.Gravatar)

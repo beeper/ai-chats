@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/shared/providerresource"
-	"github.com/beeper/agentremote/pkg/shared/registry"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 )
 
@@ -23,26 +21,27 @@ func Fetch(ctx context.Context, req FetchRequest, cfg *FetchConfig) (*FetchRespo
 		req.MaxChars = 0
 	}
 
-	return providerresource.Run(
-		cfg.Provider,
-		cfg.Fallbacks,
-		DefaultFetchFallbackOrder,
-		func(reg *registry.Registry[FetchProvider]) {
-			if cfg != nil && stringutil.BoolPtrOr(cfg.Exa.Enabled, true) && strings.TrimSpace(cfg.Exa.APIKey) != "" {
-				reg.Register(&exaFetchProvider{cfg: cfg.Exa})
-			}
-			if cfg != nil && stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
-				reg.Register(&directFetchProvider{cfg: cfg.Direct})
-			}
-		},
-		func(provider FetchProvider) (*FetchResponse, error) {
-			return provider.Fetch(ctx, req)
-		},
-		func(name string, resp *FetchResponse) {
-			if resp.Provider == "" {
-				resp.Provider = name
-			}
-		},
-		errors.New("no fetch providers available"),
-	)
+	var provider FetchProvider
+	providerName := cfg.Provider
+	switch providerName {
+	case ProviderExa:
+		if stringutil.BoolPtrOr(cfg.Exa.Enabled, true) && strings.TrimSpace(cfg.Exa.APIKey) != "" {
+			provider = &exaFetchProvider{cfg: cfg.Exa}
+		}
+	case ProviderDirect:
+		if stringutil.BoolPtrOr(cfg.Direct.Enabled, true) {
+			provider = &directFetchProvider{cfg: cfg.Direct}
+		}
+	}
+	if provider == nil {
+		return nil, errors.New("no fetch providers available")
+	}
+	resp, err := provider.Fetch(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Provider == "" {
+		resp.Provider = providerName
+	}
+	return resp, nil
 }

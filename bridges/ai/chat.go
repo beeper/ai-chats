@@ -6,12 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/agents/tools"
-	"github.com/beeper/agentremote/pkg/matrixevents"
 	"github.com/beeper/agentremote/pkg/shared/bridgeutil"
-	"github.com/beeper/agentremote/pkg/shared/stringutil"
-	"github.com/beeper/agentremote/pkg/shared/toolspec"
 	"github.com/beeper/agentremote/sdk"
 
 	"go.mau.fi/util/ptr"
@@ -23,18 +18,12 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-// Tool name constants
-const (
-	ToolNameCalculator = toolspec.CalculatorName
-	ToolNameWebSearch  = toolspec.WebSearchName
-)
-
 func hasAssignedAgent(meta *PortalMetadata) bool {
-	return resolveAgentID(meta) != ""
+	return false
 }
 
 func hasBossAgent(meta *PortalMetadata) bool {
-	return agents.IsBossAgent(resolveAgentID(meta))
+	return false
 }
 
 func modelRedirectTarget(requested, resolved string) networkid.UserID {
@@ -47,15 +36,11 @@ func modelRedirectTarget(requested, resolved string) networkid.UserID {
 }
 
 func (oc *AIClient) agentsEnabledForLogin() bool {
-	if oc == nil || oc.UserLogin == nil {
-		return false
-	}
-	cfg := oc.loginConfigSnapshot(context.Background())
-	return agentsEnabledForLoginConfig(cfg)
+	return false
 }
 
 func agentsEnabledForLoginConfig(cfg *aiLoginConfig) bool {
-	return cfg != nil && cfg.Agents != nil && *cfg.Agents
+	return false
 }
 
 func agentChatsDisabledError() error {
@@ -68,38 +53,13 @@ func (oc *AIClient) buildAvailableTools(meta *PortalMetadata) []ToolInfo {
 	var toolsList []ToolInfo
 
 	for _, name := range names {
-		metaTool := tools.GetTool(name)
 		displayName := name
 		description := ""
 		toolType := "builtin"
-		if metaTool != nil {
-			description = metaTool.Description
-			if metaTool.Annotations != nil && metaTool.Annotations.Title != "" {
-				displayName = metaTool.Annotations.Title
-			}
-			if metaTool.Type != "" {
-				toolType = string(metaTool.Type)
-			}
-		} else if oc != nil {
-			lookupCtx, cancel := context.WithTimeout(context.Background(), mcpDiscoveryTimeout)
-			if dynamicTool, ok := oc.lookupMCPToolDefinition(lookupCtx, name); ok {
-				description = dynamicTool.Description
-				toolType = string(matrixevents.ToolTypeMCP)
-			}
-			cancel()
-		}
 		description = oc.toolDescriptionForPortal(meta, name, description)
 
 		available, source, reason := oc.isToolAvailable(meta, name)
-		allowed := oc.isToolAllowedByPolicy(meta, name)
-		enabled := available && allowed
-
-		if !allowed {
-			source = SourceAgentPolicy
-			if reason == "" {
-				reason = "Disabled by tool policy"
-			}
-		}
+		enabled := available
 
 		toolsList = append(toolsList, ToolInfo{
 			Name:        name,
@@ -180,24 +140,10 @@ func modelMatchesQuery(query string, model *ModelInfo) bool {
 }
 
 func agentContactIdentifiers(agentID string) []string {
-	var identifiers []string
-	if ident := canonicalAgentIdentifier(agentID); ident != "" {
-		identifiers = append(identifiers, ident)
-	}
-	return stringutil.DedupeStrings(identifiers)
+	return nil
 }
 
 func agentMatchesQuery(query string, agent *sdk.Agent) bool {
-	if query == "" || agent == nil {
-		return false
-	}
-	matches := []string{agent.ID, agent.Name, agent.Description}
-	matches = append(matches, agent.Identifiers...)
-	for _, candidate := range matches {
-		if strings.Contains(strings.ToLower(strings.TrimSpace(candidate)), query) {
-			return true
-		}
-	}
 	return false
 }
 
@@ -215,20 +161,6 @@ func (oc *AIClient) hydrateContactResponseGhost(ctx context.Context, resp *bridg
 }
 
 func catalogAgentID(agent *sdk.Agent) string {
-	if agent == nil {
-		return ""
-	}
-	if agentID, ok := parseAgentFromGhostID(strings.TrimSpace(agent.ID)); ok {
-		return agentID
-	}
-	for _, identifier := range agent.Identifiers {
-		if agentID, ok := parseAgentFromGhostID(strings.TrimSpace(identifier)); ok {
-			return agentID
-		}
-		if normalized := normalizeAgentID(identifier); normalized != "" {
-			return normalized
-		}
-	}
 	return ""
 }
 
@@ -271,12 +203,7 @@ func (oc *AIClient) GetContactList(ctx context.Context) ([]*bridgev2.ResolveIden
 func (oc *AIClient) collectContactResponses(ctx context.Context, query string) ([]*bridgev2.ResolveIdentifierResponse, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 
-	agentsList, err := oc.sdkAgentCatalog().ListAgents(ctx, oc.UserLogin)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load agents: %w", err)
-	}
-
-	results := make([]*bridgev2.ResolveIdentifierResponse, 0, len(agentsList))
+	results := make([]*bridgev2.ResolveIdentifierResponse, 0)
 	seen := make(map[networkid.UserID]struct{})
 	appendResponse := func(resp *bridgev2.ResolveIdentifierResponse) {
 		if resp == nil {
@@ -287,40 +214,6 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 		}
 		results = append(results, resp)
 		seen[resp.UserID] = struct{}{}
-	}
-
-	for _, agent := range agentsList {
-		if query != "" && !agentMatchesQuery(query, agent) {
-			continue
-		}
-		if agent == nil || !oc.agentsEnabledForLogin() {
-			continue
-		}
-		resp := &bridgev2.ResolveIdentifierResponse{
-			UserID: networkid.UserID(agent.ID),
-		}
-		if agentInfo := agent.UserInfo(); agentInfo != nil {
-			resp.UserInfo = agentInfo
-		}
-		if agentID := catalogAgentID(agent); agentID != "" {
-			responder, err := oc.resolveResponder(ctx, &PortalMetadata{
-				ResolvedTarget: &ResolvedTarget{
-					Kind:    ResolvedTargetAgent,
-					AgentID: agentID,
-				},
-			}, ResponderResolveOptions{})
-			if err != nil {
-				oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to resolve responder for agent contact")
-			} else if resp.UserInfo == nil {
-				resp.UserInfo = responderUserInfo(responder, agent.Identifiers, true)
-			} else {
-				resp.UserInfo.ExtraProfile = responderExtraProfile(responder)
-			}
-		}
-		if resp.UserInfo != nil {
-			resp = oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
-		}
-		appendResponse(resp)
 	}
 
 	models, err := oc.listAvailableModels(ctx, false)
@@ -354,7 +247,6 @@ func (oc *AIClient) collectContactResponses(ctx context.Context, query string) (
 }
 
 type chatResolveTarget struct {
-	agent         *agents.AgentDefinition
 	modelID       string
 	modelRedirect networkid.UserID
 	response      *bridgev2.ResolveIdentifierResponse
@@ -396,15 +288,7 @@ func (oc *AIClient) resolveModelChatTarget(ctx context.Context, identifier strin
 }
 
 func (oc *AIClient) resolveAgentChatTarget(ctx context.Context, agentID string) (*chatResolveTarget, error) {
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" {
-		return nil, nil
-	}
-	agent, err := (&AgentStoreAdapter{client: oc}).GetAgentByID(ctx, agentID)
-	if err != nil || agent == nil {
-		return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", agentID), mautrix.MNotFound)
-	}
-	return &chatResolveTarget{agent: agent}, nil
+	return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", strings.TrimSpace(agentID)), mautrix.MNotFound)
 }
 
 func (oc *AIClient) resolveParsedChatGhostTarget(ctx context.Context, modelID string, agentID string) (*chatResolveTarget, bool, error) {
@@ -436,25 +320,6 @@ func (oc *AIClient) resolveChatTargetFromIdentifier(ctx context.Context, identif
 			return nil, err
 		}
 		return target, nil
-	}
-	if catalogAgent, err := oc.sdkAgentCatalog().ResolveAgent(ctx, oc.UserLogin, id); err == nil && catalogAgent != nil {
-		agentID := catalogAgentID(catalogAgent)
-		if agentID == "" {
-			if oc.agentsEnabledForLogin() {
-				resp := &bridgev2.ResolveIdentifierResponse{
-					UserID: networkid.UserID(catalogAgent.ID),
-				}
-				if agentInfo := catalogAgent.UserInfo(); agentInfo != nil {
-					resp.UserInfo = agentInfo
-				}
-				if resp.UserInfo != nil {
-					resp = oc.hydrateContactResponseGhost(ctx, resp, "agent", string(resp.UserID))
-				}
-				return &chatResolveTarget{response: resp}, nil
-			}
-			return nil, bridgev2.WrapRespErr(fmt.Errorf("agent '%s' not found", id), mautrix.MNotFound)
-		}
-		return oc.resolveAgentChatTarget(ctx, agentID)
 	}
 	target, err := oc.resolveModelChatTarget(ctx, id)
 	if err != nil {
@@ -489,57 +354,6 @@ func (oc *AIClient) resolveChatTargetResponse(ctx context.Context, target *chatR
 		return target.response, nil
 	}
 	switch {
-	case target.agent != nil:
-		if !oc.agentsEnabledForLogin() {
-			return nil, agentChatsDisabledError()
-		}
-		agent := target.agent
-		modelID := oc.agentDefaultModel(agent)
-		userID := oc.agentUserID(agent.ID)
-		ghost, err := oc.resolveChatGhost(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-
-		agentName := oc.resolveAgentDisplayName(ctx, agent)
-		if agentName == "" {
-			agentName = strings.TrimSpace(agent.EffectiveName())
-		}
-		if agentName == "" {
-			agentName = agent.ID
-		}
-		oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
-		responder, err := oc.resolveResponder(ctx, &PortalMetadata{
-			ResolvedTarget: &ResolvedTarget{
-				Kind:    ResolvedTargetAgent,
-				AgentID: agent.ID,
-			},
-		}, ResponderResolveOptions{
-			RuntimeModelOverride: modelID,
-		})
-		if err != nil {
-			oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agent.ID).Msg("Failed to resolve responder for agent identifier")
-			responder = nil
-		}
-
-		var chatResp *bridgev2.CreateChatResponse
-		if createChat {
-			oc.loggerForContext(ctx).Info().Str("agent", agent.ID).Msg("Creating new chat")
-			chatResp, err = oc.createChat(ctx, chatCreateParams{
-				ModelID:          modelID,
-				Agent:            agent,
-				SkipRoomCreation: true,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create chat: %w", err)
-			}
-		}
-		return &bridgev2.ResolveIdentifierResponse{
-			UserID:   userID,
-			UserInfo: responderUserInfoOrDefault(responder, agentName, agentContactIdentifiers(agent.ID), true),
-			Ghost:    ghost,
-			Chat:     chatResp,
-		}, nil
 	case target.modelID != "":
 		modelID := target.modelID
 		userID := modelUserID(modelID)
@@ -646,7 +460,6 @@ func (oc *AIClient) modelJoinMember(ctx context.Context, loginID networkid.UserL
 
 type chatCreateParams struct {
 	ModelID            string
-	Agent              *agents.AgentDefinition
 	ApplyModelOverride bool
 	Title              string
 	PortalKey          *networkid.PortalKey
@@ -663,25 +476,9 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 		Title:     strings.TrimSpace(params.Title),
 		PortalKey: params.PortalKey,
 	}
-	if params.Agent != nil {
-		if !oc.agentsEnabledForLogin() {
-			return nil, agentChatsDisabledError()
-		}
-		if modelID == "" {
-			modelID = oc.agentDefaultModel(params.Agent)
-			initOpts.ModelID = modelID
-		}
-		if initOpts.Title == "" {
-			initOpts.Title = fmt.Sprintf("Chat with %s", oc.resolveAgentDisplayName(ctx, params.Agent))
-		}
-	}
-
 	portal, chatInfo, err := oc.initPortalForChat(ctx, initOpts)
 	if err != nil {
 		return nil, err
-	}
-	if params.Agent != nil {
-		oc.configureAgentChatPortal(ctx, portal, chatInfo, params.Agent, modelID, params.ApplyModelOverride, "agent config")
 	}
 	roomName := strings.TrimSpace(params.RoomName)
 	if roomName != "" {
@@ -692,13 +489,10 @@ func (oc *AIClient) createChat(ctx context.Context, params chatCreateParams) (*b
 		}
 	}
 	meta := portalMeta(portal)
-	if params.ParentRoomID != "" {
-		meta.SubagentParentRoomID = params.ParentRoomID.String()
-	}
 	if reasoning := strings.TrimSpace(params.RuntimeReasoning); reasoning != "" {
 		meta.RuntimeReasoning = reasoning
 	}
-	if roomName != "" || params.ParentRoomID != "" || strings.TrimSpace(params.RuntimeReasoning) != "" {
+	if roomName != "" || strings.TrimSpace(params.RuntimeReasoning) != "" {
 		if err := oc.savePortal(ctx, portal, "chat setup"); err != nil {
 			return nil, fmt.Errorf("failed to save chat setup: %w", err)
 		}
@@ -806,11 +600,6 @@ func (oc *AIClient) initPortalForChat(ctx context.Context, opts PortalInitOpts) 
 	portal.TopicSet = false
 	portal.Metadata = pmeta
 	setPortalResolvedTarget(portal, pmeta, modelUserID(modelID))
-	defaultAvatar := strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-	if defaultAvatar != "" {
-		portal.AvatarID = networkid.AvatarID(defaultAvatar)
-		portal.AvatarMXC = id.ContentURIString(defaultAvatar)
-	}
 	if err := oc.savePortal(ctx, portal, "chat bootstrap"); err != nil {
 		return nil, nil, fmt.Errorf("failed to bootstrap portal: %w", err)
 	}
@@ -838,21 +627,11 @@ func (oc *AIClient) handleNewChat(
 		return
 	}
 
-	var (
-		label  string
-		params chatCreateParams
-	)
-	switch {
-	case target.agent != nil:
-		label = oc.resolveAgentDisplayName(runCtx, target.agent)
-		params = chatCreateParams{
-			ModelID: target.modelID,
-			Agent:   target.agent,
-		}
-	case target.modelID != "":
+	var label string
+	params := chatCreateParams{ModelID: target.modelID}
+	if target.modelID != "" {
 		label = modelContactName(target.modelID, oc.findModelInfo(target.modelID))
-		params = chatCreateParams{ModelID: target.modelID}
-	default:
+	} else {
 		oc.sendSystemNotice(runCtx, portal, "Couldn't create the chat: no target resolved")
 		return
 	}
@@ -886,50 +665,9 @@ func (oc *AIClient) resolveNewChatTarget(
 	meta *PortalMetadata,
 	args []string,
 ) (*chatResolveTarget, error) {
-	const usage = "usage: !ai new [agent <agent_id>]"
-	agentID := ""
-	preferredModel := ""
-
-	if len(args) >= 2 {
-		cmd := strings.ToLower(args[0])
-		if cmd != "agent" {
-			return nil, errors.New(usage)
-		}
-		if !oc.agentsEnabledForLogin() {
-			return nil, agentChatsDisabledError()
-		}
-		targetID := args[1]
-		if targetID == "" || len(args) > 2 {
-			return nil, errors.New(usage)
-		}
-		agentID = targetID
-	} else if len(args) == 1 {
-		return nil, errors.New(usage)
+	if len(args) > 0 {
+		return nil, errors.New("usage: !ai new")
 	}
-
-	if agentID == "" {
-		if meta == nil {
-			return nil, fmt.Errorf("couldn't resolve the current chat target")
-		}
-		agentID = resolveAgentID(meta)
-		preferredModel = oc.effectiveModel(meta)
-	}
-	if agentID != "" {
-		if !oc.agentsEnabledForLogin() {
-			return nil, agentChatsDisabledError()
-		}
-		store := &AgentStoreAdapter{client: oc}
-		agent, err := store.GetAgentByID(ctx, agentID)
-		if err != nil || agent == nil {
-			return nil, fmt.Errorf("agent not found: %s", agentID)
-		}
-		modelID, err := oc.resolveAgentModelForNewChat(ctx, agent, preferredModel)
-		if err != nil {
-			return nil, err
-		}
-		return &chatResolveTarget{agent: agent, modelID: modelID}, nil
-	}
-
 	modelID := oc.effectiveModel(meta)
 	if modelID == "" {
 		return nil, fmt.Errorf("no model configured for this room")
@@ -938,68 +676,6 @@ func (oc *AIClient) resolveNewChatTarget(
 		return nil, fmt.Errorf("that model isn't available: %s", modelID)
 	}
 	return &chatResolveTarget{modelID: modelID}, nil
-}
-
-func (oc *AIClient) resolveAgentModelForNewChat(ctx context.Context, agent *agents.AgentDefinition, preferredModel string) (string, error) {
-	if preferredModel != "" {
-		if ok, _ := oc.validateModel(ctx, preferredModel); ok {
-			return preferredModel, nil
-		}
-	}
-
-	if agent != nil {
-		defaultModel := oc.agentDefaultModel(agent)
-		if ok, _ := oc.validateModel(ctx, defaultModel); ok {
-			return defaultModel, nil
-		}
-	}
-
-	fallback := oc.effectiveModel(nil)
-	if fallback != "" {
-		if ok, _ := oc.validateModel(ctx, fallback); ok {
-			return fallback, nil
-		}
-	}
-
-	if preferredModel != "" {
-		return "", fmt.Errorf("that model isn't available: %s", preferredModel)
-	}
-	return "", errors.New("no available model")
-}
-
-func (oc *AIClient) configureAgentChatPortal(
-	ctx context.Context,
-	portal *bridgev2.Portal,
-	chatInfo *bridgev2.ChatInfo,
-	agent *agents.AgentDefinition,
-	modelID string,
-	applyModelOverride bool,
-	saveReason string,
-) string {
-	if oc == nil || portal == nil || agent == nil {
-		return ""
-	}
-	agentName := oc.resolveAgentDisplayName(ctx, agent)
-	agentGhostID := oc.agentUserID(agent.ID)
-	pm := portalMeta(portal)
-	setPortalResolvedTarget(portal, pm, agentGhostID)
-	if applyModelOverride {
-		pm.RuntimeModelOverride = ResolveAlias(modelID)
-	}
-	agentAvatar := strings.TrimSpace(agent.AvatarURL)
-	if agentAvatar == "" {
-		agentAvatar = strings.TrimSpace(agents.DefaultAgentAvatarMXC)
-	}
-	if agentAvatar != "" {
-		portal.AvatarID = networkid.AvatarID(agentAvatar)
-		portal.AvatarMXC = id.ContentURIString(agentAvatar)
-	}
-	oc.savePortalQuiet(ctx, portal, saveReason)
-	oc.ensureAgentGhostDisplayName(ctx, agent.ID, modelID, agentName)
-	if chatInfo != nil {
-		oc.applyAgentChatInfo(ctx, chatInfo, agent.ID, agentName, modelID)
-	}
-	return agentName
 }
 
 // chatInfoFromPortal builds ChatInfo from an existing portal
@@ -1032,25 +708,6 @@ func (oc *AIClient) chatInfoFromPortal(ctx context.Context, portal *bridgev2.Por
 		}
 	}
 	chatInfo := oc.composeChatInfo(ctx, title, modelID)
-
-	agentID := resolveAgentID(meta)
-	if agentID == "" || !oc.agentsEnabledForLogin() {
-		return chatInfo
-	}
-
-	agentName := agentID
-	// Try preset first - guaranteed to work for built-in agents (like "beeper")
-	if preset := agents.GetPresetByID(agentID); preset != nil {
-		agentName = oc.resolveAgentDisplayName(ctx, preset)
-	} else if ctx != nil {
-		// Custom agent - need Matrix state lookup
-		store := &AgentStoreAdapter{client: oc}
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
-			agentName = oc.resolveAgentDisplayName(ctx, agent)
-		}
-	}
-
-	oc.applyAgentChatInfo(ctx, chatInfo, agentID, agentName, modelID)
 	return chatInfo
 }
 
@@ -1076,64 +733,6 @@ func (oc *AIClient) composeChatInfo(ctx context.Context, title, modelID string) 
 	// Override bot member with model-specific UserInfo and extra fields.
 	chatInfo.Members.MemberMap[modelUserID(modelID)] = oc.modelJoinMember(ctx, oc.UserLogin.ID, modelID, modelName, modelInfo)
 	return chatInfo
-}
-
-func (oc *AIClient) applyAgentChatInfo(ctx context.Context, chatInfo *bridgev2.ChatInfo, agentID, agentName, modelID string) {
-	if chatInfo == nil || agentID == "" || !oc.agentsEnabledForLogin() {
-		return
-	}
-	if modelID == "" {
-		modelID = oc.effectiveModel(nil)
-	}
-
-	agentGhostID := oc.agentUserID(agentID)
-	agentDisplayName := agentName
-
-	members := chatInfo.Members
-	if members == nil {
-		members = &bridgev2.ChatMemberList{}
-	}
-	if members.MemberMap == nil {
-		members.MemberMap = make(bridgev2.ChatMemberMap)
-	}
-	members.OtherUserID = agentGhostID
-
-	humanID := humanUserID(oc.UserLogin.ID)
-	humanMember := members.MemberMap[humanID]
-	humanMember.EventSender = bridgev2.EventSender{
-		Sender:      humanID,
-		IsFromMe:    true,
-		SenderLogin: oc.UserLogin.ID,
-	}
-
-	agentMember := members.MemberMap[agentGhostID]
-	agentMember.EventSender = bridgev2.EventSender{
-		Sender:      agentGhostID,
-		SenderLogin: oc.UserLogin.ID,
-	}
-	responder, err := oc.resolveResponder(ctx, &PortalMetadata{
-		ResolvedTarget: &ResolvedTarget{
-			Kind:    ResolvedTargetAgent,
-			AgentID: agentID,
-		},
-	}, ResponderResolveOptions{
-		RuntimeModelOverride: modelID,
-	})
-	if err != nil {
-		oc.log.Warn().Err(err).Str("agent", agentID).Str("model", modelID).Msg("Failed to resolve responder for agent chat info")
-	}
-	agentMember.UserInfo = responderUserInfoOrDefault(responder, agentDisplayName, agentContactIdentifiers(agentID), true)
-	agentMember.MemberEventExtra = responderMetadataMap(responder)
-	if agentMember.MemberEventExtra == nil {
-		agentMember.MemberEventExtra = map[string]any{}
-	}
-	agentMember.MemberEventExtra["displayname"] = agentDisplayName
-
-	members.MemberMap = bridgev2.ChatMemberMap{
-		humanID:      humanMember,
-		agentGhostID: agentMember,
-	}
-	chatInfo.Members = members
 }
 
 func (oc *AIClient) sendSystemNoticeMessage(ctx context.Context, portal *bridgev2.Portal, message string) error {

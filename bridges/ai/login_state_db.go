@@ -6,30 +6,15 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
-	"strings"
 	"time"
 )
 
 type loginRuntimeState struct {
 	NextChatIndex       int
-	LastHeartbeatEvent  *HeartbeatEventPayload
 	ModelCache          *ModelCache
 	FileAnnotationCache map[string]FileAnnotation
 	ConsecutiveErrors   int
 	LastErrorAt         int64
-}
-
-func (state *loginRuntimeState) UpdateHeartbeat(evt *HeartbeatEventPayload) bool {
-	if state == nil || evt == nil {
-		return false
-	}
-	if prev := state.LastHeartbeatEvent; prev != nil {
-		if prev.TS == evt.TS && prev.Status == evt.Status && prev.Reason == evt.Reason && prev.To == evt.To && prev.Channel == evt.Channel && prev.Preview == evt.Preview {
-			return false
-		}
-	}
-	state.LastHeartbeatEvent = cloneHeartbeatEvent(evt)
-	return true
 }
 
 func (state *loginRuntimeState) RecordProviderError(now time.Time, warningThreshold int) (int, bool) {
@@ -50,14 +35,6 @@ func (state *loginRuntimeState) RecordProviderSuccess(warningThreshold int) bool
 	state.ConsecutiveErrors = 0
 	state.LastErrorAt = 0
 	return recovered
-}
-
-func cloneHeartbeatEvent(in *HeartbeatEventPayload) *HeartbeatEventPayload {
-	if in == nil {
-		return nil
-	}
-	copy := *in
-	return &copy
 }
 
 func cloneModelCache(src *ModelCache) *ModelCache {
@@ -82,24 +59,11 @@ func cloneLoginRuntimeState(in *loginRuntimeState) *loginRuntimeState {
 	}
 	return &loginRuntimeState{
 		NextChatIndex:       in.NextChatIndex,
-		LastHeartbeatEvent:  cloneHeartbeatEvent(in.LastHeartbeatEvent),
 		ModelCache:          cloneModelCache(in.ModelCache),
 		FileAnnotationCache: cloneFileAnnotationCache(in.FileAnnotationCache),
 		ConsecutiveErrors:   in.ConsecutiveErrors,
 		LastErrorAt:         in.LastErrorAt,
 	}
-}
-
-func parseHeartbeatEvent(raw string) (*HeartbeatEventPayload, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-	var evt HeartbeatEventPayload
-	if err := json.Unmarshal([]byte(raw), &evt); err != nil {
-		return nil, err
-	}
-	return &evt, nil
 }
 
 func marshalJSONOrEmpty(v any) (string, error) {
@@ -123,14 +87,12 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	}
 	state := &loginRuntimeState{}
 	var (
-		lastHeartbeatEventJSON string
-		modelCacheJSON         string
-		fileAnnotationJSON     string
+		modelCacheJSON     string
+		fileAnnotationJSON string
 	)
 	err := scope.db.QueryRow(ctx, `
 		SELECT
 			next_chat_index,
-			last_heartbeat_event_json,
 			model_cache_json,
 			file_annotation_cache_json,
 			consecutive_errors,
@@ -139,7 +101,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 		WHERE bridge_id=$1 AND login_id=$2
 	`, scope.bridgeID, scope.loginID).Scan(
 		&state.NextChatIndex,
-		&lastHeartbeatEventJSON,
 		&modelCacheJSON,
 		&fileAnnotationJSON,
 		&state.ConsecutiveErrors,
@@ -148,10 +109,6 @@ func loadLoginRuntimeState(ctx context.Context, client *AIClient) (*loginRuntime
 	if err == sql.ErrNoRows {
 		return &loginRuntimeState{}, nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	state.LastHeartbeatEvent, err = parseHeartbeatEvent(lastHeartbeatEventJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -169,10 +126,6 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 	if scope == nil || state == nil {
 		return nil
 	}
-	lastHeartbeatEventJSON, err := marshalJSONOrEmpty(state.LastHeartbeatEvent)
-	if err != nil {
-		return err
-	}
 	modelCacheJSON, err := marshalJSONOrEmpty(state.ModelCache)
 	if err != nil {
 		return err
@@ -186,16 +139,14 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 			bridge_id,
 			login_id,
 			next_chat_index,
-			last_heartbeat_event_json,
 			model_cache_json,
 			file_annotation_cache_json,
 			consecutive_errors,
 			last_error_at,
 			updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (bridge_id, login_id) DO UPDATE SET
 			next_chat_index=excluded.next_chat_index,
-			last_heartbeat_event_json=excluded.last_heartbeat_event_json,
 			model_cache_json=excluded.model_cache_json,
 			file_annotation_cache_json=excluded.file_annotation_cache_json,
 			consecutive_errors=excluded.consecutive_errors,
@@ -205,7 +156,6 @@ func saveLoginRuntimeState(ctx context.Context, client *AIClient, state *loginRu
 		scope.bridgeID,
 		scope.loginID,
 		state.NextChatIndex,
-		lastHeartbeatEventJSON,
 		modelCacheJSON,
 		fileAnnotationJSON,
 		state.ConsecutiveErrors,

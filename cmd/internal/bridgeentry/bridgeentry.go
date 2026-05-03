@@ -1,6 +1,9 @@
 package bridgeentry
 
 import (
+	"maps"
+	"slices"
+
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/matrix/mxmain"
 )
@@ -37,6 +40,30 @@ var (
 		DBName:      "dummybridge.db",
 	}
 )
+
+var registry = map[string]Definition{
+	AI.Name:          AI,
+	Codex.Name:       Codex,
+	DummyBridge.Name: DummyBridge,
+}
+
+func Lookup(name string) (Definition, bool) {
+	def, ok := registry[name]
+	return def, ok
+}
+
+func Names() []string {
+	return slices.Sorted(maps.Keys(registry))
+}
+
+func All() []Definition {
+	names := Names()
+	defs := make([]Definition, 0, len(names))
+	for _, name := range names {
+		defs = append(defs, registry[name])
+	}
+	return defs
+}
 
 func (d Definition) NewMain(connector bridgev2.NetworkConnector) *mxmain.BridgeMain {
 	return &mxmain.BridgeMain{

@@ -2,12 +2,9 @@ package ai
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/beeper/agentremote/pkg/agents"
 )
 
 var sessionStoreLocks sync.Map
@@ -46,7 +43,7 @@ func sessionStoreLock(ownerKey string, storeAgentID string, sessionKey string) *
 func (oc *AIClient) normalizedSessionAgentID(agentID string) string {
 	resolvedAgent := normalizeAgentID(agentID)
 	if resolvedAgent == "" {
-		return normalizeAgentID(agents.DefaultAgentID)
+		return "default"
 	}
 	return resolvedAgent
 }
@@ -91,114 +88,26 @@ func (oc *AIClient) sessionStoreAgentID(agentID string) string {
 }
 
 func (oc *AIClient) lastRoutedSessionKey(ctx context.Context, agentID string) (string, bool) {
-	if oc == nil {
-		return "", false
-	}
-	scope := loginScopeForClient(oc)
-	if scope == nil {
-		return "", false
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	storeAgentID := oc.sessionStoreAgentID(agentID)
-	mainKey := oc.sessionMainKey(agentID)
-	var sessionKey string
-	err := scope.db.QueryRow(ctx, `
-		SELECT session_key
-		FROM `+aiSessionsTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key<>$4 AND session_key LIKE '!%'
-		ORDER BY updated_at_ms DESC
-		LIMIT 1
-	`, scope.bridgeID, scope.loginID, normalizeAgentID(storeAgentID), strings.TrimSpace(mainKey)).Scan(&sessionKey)
-	if err == sql.ErrNoRows {
-		return "", false
-	}
-	if err != nil {
-		oc.log.Warn().Err(err).Str("agent_id", agentID).Msg("session store: latest route lookup failed")
-		return "", false
-	}
-	return sessionKey, true
+	return "", false
 }
 
 func (oc *AIClient) storedSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string) (int64, bool) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return 0, false
 	}
-	scope := loginScopeForClient(oc)
-	if scope == nil {
-		return 0, false
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	var updatedAt int64
-	err := scope.db.QueryRow(ctx, `
-		SELECT
-			updated_at_ms
-		FROM `+aiSessionsTable+`
-		WHERE bridge_id=$1 AND login_id=$2 AND store_agent_id=$3 AND session_key=$4
-	`,
-		scope.bridgeID, scope.loginID, normalizeAgentID(storeAgentID), strings.TrimSpace(sessionKey),
-	).Scan(&updatedAt)
-	if err == sql.ErrNoRows {
-		return 0, false
-	}
-	if err != nil {
-		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: lookup failed")
-		return 0, false
-	}
-	return updatedAt, true
+	return 0, false
 }
 
 func (oc *AIClient) saveStoredSessionUpdatedAt(ctx context.Context, storeAgentID string, sessionKey string, updatedAt int64) error {
-	scope := loginScopeForClient(oc)
-	if scope == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	_, err := scope.db.Exec(ctx, `
-		INSERT INTO `+aiSessionsTable+` (
-			bridge_id,
-			login_id,
-			store_agent_id,
-			session_key,
-			updated_at_ms
-		) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (bridge_id, login_id, store_agent_id, session_key) DO UPDATE SET
-			updated_at_ms=excluded.updated_at_ms
-	`,
-		scope.bridgeID,
-		scope.loginID,
-		normalizeAgentID(storeAgentID),
-		strings.TrimSpace(sessionKey),
-		updatedAt,
-	)
-	return err
+	return nil
 }
 
 func (oc *AIClient) touchStoredSession(ctx context.Context, storeAgentID string, sessionKey string, minUpdatedAt int64) {
 	if oc == nil || strings.TrimSpace(sessionKey) == "" {
 		return
 	}
-	scope := loginScopeForClient(oc)
-	if scope == nil {
-		return
-	}
-	lock := sessionStoreLock(scope.ownerKey(), storeAgentID, sessionKey)
+	lock := sessionStoreLock("ai", storeAgentID, sessionKey)
 	lock.Lock()
 	defer lock.Unlock()
-
-	updatedAt := time.Now().UnixMilli()
-	if existingUpdatedAt, ok := oc.storedSessionUpdatedAt(ctx, storeAgentID, sessionKey); ok && existingUpdatedAt > updatedAt {
-		updatedAt = existingUpdatedAt
-	}
-	if minUpdatedAt > updatedAt {
-		updatedAt = minUpdatedAt
-	}
-	if err := oc.saveStoredSessionUpdatedAt(ctx, storeAgentID, sessionKey, updatedAt); err != nil {
-		oc.log.Warn().Err(err).Str("session_key", sessionKey).Msg("session store: upsert failed")
-	}
+	_ = time.Now()
 }

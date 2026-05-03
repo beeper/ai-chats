@@ -43,6 +43,23 @@ func TestUpgradeFresh(t *testing.T) {
 	}
 
 	for _, table := range []string{
+		"aichats_system_events",
+		"aichats_login_state",
+		"aichats_portal_state",
+		"sdk_conversation_state",
+		"aichats_turns",
+		"aichats_turn_refs",
+	} {
+		exists, err := bridgeDB.TableExists(ctx, table)
+		if err != nil {
+			t.Fatalf("check %s existence failed: %v", table, err)
+		}
+		if !exists {
+			t.Fatalf("expected %s to exist", table)
+		}
+	}
+
+	for _, table := range []string{
 		"aichats_memory_files",
 		"aichats_memory_chunks",
 		"aichats_memory_meta",
@@ -53,21 +70,16 @@ func TestUpgradeFresh(t *testing.T) {
 		"aichats_cron_job_run_keys",
 		"aichats_managed_heartbeats",
 		"aichats_managed_heartbeat_run_keys",
-		"aichats_system_events",
-		"aichats_login_state",
 		"aichats_custom_agents",
-		"aichats_portal_state",
 		"aichats_sessions",
 		"aichats_tool_approval_rules",
-		"aichats_turns",
-		"aichats_turn_refs",
 	} {
 		exists, err := bridgeDB.TableExists(ctx, table)
 		if err != nil {
-			t.Fatalf("check %s existence failed: %v", table, err)
+			t.Fatalf("check %s absence failed: %v", table, err)
 		}
-		if !exists {
-			t.Fatalf("expected %s to exist", table)
+		if exists {
+			t.Fatalf("expected %s to be absent", table)
 		}
 	}
 }

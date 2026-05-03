@@ -3,7 +3,21 @@ package ai
 import (
 	"sort"
 	"strings"
+
+	"github.com/beeper/agentremote/pkg/matrixevents"
 )
+
+type activeToolCall struct {
+	callID      string
+	approvalID  string
+	registryKey string
+	itemID      string
+	toolName    string
+	toolType    matrixevents.ToolType
+	input       strings.Builder
+	result      string
+	startedAtMs int64
+}
 
 type streamToolRegistry struct {
 	byKey      map[string]*activeToolCall

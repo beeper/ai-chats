@@ -10,7 +10,6 @@ import (
 	"go.mau.fi/util/random"
 	"maunium.net/go/mautrix/bridgev2/database"
 
-	integrationmemory "github.com/beeper/agentremote/pkg/integrations/memory"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -63,33 +62,9 @@ type LoginCredentials struct {
 
 // ServiceTokens stores optional per-login credentials for external services.
 type ServiceTokens struct {
-	OpenAI              string                        `json:"openai,omitempty"`
-	OpenRouter          string                        `json:"openrouter,omitempty"`
-	Exa                 string                        `json:"exa,omitempty"`
-	Brave               string                        `json:"brave,omitempty"`
-	Perplexity          string                        `json:"perplexity,omitempty"`
-	DesktopAPI          string                        `json:"desktop_api,omitempty"`
-	DesktopAPIInstances map[string]DesktopAPIInstance `json:"desktop_api_instances,omitempty"`
-	MCPServers          map[string]MCPServerConfig    `json:"mcp_servers,omitempty"`
-}
-
-type DesktopAPIInstance struct {
-	Token   string `json:"token,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-}
-
-// MCPServerConfig stores one MCP server connection for a login.
-// The map key in ServiceTokens.MCPServers is the server name.
-type MCPServerConfig struct {
-	Transport string   `json:"transport,omitempty"` // streamable_http|stdio
-	Endpoint  string   `json:"endpoint,omitempty"`  // streamable HTTP endpoint
-	Command   string   `json:"command,omitempty"`   // stdio command path/binary
-	Args      []string `json:"args,omitempty"`      // stdio command args
-	AuthType  string   `json:"auth_type,omitempty"` // bearer|apikey|none
-	Token     string   `json:"token,omitempty"`
-	AuthURL   string   `json:"auth_url,omitempty"` // Optional browser auth URL for manual token retrieval.
-	Connected bool     `json:"connected,omitempty"`
-	Kind      string   `json:"kind,omitempty"` // generic
+	OpenAI     string `json:"openai,omitempty"`
+	OpenRouter string `json:"openrouter,omitempty"`
+	Exa        string `json:"exa,omitempty"`
 }
 
 // UserLoginMetadata is the durable bridgev2-owned login metadata surface.
@@ -97,7 +72,6 @@ type UserLoginMetadata struct {
 	Provider             string            `json:"provider,omitempty"` // Selected provider (openai, openrouter, magic_proxy)
 	Credentials          *LoginCredentials `json:"credentials,omitempty"`
 	TitleGenerationModel string            `json:"title_generation_model,omitempty"`
-	Agents               *bool             `json:"agents,omitempty"`
 	Timezone             string            `json:"timezone,omitempty"`
 	Profile              *UserProfile      `json:"profile,omitempty"`
 	Gravatar             *GravatarState    `json:"gravatar,omitempty"`
@@ -155,12 +129,6 @@ func cloneServiceTokens(src *ServiceTokens) *ServiceTokens {
 		return nil
 	}
 	clone := *src
-	if src.DesktopAPIInstances != nil {
-		clone.DesktopAPIInstances = maps.Clone(src.DesktopAPIInstances)
-	}
-	if src.MCPServers != nil {
-		clone.MCPServers = maps.Clone(src.MCPServers)
-	}
 	return &clone
 }
 
@@ -168,34 +136,9 @@ func serviceTokensEmpty(tokens *ServiceTokens) bool {
 	if tokens == nil {
 		return true
 	}
-	if len(tokens.DesktopAPIInstances) > 0 {
-		for _, instance := range tokens.DesktopAPIInstances {
-			if strings.TrimSpace(instance.Token) != "" || strings.TrimSpace(instance.BaseURL) != "" {
-				return false
-			}
-		}
-	}
-	if len(tokens.MCPServers) > 0 {
-		for _, server := range tokens.MCPServers {
-			if strings.TrimSpace(server.Transport) != "" ||
-				strings.TrimSpace(server.Endpoint) != "" ||
-				strings.TrimSpace(server.Command) != "" ||
-				len(server.Args) > 0 ||
-				strings.TrimSpace(server.Token) != "" ||
-				strings.TrimSpace(server.AuthURL) != "" ||
-				strings.TrimSpace(server.AuthType) != "" ||
-				strings.TrimSpace(server.Kind) != "" ||
-				server.Connected {
-				return false
-			}
-		}
-	}
 	return strings.TrimSpace(tokens.OpenAI) == "" &&
 		strings.TrimSpace(tokens.OpenRouter) == "" &&
-		strings.TrimSpace(tokens.Exa) == "" &&
-		strings.TrimSpace(tokens.Brave) == "" &&
-		strings.TrimSpace(tokens.Perplexity) == "" &&
-		strings.TrimSpace(tokens.DesktopAPI) == ""
+		strings.TrimSpace(tokens.Exa) == ""
 }
 
 // GravatarProfile stores the selected Gravatar profile for a login.
@@ -222,15 +165,9 @@ type PortalMetadata struct {
 	DisclaimerSent   bool   `json:"disclaimer_sent,omitempty"`
 	AutoGreetingSent bool   `json:"auto_greeting_sent,omitempty"`
 
-	AbortedLastRun                 bool                     `json:"aborted_last_run,omitempty"`
-	CompactionCount                int                      `json:"compaction_count,omitempty"`
-	SessionBootstrapByAgent        map[string]int64         `json:"session_bootstrap_by_agent,omitempty"`
-	InternalRoomKind               string                   `json:"internal_room_kind,omitempty"` // e.g. cron, heartbeat
-	CompactionLastPromptTokens     int64                    `json:"compaction_last_prompt_tokens,omitempty"`
-	CompactionLastCompletionTokens int64                    `json:"compaction_last_completion_tokens,omitempty"`
-	MemoryModuleState              *integrationmemory.State `json:"memory_state,omitempty"`
-
-	SubagentParentRoomID string `json:"subagent_parent_room_id,omitempty"` // Parent room ID for subagent sessions
+	AbortedLastRun          bool             `json:"aborted_last_run,omitempty"`
+	SessionBootstrapByAgent map[string]int64 `json:"session_bootstrap_by_agent,omitempty"`
+	InternalRoomKind        string           `json:"internal_room_kind,omitempty"`
 
 	// Runtime-only overrides (not persisted)
 	DisabledTools        []string        `json:"-"`
@@ -251,31 +188,11 @@ func (m *PortalMetadata) AgentID() string {
 }
 
 func (m *PortalMetadata) CompactionCounter() int {
-	if m == nil {
-		return 0
-	}
-	return m.CompactionCount
+	return 0
 }
 
 func (m *PortalMetadata) InternalRoom() bool {
 	return m != nil && strings.TrimSpace(m.InternalRoomKind) != ""
-}
-
-func (m *PortalMetadata) MemoryState() *integrationmemory.State {
-	if m == nil {
-		return nil
-	}
-	return m.MemoryModuleState
-}
-
-func (m *PortalMetadata) EnsureMemoryState() *integrationmemory.State {
-	if m == nil {
-		return nil
-	}
-	if m.MemoryModuleState == nil {
-		m.MemoryModuleState = &integrationmemory.State{}
-	}
-	return m.MemoryModuleState
 }
 
 func cloneUserLoginMetadata(src *UserLoginMetadata) (*UserLoginMetadata, error) {
@@ -316,11 +233,6 @@ func clonePortalMetadata(src *PortalMetadata) *PortalMetadata {
 	if len(src.DisabledTools) > 0 {
 		clone.DisabledTools = slices.Clone(src.DisabledTools)
 	}
-	if src.MemoryModuleState != nil {
-		memoryState := *src.MemoryModuleState
-		clone.MemoryModuleState = &memoryState
-	}
-
 	if src.ResolvedTarget != nil {
 		target := *src.ResolvedTarget
 		clone.ResolvedTarget = &target

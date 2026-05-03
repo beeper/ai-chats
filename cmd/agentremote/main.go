@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -371,12 +370,7 @@ func setupBridgeCmd(fs *flag.FlagSet, args []string, withRegistration bool, extr
 }
 
 func availableBridgeNames() string {
-	names := make([]string, 0, len(bridgeRegistry))
-	for name := range bridgeRegistry {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return strings.Join(names, ", ")
+	return strings.Join(bridgeNames(), ", ")
 }
 
 func resolveBridgeArgs(fs *flag.FlagSet) (bridgeType string, err error) {
@@ -385,7 +379,7 @@ func resolveBridgeArgs(fs *flag.FlagSet) (bridgeType string, err error) {
 		return "", fmt.Errorf("expected exactly one bridge type argument (available: %s)", availableBridgeNames())
 	}
 	bridgeType = posArgs[0]
-	if _, ok := bridgeRegistry[bridgeType]; !ok {
+	if _, ok := lookupBridge(bridgeType); !ok {
 		return "", fmt.Errorf("unknown bridge type %q (available: %s)", bridgeType, availableBridgeNames())
 	}
 	return bridgeType, nil
@@ -808,7 +802,8 @@ func cmdRegister(args []string) error {
 
 func cmdList() error {
 	fmt.Println("Available bridge types:")
-	for name, def := range bridgeRegistry {
+	for _, name := range bridgeNames() {
+		def, _ := lookupBridge(name)
 		fmt.Printf("  %-10s %s\n", name, def.Description)
 	}
 	return nil
@@ -1106,7 +1101,10 @@ func ensureInitialized(instName, bridgeType, beeperName string, sp *instancePath
 			return nil, err
 		}
 	}
-	def := bridgeRegistry[bridgeType]
+	def, ok := lookupBridge(bridgeType)
+	if !ok {
+		return nil, fmt.Errorf("unknown bridge type %q (available: %s)", bridgeType, availableBridgeNames())
+	}
 	overrides := map[string]any{
 		"appservice.address":  "websocket",
 		"appservice.hostname": "127.0.0.1",
@@ -1167,6 +1165,10 @@ func saveAuthFunc(profile string, preserve *authConfig) func(beeperauth.Config) 
 }
 
 func ensureRegistration(profile, envOverride string, meta *metadata, bridgeType string) error {
+	def, ok := lookupBridge(bridgeType)
+	if !ok {
+		return fmt.Errorf("unknown bridge type %q (available: %s)", bridgeType, availableBridgeNames())
+	}
 	auth, err := getAuthWithOverride(profile, envOverride)
 	if err != nil {
 		return err
@@ -1184,7 +1186,7 @@ func ensureRegistration(profile, envOverride string, meta *metadata, bridgeType 
 		RegistrationPath: meta.RegistrationPath,
 		BeeperBridgeName: meta.BeeperBridgeName,
 		BridgeType:       bridgeType,
-		DBName:           bridgeRegistry[bridgeType].DBName,
+		DBName:           def.DBName,
 	})
 }
 

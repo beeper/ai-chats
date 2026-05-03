@@ -8,8 +8,6 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared/constant"
 	"github.com/rs/zerolog"
-
-	"github.com/beeper/agentremote/pkg/agents/tools"
 )
 
 type openAIToolDescriptor struct {
@@ -28,21 +26,6 @@ func toolDescriptorsFromDefinitions(tools []ToolDefinition, log *zerolog.Logger)
 			Name:        tool.Name,
 			Description: tool.Description,
 			Parameters:  sanitizeToolSchema(tool.Parameters, tool.Name, log),
-		})
-	}
-	return result
-}
-
-func toolDescriptorsFromBossTools(bossTools []*tools.Tool, log *zerolog.Logger) []openAIToolDescriptor {
-	if len(bossTools) == 0 {
-		return nil
-	}
-	result := make([]openAIToolDescriptor, 0, len(bossTools))
-	for _, tool := range bossTools {
-		result = append(result, openAIToolDescriptor{
-			Name:        tool.Name,
-			Description: tool.Description,
-			Parameters:  resolveToolSchema(tool.InputSchema, tool.Name, log),
 		})
 	}
 	return result

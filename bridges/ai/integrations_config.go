@@ -6,12 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/util/ptr"
-
-	"github.com/beeper/agentremote/pkg/agents"
-	"github.com/beeper/agentremote/pkg/agents/agentconfig"
-	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
-	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/bridgeconfig"
 )
 
@@ -21,17 +15,14 @@ var exampleNetworkConfig string
 // Config represents the connector-specific configuration that is nested under
 // the `network:` block in the main bridge config.
 type Config struct {
-	Beeper        BeeperConfig                       `yaml:"beeper"`
-	Models        *ModelsConfig                      `yaml:"models"`
-	Bridge        BridgeConfig                       `yaml:"bridge"`
-	Tools         ToolProvidersConfig                `yaml:"tools"`
-	ToolApprovals *ToolApprovalsRuntimeConfig        `yaml:"tool_approvals"`
-	ToolPolicy    *toolpolicy.GlobalToolPolicyConfig `yaml:"tool_policy"`
-	Agents        *AgentsConfig                      `yaml:"agents"`
-	Channels      *ChannelsConfig                    `yaml:"channels"`
-	Messages      *MessagesConfig                    `yaml:"messages"`
-	Commands      *CommandsConfig                    `yaml:"commands"`
-	Session       *SessionConfig                     `yaml:"session"`
+	Beeper   BeeperConfig        `yaml:"beeper"`
+	Models   *ModelsConfig       `yaml:"models"`
+	Bridge   BridgeConfig        `yaml:"bridge"`
+	Tools    ToolProvidersConfig `yaml:"tools"`
+	Channels *ChannelsConfig     `yaml:"channels"`
+	Messages *MessagesConfig     `yaml:"messages"`
+	Commands *CommandsConfig     `yaml:"commands"`
+	Session  *SessionConfig      `yaml:"session"`
 
 	// Global settings
 	DefaultSystemPrompt string        `yaml:"default_system_prompt"`
@@ -39,118 +30,6 @@ type Config struct {
 
 	// Inbound message processing configuration
 	Inbound *InboundConfig `yaml:"inbound"`
-
-	// Integration registration toggles.
-	Integrations *IntegrationsConfig `yaml:"integrations"`
-
-	// Module-level configs captured generically (e.g., cron:, memory:, memory_search:).
-	Modules map[string]any `yaml:",inline"`
-}
-
-// IntegrationsConfig controls compile-time-available integration registration.
-// Module names are keys in the Modules map.
-// A bool value (true/false) enables/disables the module.
-// A map value configures the module (with an optional "enabled" key).
-// Absent modules default to enabled.
-type IntegrationsConfig struct {
-	Modules map[string]any `yaml:",inline"`
-}
-
-// ToolApprovalsRuntimeConfig controls runtime behaviour for tool approvals.
-// This gates OpenAI MCP approvals (mcp_approval_request) and selected dangerous builtin tools.
-type ToolApprovalsRuntimeConfig struct {
-	Enabled         *bool    `yaml:"enabled"`
-	TTLSeconds      int      `yaml:"ttl_seconds"`
-	RequireForMCP   *bool    `yaml:"require_for_mcp"`
-	RequireForTools []string `yaml:"require_for_tools"`
-}
-
-func (c *ToolApprovalsRuntimeConfig) WithDefaults() *ToolApprovalsRuntimeConfig {
-	if c == nil {
-		c = &ToolApprovalsRuntimeConfig{}
-	}
-	if c.Enabled == nil {
-		c.Enabled = ptr.Ptr(true)
-	}
-	if c.TTLSeconds <= 0 {
-		c.TTLSeconds = 600
-	}
-	if c.RequireForMCP == nil {
-		c.RequireForMCP = ptr.Ptr(true)
-	}
-	if len(c.RequireForTools) == 0 {
-		c.RequireForTools = []string{
-			"message",
-			"cron",
-			"gravatar_set",
-
-			// Boss/session mutation tools
-			"create_agent",
-			"fork_agent",
-			"edit_agent",
-			"delete_agent",
-			"modify_room",
-			"sessions_send",
-			"sessions_spawn",
-			"run_internal_command",
-		}
-	}
-	return c
-}
-
-// AgentsConfig configures agent defaults.
-type AgentsConfig struct {
-	Defaults *AgentDefaultsConfig `yaml:"defaults"`
-	List     []AgentEntryConfig   `yaml:"list"`
-}
-
-// AgentDefaultsConfig defines default agent settings.
-type AgentDefaultsConfig struct {
-	Subagents         *agentconfig.SubagentConfig `yaml:"subagents"`
-	SkipBootstrap     bool                        `yaml:"skip_bootstrap"`
-	BootstrapMaxChars int                         `yaml:"bootstrap_max_chars"`
-	TimeoutSeconds    int                         `yaml:"timeout_seconds"`
-	Model             *ModelSelectionConfig       `yaml:"model"`
-	ImageModel        *ModelSelectionConfig       `yaml:"image_model"`
-	ImageGeneration   *ModelSelectionConfig       `yaml:"image_generation_model"`
-	PDFModel          *ModelSelectionConfig       `yaml:"pdf_model"`
-	PDFEngine         string                      `yaml:"pdf_engine"`
-	Compaction        *airuntime.PruningConfig    `yaml:"compaction"`
-	SoulEvil          *agents.SoulEvilConfig      `yaml:"soul_evil"`
-	Heartbeat         *HeartbeatConfig            `yaml:"heartbeat"`
-	UserTimezone      string                      `yaml:"user_timezone"`
-	EnvelopeTimezone  string                      `yaml:"envelope_timezone"`  // local|utc|user|IANA
-	EnvelopeTimestamp string                      `yaml:"envelope_timestamp"` // on|off
-	EnvelopeElapsed   string                      `yaml:"envelope_elapsed"`   // on|off
-	TypingMode        string                      `yaml:"typing_mode"`        // never|instant|thinking|message
-	TypingIntervalSec *int                        `yaml:"typing_interval_seconds"`
-}
-
-// AgentEntryConfig defines per-agent overrides.
-type AgentEntryConfig struct {
-	ID                string           `yaml:"id"`
-	Heartbeat         *HeartbeatConfig `yaml:"heartbeat"`
-	TypingMode        string           `yaml:"typing_mode"` // never|instant|thinking|message
-	TypingIntervalSec *int             `yaml:"typing_interval_seconds"`
-}
-
-// HeartbeatConfig configures periodic heartbeat runs.
-type HeartbeatConfig struct {
-	Every            *string                     `yaml:"every"`
-	ActiveHours      *HeartbeatActiveHoursConfig `yaml:"active_hours"`
-	Model            *string                     `yaml:"model"`
-	Session          *string                     `yaml:"session"`
-	Target           *string                     `yaml:"target"`
-	To               *string                     `yaml:"to"`
-	Prompt           *string                     `yaml:"prompt"`
-	AckMaxChars      *int                        `yaml:"ack_max_chars"`
-	IncludeReasoning *bool                       `yaml:"include_reasoning"`
-}
-
-type HeartbeatActiveHoursConfig struct {
-	Start    string `yaml:"start"`
-	End      string `yaml:"end"`
-	Timezone string `yaml:"timezone"`
 }
 
 // ChannelsConfig defines per-channel settings.
@@ -230,29 +109,11 @@ type ToolProvidersConfig struct {
 	Web   *WebToolsConfig    `yaml:"web"`
 	Links *LinkPreviewConfig `yaml:"links"`
 	Media *MediaToolsConfig  `yaml:"media"`
-	MCP   *MCPToolsConfig    `yaml:"mcp"`
-	VFS   *VFSToolsConfig    `yaml:"vfs"`
 }
 
 type WebToolsConfig struct {
 	Search *SearchConfig `yaml:"search"`
 	Fetch  *FetchConfig  `yaml:"fetch"`
-}
-
-// MCPToolsConfig configures generic MCP behavior.
-type MCPToolsConfig struct {
-	EnableStdio bool `yaml:"enable_stdio"`
-}
-
-// VFSToolsConfig configures virtual filesystem tools.
-type VFSToolsConfig struct {
-	ApplyPatch *ApplyPatchToolsConfig `yaml:"apply_patch"`
-}
-
-// ApplyPatchToolsConfig configures apply_patch availability.
-type ApplyPatchToolsConfig struct {
-	Enabled     *bool    `yaml:"enabled"`
-	AllowModels []string `yaml:"allow_models"`
 }
 
 // MediaUnderstandingScopeMatch defines match criteria for media understanding scope rules.
@@ -354,18 +215,14 @@ func (cfg *MediaToolsConfig) ConfigForCapability(capability MediaUnderstandingCa
 }
 
 type SearchConfig struct {
-	Provider  string   `yaml:"provider"`
-	Fallbacks []string `yaml:"fallbacks"`
-
-	Exa ProviderExaConfig `yaml:"exa"`
+	Provider string            `yaml:"provider"`
+	Exa      ProviderExaConfig `yaml:"exa"`
 }
 
 type FetchConfig struct {
-	Provider  string   `yaml:"provider"`
-	Fallbacks []string `yaml:"fallbacks"`
-
-	Exa    ProviderExaConfig    `yaml:"exa"`
-	Direct ProviderDirectConfig `yaml:"direct"`
+	Provider string               `yaml:"provider"`
+	Exa      ProviderExaConfig    `yaml:"exa"`
+	Direct   ProviderDirectConfig `yaml:"direct"`
 }
 
 type ProviderExaConfig struct {

@@ -20,8 +20,8 @@ func executeWebSearchWithProviders(ctx context.Context, args map[string]any) (st
 
 	btc := GetBridgeToolContext(ctx)
 	var cfg *retrieval.SearchConfig
-	if btc != nil && btc.Client != nil {
-		cfg = btc.Client.effectiveSearchConfig(ctx)
+	if btc != nil && btc.Client != nil && btc.Client.connector != nil && btc.Client.connector.Config.Tools.Web != nil {
+		cfg = mapSearchConfig(btc.Client.connector.Config.Tools.Web.Search)
 	}
 	resp, err := retrieval.Search(ctx, req, cfg)
 	if err != nil {
@@ -67,8 +67,8 @@ func executeWebFetchWithProviders(ctx context.Context, args map[string]any) (str
 
 	btc := GetBridgeToolContext(ctx)
 	var cfg *retrieval.FetchConfig
-	if btc != nil && btc.Client != nil {
-		cfg = btc.Client.effectiveFetchConfig(ctx)
+	if btc != nil && btc.Client != nil && btc.Client.connector != nil && btc.Client.connector.Config.Tools.Web != nil {
+		cfg = mapFetchConfig(btc.Client.connector.Config.Tools.Web.Fetch)
 	}
 	resp, err := retrieval.Fetch(ctx, req, cfg)
 	if err != nil {
@@ -117,7 +117,7 @@ func gravatarProfileURLFromInput(input string) (string, bool) {
 	return fmt.Sprintf("%s/profiles/%s", gravatarAPIBaseURL, gravatarHash(email)), true
 }
 
-func applyLoginTokensToRetrievalConfig(providerField *string, fallbacks *[]string, exaBaseURL *string, exaAPIKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
+func applyLoginTokensToRetrievalConfig(providerField *string, exaBaseURL *string, exaAPIKey *string, provider string, loginCfg *aiLoginConfig, connector *OpenAIConnector) {
 	if connector == nil {
 		return
 	}
@@ -156,9 +156,6 @@ func applyLoginTokensToRetrievalConfig(providerField *string, fallbacks *[]strin
 		if providerField != nil {
 			*providerField = retrieval.ProviderExa
 		}
-		if fallbacks != nil {
-			*fallbacks = []string{retrieval.ProviderExa}
-		}
 	}
 }
 
@@ -167,8 +164,7 @@ func mapSearchConfig(src *SearchConfig) *retrieval.SearchConfig {
 		return nil
 	}
 	return &retrieval.SearchConfig{
-		Provider:  src.Provider,
-		Fallbacks: src.Fallbacks,
+		Provider: src.Provider,
 		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,
@@ -188,8 +184,7 @@ func mapFetchConfig(src *FetchConfig) *retrieval.FetchConfig {
 		return nil
 	}
 	return &retrieval.FetchConfig{
-		Provider:  src.Provider,
-		Fallbacks: src.Fallbacks,
+		Provider: src.Provider,
 		Exa: retrieval.ExaConfig{
 			Enabled:           src.Exa.Enabled,
 			BaseURL:           src.Exa.BaseURL,

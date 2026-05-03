@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +22,6 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
-	integrationruntime "github.com/beeper/agentremote/pkg/integrations/runtime"
 	airuntime "github.com/beeper/agentremote/pkg/runtime"
 	"github.com/beeper/agentremote/pkg/shared/stringutil"
 	"github.com/beeper/agentremote/sdk"
@@ -213,7 +209,7 @@ func pdfFileFeatures() *event.FileFeatures {
 
 func textFileFeatures() *event.FileFeatures {
 	return &event.FileFeatures{
-		MimeTypes:        textFileMimeTypesMap,
+		MimeTypes:        map[string]event.CapabilitySupportLevel{},
 		Caption:          event.CapLevelFullySupported,
 		MaxCaptionLength: AIMaxTextLength,
 		MaxSize:          50 * 1024 * 1024, // Shared cap with PDFs
@@ -286,10 +282,6 @@ type AIClient struct {
 	groupHistoryBuffers map[id.RoomID]*groupHistoryBuffer
 	groupHistoryMu      sync.Mutex
 
-	// Subagent runs (sessions_spawn)
-	subagentRuns   map[string]*subagentRun
-	subagentRunsMu sync.Mutex
-
 	// Message deduplication cache
 	inboundDedupeCache *DedupeCache
 
@@ -300,31 +292,10 @@ type AIClient struct {
 	queueTypingMu sync.Mutex
 	queueTyping   map[id.RoomID]*TypingController
 
-	// Heartbeat + integrations
-	scheduler          *schedulerRuntime
-	integrationModules map[string]integrationruntime.ModuleHooks
-	integrationOrder   []string
-
-	toolRegistry     *toolIntegrationRegistry
-	commandRegistry  *commandIntegrationRegistry
-	eventRegistry    *eventIntegrationRegistry
-	purgeRegistry    *purgeIntegrationRegistry
-	approvalRegistry *toolApprovalIntegrationRegistry
-
 	// Model catalog cache (VFS-backed)
 	modelCatalogMu     sync.Mutex
 	modelCatalogLoaded bool
 	modelCatalogCache  []ModelCatalogEntry
-
-	// MCP tool cache
-	mcpToolsMu        sync.Mutex
-	mcpTools          []ToolDefinition
-	mcpToolSet        map[string]struct{}
-	mcpToolServer     map[string]string
-	mcpToolsFetchedAt time.Time
-
-	// Tool approvals (e.g. OpenAI MCP approval requests)
-	approvalFlow *sdk.ApprovalFlow[*pendingToolApprovalData]
 
 	// Per-login cancellation: cancelled when this login disconnects.
 	// All goroutines using backgroundContext() will be cancelled on disconnect.
@@ -384,7 +355,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 		log:                 log,
 		pendingQueues:       make(map[id.RoomID]*pendingQueue),
 		activeRoomRuns:      make(map[id.RoomID]*roomRunState),
-		subagentRuns:        make(map[string]*subagentRun),
 		groupHistoryBuffers: make(map[id.RoomID]*groupHistoryBuffer),
 		queueTyping:         make(map[id.RoomID]*TypingController),
 		loginConfig:         cloneAILoginConfig(cfg),
@@ -393,24 +363,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.HumanUserIDPrefix = "openai-user"
 	oc.MessageIDPrefix = "ai"
 	oc.MessageLogKey = "ai_msg_id"
-	oc.approvalFlow = sdk.NewApprovalFlow(sdk.ApprovalFlowConfig[*pendingToolApprovalData]{
-		Login: func() *bridgev2.UserLogin { return oc.UserLogin },
-		Sender: func(portal *bridgev2.Portal) bridgev2.EventSender {
-			return oc.senderForPortal(context.Background(), portal)
-		},
-		BackgroundContext: oc.backgroundContext,
-		RoomIDFromData: func(data *pendingToolApprovalData) id.RoomID {
-			if data == nil {
-				return ""
-			}
-			return data.RoomID
-		},
-		SendNotice: func(ctx context.Context, portal *bridgev2.Portal, msg string) {
-			oc.sendSystemNotice(ctx, portal, msg)
-		},
-		IDPrefix: "ai",
-		LogKey:   "ai_msg_id",
-	})
 
 	// Initialize inbound message processing with config values
 	inboundCfg := connector.Config.Inbound.WithDefaults()
@@ -434,9 +386,6 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 	oc.provider = provider
 	oc.api = provider.Client()
 
-	oc.scheduler = newSchedulerRuntime(oc)
-	oc.initIntegrations()
-
 	// Load AI-local runtime state from aidb instead of bridge login metadata.
 	oc.ensureLoginStateLoaded(context.Background())
 
@@ -444,7 +393,7 @@ func newAIClient(login *bridgev2.UserLogin, connector *OpenAIConnector, apiKey s
 }
 
 func (oc *AIClient) GetApprovalHandler() sdk.ApprovalReactionHandler {
-	return oc.approvalFlow
+	return nil
 }
 
 const (
@@ -496,11 +445,6 @@ func initProviderForLoginConfig(key string, providerID string, cfg *aiLoginConfi
 }
 
 func (oc *OpenAIConnector) defaultPDFEngineForInit() string {
-	if oc != nil && oc.Config.Agents != nil && oc.Config.Agents.Defaults != nil {
-		if engine := strings.TrimSpace(oc.Config.Agents.Defaults.PDFEngine); engine != "" {
-			return engine
-		}
-	}
 	return "mistral-ocr"
 }
 
@@ -652,12 +596,6 @@ func (oc *AIClient) Connect(ctx context.Context) {
 		Message:    "Connected",
 	})
 
-	restoreSystemEventsFromDB(oc)
-
-	if oc.scheduler != nil {
-		oc.scheduler.Start(ctx)
-	}
-	oc.startLifecycleIntegrations(ctx)
 }
 
 func (oc *AIClient) Disconnect() {
@@ -671,34 +609,15 @@ func (oc *AIClient) Disconnect() {
 		oc.loggerForContext(context.Background()).Info().Msg("Flushing pending debounced messages on disconnect")
 		oc.inboundDebouncer.FlushAll()
 	}
-	if oc.scheduler != nil {
-		oc.scheduler.Stop()
-	}
 	oc.SetLoggedIn(false)
-
-	oc.stopLifecycleIntegrations()
-	// Stop all login-scoped integration workers for this login.
-	if oc.UserLogin != nil && oc.UserLogin.Bridge != nil && oc.UserLogin.Bridge.DB != nil {
-		if bridgeID, loginID := canonicalLoginBridgeID(oc.UserLogin), canonicalLoginID(oc.UserLogin); loginID != "" {
-			oc.stopLoginLifecycleIntegrations(bridgeID, loginID)
-		}
-	}
 
 	oc.pendingQueuesMu.Lock()
 	clear(oc.pendingQueues)
 	oc.pendingQueuesMu.Unlock()
 
-	if oc.approvalFlow != nil {
-		oc.approvalFlow.Close()
-	}
-
 	oc.activeRoomRunsMu.Lock()
 	clear(oc.activeRoomRuns)
 	oc.activeRoomRunsMu.Unlock()
-
-	oc.subagentRunsMu.Lock()
-	clear(oc.subagentRuns)
-	oc.subagentRunsMu.Unlock()
 
 	oc.groupHistoryMu.Lock()
 	clear(oc.groupHistoryBuffers)
@@ -753,25 +672,6 @@ func (oc *AIClient) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*br
 
 	// Parse agent from ghost ID (format: "agent-{id}")
 	if agentID, ok := parseAgentFromGhostID(ghostID); ok {
-		target := resolveTargetFromGhostID(ghost.ID)
-		responder, _ := oc.resolveResponder(ctx, &PortalMetadata{ResolvedTarget: target}, ResponderResolveOptions{})
-		store := &AgentStoreAdapter{client: oc}
-		agent, agentErr := store.GetAgentByID(ctx, agentID)
-		if agentErr == nil && agent != nil {
-			if sdkAgent := oc.sdkAgentForDefinition(ctx, agent); sdkAgent != nil {
-				info := sdkAgent.UserInfo()
-				if responder != nil {
-					info.ExtraProfile = responderExtraProfile(responder)
-				}
-				info.ExtraUpdates = updateGhostLastSync
-				return info, nil
-			}
-		}
-		if responder != nil {
-			info := responderUserInfo(responder, agentContactIdentifiers(agentID), true)
-			info.ExtraUpdates = updateGhostLastSync
-			return info, nil
-		}
 		return &bridgev2.UserInfo{
 			Name:         ptr.Ptr("Unknown Agent"),
 			IsBot:        ptr.Ptr(true),
@@ -922,7 +822,7 @@ func (oc *AIClient) supportsMessageActionsFeature(meta *PortalMetadata) bool {
 	if oc.connector == nil {
 		return true
 	}
-	return oc.isToolEnabled(meta, ToolNameMessage)
+	return false
 }
 
 // effectiveModel returns the full prefixed model ID (e.g., "openai/gpt-5.2")
@@ -978,14 +878,7 @@ func (oc *AIClient) defaultModelForProvider() string {
 }
 
 func (oc *AIClient) defaultModelSelection(provider string) ModelSelectionConfig {
-	if oc == nil || oc.connector == nil || oc.connector.Config.Agents == nil || oc.connector.Config.Agents.Defaults == nil || oc.connector.Config.Agents.Defaults.Model == nil {
-		return ModelSelectionConfig{Primary: defaultModelForProviderName(provider)}
-	}
-	selection := *oc.connector.Config.Agents.Defaults.Model
-	if strings.TrimSpace(selection.Primary) == "" {
-		selection.Primary = defaultModelForProviderName(provider)
-	}
-	return selection
+	return ModelSelectionConfig{Primary: defaultModelForProviderName(provider)}
 }
 
 func defaultModelForProviderName(provider string) string {
@@ -1080,129 +973,10 @@ func getLinkPreviewConfig(connectorConfig *Config) LinkPreviewConfig {
 
 // effectiveAgentPrompt returns the resolved agent prompt for the current room target.
 func (oc *AIClient) effectiveAgentPrompt(ctx context.Context, portal *bridgev2.Portal, meta *PortalMetadata) string {
-	if meta == nil {
-		return ""
-	}
-
-	agentID := resolveAgentID(meta)
-	if agentID == "" {
-		return ""
-	}
-
-	// Load the agent
-	store := &AgentStoreAdapter{client: oc}
-	agent, err := store.GetAgentByID(ctx, agentID)
-	if err != nil || agent == nil {
-		oc.loggerForContext(ctx).Warn().Err(err).Str("agent", agentID).Msg("Failed to load agent for prompt")
-		return ""
-	}
-
-	timezone, _ := oc.resolveUserTimezone()
-
-	var extraParts []string
-	if strings.TrimSpace(agent.SystemPrompt) != "" {
-		extraParts = append(extraParts, strings.TrimSpace(agent.SystemPrompt))
-	}
-	extraSystemPrompt := strings.Join(extraParts, "\n\n")
-
-	// Build params for prompt generation (AgentRemote template)
-	params := agents.SystemPromptParams{
-		WorkspaceDir:      "/",
-		ExtraSystemPrompt: extraSystemPrompt,
-		UserTimezone:      timezone,
-		PromptMode:        agent.PromptMode,
-		HeartbeatPrompt:   resolveHeartbeatPrompt(&oc.connector.Config, resolveHeartbeatConfig(&oc.connector.Config, agent.ID), agent),
-	}
-	if oc.connector != nil && oc.connector.Config.Modules != nil {
-		if memCfg, ok := oc.connector.Config.Modules["memory"].(map[string]any); ok {
-			if citations, ok := memCfg["citations"].(string); ok {
-				params.MemoryCitations = strings.TrimSpace(citations)
-			}
-		}
-	}
-	params.UserIdentitySupplement = oc.profilePromptSupplement()
-	params.ContextFiles = oc.buildBootstrapContextFiles(ctx, agentID, meta)
-	if meta != nil && strings.TrimSpace(meta.SubagentParentRoomID) != "" {
-		params.PromptMode = agents.PromptModeMinimal
-	}
-
-	availableTools := oc.buildAvailableTools(meta)
-	if len(availableTools) > 0 {
-		toolNames := make([]string, 0, len(availableTools))
-		toolSummaries := make(map[string]string)
-		for _, tool := range availableTools {
-			if !tool.Enabled {
-				continue
-			}
-			toolNames = append(toolNames, tool.Name)
-			if strings.TrimSpace(tool.Description) != "" {
-				toolSummaries[strings.ToLower(tool.Name)] = tool.Description
-			}
-		}
-		params.ToolNames = toolNames
-		params.ToolSummaries = toolSummaries
-	}
-
-	modelCaps := oc.getModelCapabilitiesForMeta(ctx, meta)
-
-	// Build capabilities list from model resolution
-	var caps []string
-	if modelCaps.SupportsVision {
-		caps = append(caps, "vision")
-	}
-	if modelCaps.SupportsToolCalling {
-		caps = append(caps, "tools")
-	}
-	if modelCaps.SupportsReasoning {
-		caps = append(caps, "reasoning")
-	}
-	if modelCaps.SupportsAudio {
-		caps = append(caps, "audio")
-	}
-	if modelCaps.SupportsVideo {
-		caps = append(caps, "video")
-	}
-
-	host, _ := os.Hostname()
-	params.RuntimeInfo = &agents.RuntimeInfo{
-		AgentID:      agent.ID,
-		Host:         host,
-		OS:           runtime.GOOS,
-		Arch:         runtime.GOARCH,
-		Node:         runtime.Version(),
-		Model:        oc.effectiveModel(meta),
-		DefaultModel: oc.defaultModelForProvider(),
-		Channel:      "matrix",
-		Capabilities: caps,
-		RepoRoot:     "",
-	}
-
-	// Reaction guidance - default to minimal for group chats
-	if portal != nil && oc.isGroupChat(ctx, portal) {
-		params.ReactionGuidance = &agents.ReactionGuidance{
-			Level:   "minimal",
-			Channel: "matrix",
-		}
-	}
-
-	// Reasoning hints and level
-	params.ReasoningTagHint = false
-	params.ReasoningLevel = ""
-
-	// Default thinking level (AgentRemote-style): low for reasoning-capable models, otherwise off.
-	params.DefaultThinkLevel = oc.defaultThinkLevel(meta)
-
-	return agents.BuildSystemPrompt(params)
+	return ""
 }
 
 func (oc *AIClient) effectiveTemperature(meta *PortalMetadata) *float64 {
-	if meta != nil && meta.ResolvedTarget != nil && meta.ResolvedTarget.Kind == ResolvedTargetAgent {
-		store := &AgentStoreAdapter{client: oc}
-		agent, err := store.GetAgentByID(context.Background(), meta.ResolvedTarget.AgentID)
-		if err == nil && agent != nil {
-			return ptr.Clone(agent.Temperature)
-		}
-	}
 	return nil
 }
 
@@ -1718,34 +1492,12 @@ func (oc *AIClient) ensureAgentGhostDisplayName(ctx context.Context, agentID, mo
 		return
 	}
 	displayName := agentName
-	var avatar *bridgev2.Avatar
-	if agentID != "" {
-		store := &AgentStoreAdapter{client: oc}
-		if agent, err := store.GetAgentByID(ctx, agentID); err == nil && agent != nil {
-			avatarURL := strings.TrimSpace(agent.AvatarURL)
-			if avatarURL != "" {
-				avatar = &bridgev2.Avatar{
-					ID:  networkid.AvatarID(avatarURL),
-					MXC: id.ContentURIString(avatarURL),
-				}
-			}
-		}
-	}
 	shouldUpdate := ghost.Name == "" || !ghost.NameSet || ghost.Name != displayName
-	if avatar != nil {
-		if !ghost.AvatarSet || ghost.AvatarMXC != avatar.MXC || ghost.AvatarID != avatar.ID {
-			shouldUpdate = true
-		}
-	} else if ghost.AvatarMXC != "" && ghost.AvatarSet {
-		avatar = &bridgev2.Avatar{Remove: true}
-		shouldUpdate = true
-	}
 	if shouldUpdate {
 		ghost.UpdateInfo(ctx, &bridgev2.UserInfo{
 			Name:        ptr.Ptr(displayName),
 			IsBot:       ptr.Ptr(true),
 			Identifiers: agentContactIdentifiers(agentID),
-			Avatar:      avatar,
 		})
 		oc.loggerForContext(ctx).Debug().Str("agent", agentID).Str("model", modelID).Str("name", displayName).Msg("Updated agent ghost display name")
 	}

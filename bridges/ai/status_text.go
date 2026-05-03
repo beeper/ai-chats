@@ -65,10 +65,10 @@ func (oc *AIClient) buildStatusText(
 			formatCompactTokens(int64(estimate)),
 			formatCompactTokens(int64(contextWindow)),
 			formatPercent(estimate, contextWindow),
-			meta.CompactionCount,
+			0,
 		))
 	} else {
-		sb.WriteString(fmt.Sprintf("Context: %s tokens compactions=%d\n", formatCompactTokens(int64(contextWindow)), meta.CompactionCount))
+		sb.WriteString(fmt.Sprintf("Context: %s tokens\n", formatCompactTokens(int64(contextWindow))))
 	}
 
 	sessionKey := portal.MXID.String()
@@ -140,44 +140,7 @@ func (oc *AIClient) buildStatusText(
 	}
 	sb.WriteString(typingLine + "\n")
 
-	// Command-only heartbeat surface for debugging.
-	sb.WriteString(formatHeartbeatSummary(time.Now().UnixMilli(), getLastHeartbeatEventForLogin(oc.UserLogin)) + "\n")
-
 	return strings.TrimSpace(sb.String())
-}
-
-func formatHeartbeatSummary(nowMs int64, evt *HeartbeatEventPayload) string {
-	if evt == nil {
-		return "Heartbeat: none"
-	}
-	age := ""
-	if evt.TS > 0 && nowMs > evt.TS {
-		age = formatAge(nowMs - evt.TS)
-	}
-	parts := make([]string, 0, 6)
-	parts = append(parts, fmt.Sprintf("Heartbeat: %s", strings.TrimSpace(evt.Status)))
-	if age != "" {
-		parts = append(parts, fmt.Sprintf("(%s ago)", age))
-	}
-	if ch := strings.TrimSpace(evt.Channel); ch != "" {
-		parts = append(parts, "channel="+ch)
-	}
-	if to := strings.TrimSpace(evt.To); to != "" {
-		parts = append(parts, "to="+to)
-	}
-	if r := strings.TrimSpace(evt.Reason); r != "" {
-		parts = append(parts, "reason="+r)
-	}
-	if p := strings.TrimSpace(evt.Preview); p != "" {
-		p = strings.ReplaceAll(p, "\n", " ")
-		p = strings.ReplaceAll(p, "\r", " ")
-		p = strings.Join(strings.Fields(p), " ")
-		if len(p) > 120 {
-			p = p[:120] + "..."
-		}
-		parts = append(parts, fmt.Sprintf("preview=%q", p))
-	}
-	return strings.Join(parts, " ")
 }
 
 func formatTypingInterval(interval time.Duration) string {

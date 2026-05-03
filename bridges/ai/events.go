@@ -5,7 +5,6 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
-	"github.com/beeper/agentremote/pkg/agents/toolpolicy"
 	"github.com/beeper/agentremote/pkg/matrixevents"
 )
 
@@ -106,27 +105,4 @@ type ModelInfo struct {
 // AIRoomInfoContent identifies the AI room surface for clients and sync state stores.
 type AIRoomInfoContent struct {
 	Type string `json:"type"`
-}
-
-// AgentDefinitionContent stores agent configuration in Matrix state events.
-// This is the serialized form of agents.AgentDefinition for Matrix storage.
-type AgentDefinitionContent struct {
-	ID              string                       `json:"id"`
-	Name            string                       `json:"name"`
-	Description     string                       `json:"description,omitempty"`
-	AvatarURL       string                       `json:"avatar_url,omitempty"`
-	Model           string                       `json:"model,omitempty"`
-	ModelFallback   []string                     `json:"model_fallback,omitempty"`
-	SystemPrompt    string                       `json:"system_prompt,omitempty"`
-	PromptMode      string                       `json:"prompt_mode,omitempty"`
-	Tools           *toolpolicy.ToolPolicyConfig `json:"tools,omitempty"`
-	Temperature     *float64                     `json:"temperature,omitempty"`
-	ReasoningEffort string                       `json:"reasoning_effort,omitempty"`
-	IdentityName    string                       `json:"identity_name,omitempty"`
-	IdentityPersona string                       `json:"identity_persona,omitempty"`
-	IsPreset        bool                         `json:"is_preset,omitempty"`
-	MemorySearch    any                          `json:"memory_search,omitempty"`
-	HeartbeatPrompt string                       `json:"heartbeat_prompt,omitempty"`
-	CreatedAt       int64                        `json:"created_at"`
-	UpdatedAt       int64                        `json:"updated_at"`
 }

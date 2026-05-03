@@ -12,7 +12,6 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/beeper/agentremote/pkg/agents"
 	"github.com/beeper/agentremote/sdk"
 )
 
@@ -58,8 +57,7 @@ func modelUserID(modelID string) networkid.UserID {
 }
 
 func agentUsesGlobalGhostIdentity(agentID string) bool {
-	normalized := normalizeAgentID(agentID)
-	return agents.IsPreset(normalized) || agents.IsBossAgent(normalized)
+	return false
 }
 
 // Format: "agent-{agent-id}"

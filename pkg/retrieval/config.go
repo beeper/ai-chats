@@ -13,26 +13,17 @@ const (
 	DefaultMaxChars    = 50_000
 )
 
-var (
-	DefaultSearchFallbackOrder = []string{ProviderExa}
-	DefaultFetchFallbackOrder  = []string{ProviderExa, ProviderDirect}
-)
-
 // SearchConfig controls search provider selection and credentials.
 type SearchConfig struct {
-	Provider  string   `yaml:"provider"`
-	Fallbacks []string `yaml:"fallbacks"`
-
-	Exa ExaConfig `yaml:"exa"`
+	Provider string    `yaml:"provider"`
+	Exa      ExaConfig `yaml:"exa"`
 }
 
 // FetchConfig controls fetch provider selection and credentials.
 type FetchConfig struct {
-	Provider  string   `yaml:"provider"`
-	Fallbacks []string `yaml:"fallbacks"`
-
-	Exa    ExaConfig    `yaml:"exa"`
-	Direct DirectConfig `yaml:"direct"`
+	Provider string       `yaml:"provider"`
+	Exa      ExaConfig    `yaml:"exa"`
+	Direct   DirectConfig `yaml:"direct"`
 }
 
 // ExaConfig configures the Exa provider for both search and fetch.
@@ -66,9 +57,6 @@ func (c *SearchConfig) WithDefaults() *SearchConfig {
 	if c.Provider == "" {
 		c.Provider = ProviderExa
 	}
-	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = append([]string(nil), DefaultSearchFallbackOrder...)
-	}
 	if c.Exa.BaseURL == "" {
 		c.Exa.BaseURL = exa.DefaultBaseURL
 	}
@@ -91,9 +79,6 @@ func (c *FetchConfig) WithDefaults() *FetchConfig {
 	}
 	if c.Provider == "" {
 		c.Provider = ProviderExa
-	}
-	if len(c.Fallbacks) == 0 {
-		c.Fallbacks = append([]string(nil), DefaultFetchFallbackOrder...)
 	}
 	if c.Exa.BaseURL == "" {
 		c.Exa.BaseURL = exa.DefaultBaseURL

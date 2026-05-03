@@ -40,7 +40,6 @@ func (oc *AIClient) ensurePortalRoom(ctx context.Context, params ensurePortalRoo
 	params.Portal.UpdateBridgeInfo(ctx)
 	params.Portal.UpdateCapabilities(ctx, oc.UserLogin, true)
 	oc.sendAIChatsRoomInfo(ctx, params.Portal)
-	oc.BroadcastCommandDescriptions(ctx, params.Portal)
 	return params.Portal, nil
 }
 
@@ -48,9 +47,9 @@ func (oc *AIClient) sendAIChatsRoomInfo(ctx context.Context, portal *bridgev2.Po
 	if portal == nil || portal.MXID == "" || portal.Bridge == nil || portal.Bridge.Bot == nil {
 		return false
 	}
-	aiKind := integrationPortalAIKind(portalMeta(portal))
+	aiKind := aiPortalKind(portalMeta(portal))
 	if aiKind == "" {
-		aiKind = "agent"
+		aiKind = "chat"
 	}
 	_, err := portal.Bridge.Bot.SendState(ctx, portal.MXID, AIRoomInfoEventType, "", &event.Content{
 		Parsed: &AIRoomInfoContent{Type: aiKind},
