@@ -64,8 +64,8 @@ type NewConversationOptions struct {
 	StateStore   *conversationStateStore
 }
 
-// NewConversation creates an AIHelper conversation wrapper for provider bridges that
-// want to drive AI helper turns without using the default aiHelperClient implementation.
+// NewConversation creates an AI helper conversation wrapper for provider bridges
+// that drive their own bridgev2 clients.
 func NewConversation[SessionT SessionValue, ConfigDataT ConfigValue](ctx context.Context, login *bridgev2.UserLogin, portal *bridgev2.Portal, sender bridgev2.EventSender, cfg *Config[SessionT, ConfigDataT], session SessionT, opts ...NewConversationOptions) *Conversation {
 	conv := newConversation(ctx, portal, login, sender)
 	var options NewConversationOptions
@@ -175,6 +175,10 @@ func (c *Conversation) currentRoomFeatures(ctx context.Context) *RoomFeatures {
 		return defaultAIHelperFeatureConfig()
 	}
 	return computeRoomFeaturesForAgents(agents)
+}
+
+func (c *Conversation) CurrentRoomFeatures(ctx context.Context) *RoomFeatures {
+	return c.currentRoomFeatures(ctx)
 }
 
 // Stream starts a new streaming response in this conversation.

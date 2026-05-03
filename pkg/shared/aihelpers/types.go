@@ -2,14 +2,9 @@ package aihelpers
 
 import (
 	"context"
-	"sync"
 	"time"
 
-	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridgev2"
-	"maunium.net/go/mautrix/bridgev2/database"
-	"maunium.net/go/mautrix/bridgev2/networkid"
-	"maunium.net/go/mautrix/event"
 )
 
 // MessageType identifies the kind of message.
@@ -172,81 +167,13 @@ type SessionValue interface{}
 
 type ConfigValue interface{}
 
-// Config configures the AI helper bridge.
+// Config configures shared AI conversation helpers.
 type Config[SessionT SessionValue, ConfigDataT ConfigValue] struct {
-	// Required
-	Name        string
-	Description string
-
-	// Agent identity (optional, used for ghost sender)
-	Agent *Agent
-	// Optional agent catalog used for contact listing and room agent management.
+	Agent        *Agent
 	AgentCatalog AgentCatalog
 
-	// Message handling (required)
-	// session is the value returned by OnConnect; conv is the conversation;
-	// msg is the incoming message; turn is the pre-created Turn for streaming responses.
-	OnMessage func(session SessionT, conv *Conversation, msg *Message, turn *Turn) error
-
-	// Session hooks (optional)
-	OnConnect    func(ctx context.Context, login *LoginInfo) (SessionT, error) // returns session state
-	OnDisconnect func(session SessionT)
-
-	// Turn management (optional)
-	TurnManagement *TurnConfig
-
-	// Capabilities (optional, dynamic per-conversation)
-	GetCapabilities func(session SessionT, conv *Conversation) *RoomFeatures
-
-	// Search & chat ops (optional)
-	SearchUsers       func(ctx context.Context, session SessionT, query string) ([]*bridgev2.ResolveIdentifierResponse, error)
-	GetContactList    func(ctx context.Context, session SessionT) ([]*bridgev2.ResolveIdentifierResponse, error)
-	ResolveIdentifier func(ctx context.Context, session SessionT, id string, createChat bool) (*bridgev2.ResolveIdentifierResponse, error)
-	CreateChat        func(ctx context.Context, session SessionT, params *CreateChatParams) (*bridgev2.CreateChatResponse, error)
-	DeleteChat        func(conv *Conversation) error
-	GetChatInfo       func(conv *Conversation) (*bridgev2.ChatInfo, error)
-	GetUserInfo       func(ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error)
-	IsThisUser        func(userID string) bool
-
-	// Commands
-	Commands []Command
-
-	// Room features (static default; overridden by GetCapabilities if set)
-	RoomFeatures *RoomFeatures // nil = AI agent defaults
-
-	// Login — use bridgev2 types directly.
-	LoginFlows    []bridgev2.LoginFlow
-	GetLoginFlows func() []bridgev2.LoginFlow
-	CreateLogin   func(ctx context.Context, user *bridgev2.User, flowID string) (bridgev2.LoginProcess, error)
-	AcceptLogin   func(login *bridgev2.UserLogin) (bool, string)
-
-	// Connector lifecycle and overrides.
-	InitConnector       func(br *bridgev2.Bridge)
-	StartConnector      func(ctx context.Context, br *bridgev2.Bridge) error
-	StopConnector       func(ctx context.Context, br *bridgev2.Bridge)
-	BridgeName          func() bridgev2.BridgeName
-	NetworkCapabilities func() *bridgev2.NetworkGeneralCapabilities
-	BridgeInfoVersion   func() (info, capabilities int)
-	FillBridgeInfo      func(portal *bridgev2.Portal, content *event.BridgeEventContent)
-	MakeBrokenLogin     func(login *bridgev2.UserLogin, reason string) *BrokenLoginClient
-	LoadLogin           func(ctx context.Context, login *bridgev2.UserLogin) error
-	CreateClient        func(login *bridgev2.UserLogin) (bridgev2.NetworkAPI, error)
-	UpdateClient        func(client bridgev2.NetworkAPI, login *bridgev2.UserLogin)
-	AfterLoadClient     func(client bridgev2.NetworkAPI)
-	ProviderIdentity    ProviderIdentity
-	ClientCacheMu       *sync.Mutex
-	ClientCache         *map[networkid.UserLoginID]bridgev2.NetworkAPI
-
-	// Backfill — use bridgev2 types directly.
-	FetchMessages func(ctx context.Context, params bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) // nil = no backfill
-
-	// Advanced
-	ProtocolID     string // default: "ai-<Name>"
-	Port           int    // default: 29400
-	DBName         string // default: "<Name>.db"
-	ConfigPath     string // default: auto-discover
-	DBMeta         func() database.MetaTypes
-	ExampleConfig  string      // YAML
-	ConfigData     ConfigDataT // config struct pointer
-	ConfigUpgrader configupgrade.Upgrader
+	ProviderIdentity ProviderIdentity
+	TurnManagement   *TurnConfig
+	RoomFeatures     *RoomFeatures
+	GetCapabilities  func(session SessionT, conv *Conversation) *RoomFeatures
 }

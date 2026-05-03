@@ -2,6 +2,49 @@ package aihelpers
 
 import "maunium.net/go/mautrix/event"
 
+func DefaultRoomFeatures() *RoomFeatures {
+	return defaultAIHelperFeatureConfig()
+}
+
+func RoomFeaturesToMatrix(features *RoomFeatures) *event.RoomFeatures {
+	if features == nil {
+		features = defaultAIHelperFeatureConfig()
+	}
+	maxText := features.MaxTextLength
+	if maxText == 0 {
+		maxText = DefaultAgentMaxTextLength
+	}
+	capID := features.CustomCapabilityID
+	if capID == "" {
+		capID = "com.beeper.ai_chats.helpers"
+	}
+	roomFeatures := &event.RoomFeatures{
+		ID:                  capID,
+		MaxTextLength:       maxText,
+		Reply:               capLevel(features.SupportsReply),
+		Edit:                capLevel(features.SupportsEdit),
+		Delete:              capLevel(features.SupportsDelete),
+		Reaction:            capLevel(features.SupportsReactions),
+		ReadReceipts:        features.SupportsReadReceipts,
+		TypingNotifications: features.SupportsTyping,
+		DeleteChat:          features.SupportsDeleteChat,
+		File:                make(event.FileFeatureMap),
+	}
+	if features.SupportsImages {
+		roomFeatures.File[event.MsgImage] = &event.FileFeatures{}
+	}
+	if features.SupportsAudio {
+		roomFeatures.File[event.MsgAudio] = &event.FileFeatures{}
+	}
+	if features.SupportsVideo {
+		roomFeatures.File[event.MsgVideo] = &event.FileFeatures{}
+	}
+	if features.SupportsFiles {
+		roomFeatures.File[event.MsgFile] = &event.FileFeatures{}
+	}
+	return roomFeatures
+}
+
 func defaultAIHelperFeatureConfig() *RoomFeatures {
 	return &RoomFeatures{
 		MaxTextLength:        DefaultAgentMaxTextLength,

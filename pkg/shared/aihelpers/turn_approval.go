@@ -4,7 +4,15 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"maunium.net/go/mautrix/id"
 )
+
+type pendingAIHelperApprovalData struct {
+	RoomID     id.RoomID
+	TurnID     string
+	ToolCallID string
+	ToolName   string
+}
 
 type sdkApprovalHandle struct {
 	approvalID string
