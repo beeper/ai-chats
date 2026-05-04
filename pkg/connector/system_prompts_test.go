@@ -28,7 +28,7 @@ func TestBuildRoomIdentityHint_IncludesRoomID(t *testing.T) {
 func TestBuildRoomIdentityHint_InternalRoomIncludesRoomID(t *testing.T) {
 	portal := &bridgev2.Portal{Portal: &database.Portal{}}
 	portal.MXID = id.RoomID("!internal:example.org")
-	meta := &PortalMetadata{InternalRoomKind: "codex"}
+	meta := &PortalMetadata{InternalRoomKind: "internal"}
 	got := buildRoomIdentityHint(portal, meta)
 	if !strings.Contains(got, "room_id: !internal:example.org") {
 		t.Fatalf("expected room id in hint, got %q", got)

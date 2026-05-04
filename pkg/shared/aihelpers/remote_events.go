@@ -32,7 +32,7 @@ type RemoteEdit struct {
 	PreBuilt    *bridgev2.ConvertedEdit
 	DBMetadata  any
 
-	// LogKey is the zerolog field name used in AddLogContext (e.g. "ai_edit_target", "codex_edit_target").
+	// LogKey is the zerolog field name used in AddLogContext (for example, "ai_edit_target").
 	LogKey string
 }
 

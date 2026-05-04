@@ -33,10 +33,10 @@ func TestApplyAIChatsBridgeInfoRoomTypes(t *testing.T) {
 
 func TestApplyAIChatsBridgeInfo(t *testing.T) {
 	content := &event.BridgeEventContent{}
-	ApplyAIChatsBridgeInfo(content, "ai-codex", database.RoomTypeDM)
+	ApplyAIChatsBridgeInfo(content, "ai-test", database.RoomTypeDM)
 
-	if content.Protocol.ID != "ai-codex" {
-		t.Fatalf("expected protocol id ai-codex, got %q", content.Protocol.ID)
+	if content.Protocol.ID != "ai-test" {
+		t.Fatalf("expected protocol id ai-test, got %q", content.Protocol.ID)
 	}
 	if content.BeeperRoomTypeV2 != "dm" {
 		t.Fatalf("expected dm room type, got %q", content.BeeperRoomTypeV2)
